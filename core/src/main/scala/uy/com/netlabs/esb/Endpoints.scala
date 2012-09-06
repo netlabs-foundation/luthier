@@ -29,8 +29,9 @@ trait Source extends InboundEndpoint {
 }
 
 trait Responsible extends InboundEndpoint {
-  def onRequest(thunk: Message[Payload] => Future[Message[_]])
-  def cancelRequestListener(thunk: Message[Payload] => Future[Message[_]])
+  type SupportedResponseTypes <: TypeList
+  def onRequest(thunk: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]])
+  def cancelRequestListener(thunk: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]])
 }
 
 
@@ -40,13 +41,7 @@ trait Responsible extends InboundEndpoint {
 @scala.annotation.implicitNotFound("This transport does not support messages with payload ${A}. Supported types are ${TL}")
 trait TypeSupportedByTransport[TL <: TypeList, A]
 
-trait LowPriorityTypSupportedImplicits { self: TypeSupportedByTransport.type =>
-  implicit def tailContains[H, T <: TypeList, A](implicit c: TypeSupportedByTransport[T, A]): TypeSupportedByTransport[H :: T, A] = impl
-}
-object TypeSupportedByTransport extends LowPriorityTypSupportedImplicits {
-  implicit def containsExactly[H, T <: TypeList, A](implicit x: A <:< H): TypeSupportedByTransport[H :: T, A] = impl
-  def impl[H <: TypeList, A] = new TypeSupportedByTransport[H, A] {}
-}
+object TypeSupportedByTransport extends TypeSelectorImplicits[TypeSupportedByTransport]
 
 trait OutboundEndpoint extends Endpoint {
   type SupportedTypes <: TypeList

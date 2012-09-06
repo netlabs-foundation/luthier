@@ -2,6 +2,7 @@ package uy.com.netlabs.esb
 
 import scala.language._
 import scala.concurrent.Future
+import typelist._
 
 trait Flows {
   import uy.com.netlabs.esb.{ Flow => GFlow }
@@ -22,8 +23,8 @@ trait Flows {
     implicit def OneWayCommunicationPattern[In <: Source] = new ExchangePattern[In, Unit] {
       def registerLogic = (i: In) => (i.onEvent _).asInstanceOf[(Message[In#Payload] => Unit) => Unit]
     }
-    implicit def RequestResponseCommunicationPattern[In <: Responsible] = new ExchangePattern[In, Future[Message[_]]] {
-      def registerLogic = (i: In) => (i.onRequest _).asInstanceOf[(Message[In#Payload] => Future[Message[_]]) => Unit]
+    implicit def RequestResponseCommunicationPattern[In <: Responsible] = new ExchangePattern[In, Future[Message[OneOf[_, In#SupportedResponseTypes]]]] {
+      def registerLogic = (i: In) => (i.onRequest _).asInstanceOf[(Message[In#Payload] => Future[Message[OneOf[_, In#SupportedResponseTypes]]]) => Unit]
     }
   }
 
