@@ -26,6 +26,7 @@ private[jms] trait BaseJmsEndpoint extends endpoint.base.BaseSource with endpoin
 
   /* Supported types on writing */
   type SupportedTypes = String :: Array[Byte] :: java.io.Serializable :: TypeNil
+  type SupportedResponseTypes = SupportedTypes
   /* Receiving payload */
   type Payload = Any
   type Response = Any

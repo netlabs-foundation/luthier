@@ -1,6 +1,6 @@
 package uy.com.netlabs.esb.typelist
 
-import language.higherKinds
+import language.{higherKinds, implicitConversions}
 
 trait TypeList {
   type Head

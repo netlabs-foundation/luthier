@@ -8,7 +8,9 @@ trait Flows {
   import uy.com.netlabs.esb.{ Flow => GFlow }
   implicit def appContext: AppContext
   implicit def long2Duration(l: Long) = new scala.concurrent.util.DurationLong(l)
-  implicit def message2Future[M <: Message[_]](m: M) = Future.successful(m)
+  implicit def message2FutureOneOf[MT, TL <: TypeList](m: Message[MT])(implicit contained: Contained[TL, MT]): Future[Message[OneOf[_, TL]]] = {
+    Future.successful(m map (p =>  new OneOf[MT, TL](p)))
+  }
 
   implicit def SelectRequestResponse[R <: Responsible](r: EndpointFactory[R]) = new Flows.SelectRequestResponse(r)
   implicit def SelectOneWay[S <: Source](s: EndpointFactory[S]) = new Flows.SelectOneWay(s)
@@ -43,7 +45,10 @@ trait Flows {
 }
 object Flows {
   class SelectRequestResponse[R <: Responsible](val r: EndpointFactory[R]) {
-    type RR = Responsible { type Payload = R#Payload }
+    type RR = Responsible { 
+      type Payload = R#Payload
+      type SupportedResponseTypes = R#SupportedResponseTypes
+    }
     def RequestResponse: EndpointFactory[RR] = r.asInstanceOf[EndpointFactory[RR]]
   }
   class SelectOneWay[S <: Source](val s: EndpointFactory[S]) {

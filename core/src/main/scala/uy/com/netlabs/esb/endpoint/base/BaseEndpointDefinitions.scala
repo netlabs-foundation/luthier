@@ -3,6 +3,7 @@ package endpoint.base
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util._
+import typelist._
 
 /**
  * Base implementation of Source.
@@ -38,8 +39,12 @@ trait BaseSource extends Source {
  */
 trait BaseResponsible extends Responsible {
   protected var onRequests = Set.empty[Message[_] => Future[Message[_]]]
-  def onRequest(thunk: Message[Payload] => Future[Message[_]]) { onRequests += thunk.asInstanceOf[Message[_] => Future[Message[_]]] }
-  def cancelRequestListener(thunk: Message[Payload] => Future[Message[_]]) { onRequests -= thunk.asInstanceOf[Message[_] => Future[Message[_]]] }
+  def onRequest(thunk: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]]) {
+    onRequests += thunk.asInstanceOf[Message[_] => Future[Message[OneOf[_, SupportedResponseTypes]]]]
+  }
+  def cancelRequestListener(thunk: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]]) {
+    onRequests -= thunk.asInstanceOf[Message[_] => Future[Message[OneOf[_, SupportedResponseTypes]]]]
+  }
 
   val ioExecutionContext: ExecutionContext
   
