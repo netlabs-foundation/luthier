@@ -38,5 +38,6 @@ object CocoonBuild extends Build {
   ).settings(defSettings:_*)
   lazy val core = Project(id = "core", base = file("core")).settings(defSettings:_*)
   lazy val jmsEndpoint = Project(id = "jmsEndpoint", base = file("endpoints/jms")).dependsOn(core).settings(defSettings:_*)
+  lazy val jdbcEndpoint = Project(id = "jdbcEndpoint", base = file("endpoints/jdbc")).dependsOn(core).settings(defSettings:_*)
   lazy val wsutil = Project(id = "wsutil", base = file("wsutil")).settings(defSettings:_*)
 }

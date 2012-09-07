@@ -24,7 +24,7 @@ trait Message[Payload] {
   def correlationSequence: Int
   def correlationSequence_=(seq: Int)
   
-  def mapTo[R <: Payload] = this.asInstanceOf[Message[R]]
+  def mapTo[R] = this.asInstanceOf[Message[R]]
   def map[R](f: Payload => R) = Message(f(payload), header, replyTo, correlationId, correlationGroupSize, correlationSequence)
 }
 trait MessageProxy[Payload] extends Message[Payload] {

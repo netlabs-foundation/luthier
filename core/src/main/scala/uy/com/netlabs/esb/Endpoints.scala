@@ -54,7 +54,7 @@ trait Sink extends OutboundEndpoint {
 
 trait Askable extends OutboundEndpoint {
   type Response <: Any
-  def ask[Payload: SupportedType](msg: Message[Payload], timeOut: Duration = 10.seconds): Future[Message[Response]] //marked implicit, so that it can be fully omitted
+  def ask[Payload: SupportedType](msg: Message[Payload], timeOut: Duration = 10.seconds): Future[Message[Response]]
 }
 object Askable {
   implicit class SourceAndSink2Askable[In <: Source, Out <: Sink](t: (In, Out)) extends Askable {
