@@ -7,7 +7,7 @@ object Jdbc {
   def const[R](query: String,
                rowMapper: Row => R,
                dataSource: DataSource,
-               ioThreads: Int) = new EndpointFactory[JdbcPull[R]] {
+               ioThreads: Int = 1) = new EndpointFactory[JdbcPull[R]] {
 
     def apply(flow: Flow) = new JdbcPull(flow, query, rowMapper, dataSource, ioThreads)
   }
@@ -15,7 +15,7 @@ object Jdbc {
   def parameterized[R](query: String,
                        rowMapper: Row => R,
                        dataSource: DataSource,
-                       ioThreads: Int) = new EndpointFactory[JdbcAskable[R]] {
+                       ioThreads: Int = 1) = new EndpointFactory[JdbcAskable[R]] {
 
     def apply(flow: Flow) = new JdbcAskable(flow, query, rowMapper, dataSource, ioThreads)
   }

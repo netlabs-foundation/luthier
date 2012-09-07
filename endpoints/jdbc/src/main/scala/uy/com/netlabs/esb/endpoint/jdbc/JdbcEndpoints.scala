@@ -21,6 +21,7 @@ class JdbcPull[R](val flow: Flow,
   def dispose(): Unit = {
     Try(preparedStatement.close())
     Try(connection.close())
+    ioExecutor.shutdownNow()
   }
   def start(): Unit = {
     try {
@@ -29,11 +30,12 @@ class JdbcPull[R](val flow: Flow,
     }
   }
 
-  implicit val ioExecutionContext = ExecutionContext.fromExecutor(java.util.concurrent.Executors.newFixedThreadPool(ioThreads))
+  private[this] var ioExecutor = java.util.concurrent.Executors.newFixedThreadPool(ioThreads)
+  implicit val ioExecutionContext = ExecutionContext.fromExecutor(ioExecutor)
 
   protected def retrieveMessage(): uy.com.netlabs.esb.Message[Payload] = {
     val res = Try {
-      val rs = preparedStatement.executeQuery(query)
+      val rs = preparedStatement.executeQuery()
       val res = collection.mutable.ArrayBuffer[R]()
       while (rs.next) res += rowMapper(Row(rs))
       res: Payload
@@ -48,13 +50,14 @@ class JdbcAskable[R](val flow: Flow,
                      val dataSource: DataSource,
                      ioThreads: Int) extends Askable {
   type Response = IndexedSeq[R]
-  type SupportedTypes = IndexedSeq[_ <: Any] :: TypeNil
+  type SupportedTypes = IndexedSeq[_ <: Any] :: Product :: TypeNil
 
   @volatile private[this] var connection: Connection = _
   private[this] val preparedStatement = new ThreadLocal[PreparedStatement]()
 
   def dispose(): Unit = {
     Try(connection.close())
+    ioExecutor.shutdownNow()
   }
   def start(): Unit = {
     try {
@@ -62,12 +65,18 @@ class JdbcAskable[R](val flow: Flow,
     }
   }
 
-  implicit val ioExecutionContext = ExecutionContext.fromExecutor(java.util.concurrent.Executors.newFixedThreadPool(ioThreads))
+  private[this] var ioExecutor = java.util.concurrent.Executors.newFixedThreadPool(ioThreads)
+  implicit val ioExecutionContext = ExecutionContext.fromExecutor(ioExecutor)
 
   //TODO: Honor the timeout 
   def ask[Payload: SupportedType](msg: Message[Payload], timeOut: Duration): Future[Message[Response]] = {
     Future {
-      val args = msg.mapTo[IndexedSeq[Any]].payload
+      val args = {
+        msg.payload match {
+          case is: IndexedSeq[_] => is
+          case prod: Product => prod.productIterator.toIndexedSeq
+        }
+      }
       val res = Try {
         var ps = preparedStatement.get()
         if (ps == null) {
