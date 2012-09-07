@@ -12,10 +12,14 @@ trait Flow {
   val appContext: AppContext
   val rootEndpoint: InboundEndpoint
   val log: LoggingAdapter
+  private[this] var instantiatedEndpoints = Vector.empty[Endpoint]
 
-  def start() { rootEndpoint.start() }
+  def start() { 
+    rootEndpoint.start()
+  }
   def stop() {
     rootEndpoint.dispose()
+    instantiatedEndpoints foreach (_.dispose())
     appContext.actorSystem.stop(workerActors)
   }
 
@@ -23,7 +27,12 @@ trait Flow {
   def logic(l: Logic)
 
   implicit def self = this
-  implicit def endpointFactory2Endpoint[T <: Endpoint](ef: EndpointFactory[T]): T = ef(this)
+  implicit def endpointFactory2Endpoint[T <: Endpoint](ef: EndpointFactory[T]): T = {
+    val res = ef(this)
+    instantiatedEndpoints :+= res
+    res.start()
+    res
+  }
 
   /**
    * Number of workers to allocate in the flow's worker pool.
