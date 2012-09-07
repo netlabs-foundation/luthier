@@ -4,6 +4,9 @@ import scala.language._
 import scala.concurrent.Future
 import typelist._
 
+/**
+ * This class defines a scope where flows can be defined.
+ */
 trait Flows {
   import uy.com.netlabs.esb.{ Flow => GFlow }
   implicit def appContext: AppContext

@@ -31,7 +31,8 @@ private[jms] trait BaseJmsEndpoint extends endpoint.base.BaseSource with endpoin
   type Payload = Any
   type Response = Any
 
-  implicit val ioExecutionContext = ExecutionContext.fromExecutor(java.util.concurrent.Executors.newFixedThreadPool(ioThreads))
+  private[this] val ioExecutor = java.util.concurrent.Executors.newFixedThreadPool(ioThreads)
+  implicit val ioExecutionContext = ExecutionContext.fromExecutor(ioExecutor)
 
   protected def configureSourceOnStart(session: Session, destination: javax.jms.Destination) {
     if (onEvents.nonEmpty) {
@@ -48,6 +49,7 @@ private[jms] trait BaseJmsEndpoint extends endpoint.base.BaseSource with endpoin
 
   def dispose() {
     instantiatedSessions foreach (s => Try(s.close))
+    ioExecutor.shutdownNow
   }
 
   protected def pushMessage[Payload: SupportedType](msg: Message[Payload]) {
