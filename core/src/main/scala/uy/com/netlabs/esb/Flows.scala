@@ -11,6 +11,9 @@ trait Flows {
   implicit def message2FutureOneOf[MT, TL <: TypeList](m: Message[MT])(implicit contained: Contained[TL, MT]): Future[Message[OneOf[_, TL]]] = {
     Future.successful(m map (p =>  new OneOf[MT, TL](p)))
   }
+  implicit val flowLogSource = new akka.event.LogSource[GFlow] {
+    def genString(f) = f.appContext.name + ":" + f.name
+  }
 
   implicit def SelectRequestResponse[R <: Responsible](r: EndpointFactory[R]) = new Flows.SelectRequestResponse(r)
   implicit def SelectOneWay[S <: Source](s: EndpointFactory[S]) = new Flows.SelectOneWay(s)
@@ -35,6 +38,7 @@ trait Flows {
     type Logic = Message[rootEndpoint.Payload] => ResponseType
     val rootEndpoint = endpoint(this)
     val appContext = Flows.this.appContext
+    val log = akka.event.Logging(appContext.actorSystem, this)
 
     def logic(l: Logic) {
       exchangePattern.registerLogic(rootEndpoint)(l.asInstanceOf[Message[E#Payload] => ResponseType])

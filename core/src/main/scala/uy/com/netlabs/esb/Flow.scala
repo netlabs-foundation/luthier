@@ -3,6 +3,7 @@ package uy.com.netlabs.esb
 import scala.language.implicitConversions
 import akka.actor.{ Actor, Props, Cancellable }
 import akka.routing.RoundRobinRouter
+import akka.event.LoggingAdapter
 import scala.concurrent.{ ExecutionContext, Promise, Future, util }, util.Duration
 import scala.util._
 
@@ -10,6 +11,7 @@ trait Flow {
   def name: String
   val appContext: AppContext
   val rootEndpoint: InboundEndpoint
+  val log: LoggingAdapter
 
   def start() { rootEndpoint.start() }
   def stop() {
