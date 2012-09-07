@@ -10,17 +10,20 @@ object CocoonBuild extends Build {
     organization := "uy.com.netlabs",
     scalaVersion := _scalaVersion,
     fork := true,
+    fork in test := true,
     resolvers ++= Seq(
       "Local maven repo" at "file://" + Path.userHome + "/.m2/repository/"
     ),
     libraryDependencies ++= Seq(
-      "org.scala-lang" % "scala-reflect" % _scalaVersion
+      "org.scala-lang" % "scala-reflect" % _scalaVersion,
+      "org.scalatest" % "scalatest_2.10.0-M7" % "1.9-2.10.0-M7-B1"
     ),
     scalacOptions ++= Seq(
       "-feature",
       //"-explaintypes",
       "-unchecked",
-      "-deprecation"
+      "-deprecation",
+      "-Yinfer-argument-types"
       //"-Xlog-implicits"
     ),
     scalacOptions in Compile in doc ++= Seq(
