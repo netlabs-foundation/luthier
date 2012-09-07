@@ -60,9 +60,7 @@ class JdbcAskable[R](val flow: Flow,
     ioExecutor.shutdownNow()
   }
   def start(): Unit = {
-    try {
-      connection = dataSource.getConnection()
-    }
+    connection = dataSource.getConnection()
   }
 
   private[this] var ioExecutor = java.util.concurrent.Executors.newFixedThreadPool(ioThreads)
@@ -74,7 +72,7 @@ class JdbcAskable[R](val flow: Flow,
       val args = {
         msg.payload match {
           case is: IndexedSeq[_] => is
-          case prod: Product => prod.productIterator.toIndexedSeq
+          case prod: Product     => prod.productIterator.toIndexedSeq
         }
       }
       val res = Try {
@@ -85,8 +83,8 @@ class JdbcAskable[R](val flow: Flow,
         }
         ps.clearParameters()
         var i = 0
-        while ({i += 1; i <= args.length}) ps.setObject(i, args(i))
-        val rs = ps.executeQuery(query)
+        while ({ i += 1; i <= args.length }) ps.setObject(i, args(i - 1))
+        val rs = ps.executeQuery()
         val res = collection.mutable.ArrayBuffer[R]()
         while (rs.next) res += rowMapper(Row(rs))
         res: Response

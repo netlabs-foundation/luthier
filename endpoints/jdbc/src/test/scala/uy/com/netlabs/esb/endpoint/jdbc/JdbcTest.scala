@@ -9,6 +9,7 @@ import scala.util._
 import language._
 
 import endpoint.PollingFeatures._
+import endpoint.Metronome
 
 import org.h2.jdbcx.JdbcConnectionPool
 
@@ -58,25 +59,26 @@ class JdbcTest extends FunSpec with BeforeAndAfter {
         assert(res.get)
       }
     }
-  }
 
-  //  new Flows {
-  //    val appContext = myApp
-  //
-  //    val dataSource: javax.sql.DataSource = null
-  //
-  //    def rowMapper(row: Row) = row.get[String](1) -> row.get[String](2)
-  //
-  //    val query = Jdbc.parameterized("SELECT * From Users where name LIKE ? AND and origin = ?", rowMapper, dataSource)
-  //
-  //    new Flow("Poll DB")(Poll(Jdbc.const("SELECT UserName, Group from Users", rowMapper, dataSource, 4), 10.seconds)) {
-  //      logic { m =>
-  //        val users: Seq[(String, String)] = m.payload
-  //        query.ask(Message(("Marcos", "Uruguay"))) map { u =>
-  //          val users2: Seq[(String, String)] = u.payload
-  //        }
-  //      }
-  //    }
-  //    registeredFlows foreach (_.start)
-  //  }
+    it("Should be able to ask the Database") {
+      new Flows {
+        val appContext = myApp
+
+        val result = Promise[Option[String]]()
+        val flow = new Flow("Ask DB")(Metronome(1.seconds)) { //initial delay is 0
+          logic { m =>
+            result completeWith {
+              Jdbc.parameterized("SELECT * FROM Coffees WHERE cofName = ?", rowMapper, dataSource).ask(Message(IndexedSeq("Colombian_Decaf"))) map { resp =>
+                resp.payload.head === Coffee("Colombian_Decaf", "101", 8.99)
+              }
+            }
+          }
+        }
+        flow.start
+        val res = Try(Await.result(result.future, 0.25.seconds))
+        flow.stop
+        assert(res.get)
+      }
+    }
+  }
 }
