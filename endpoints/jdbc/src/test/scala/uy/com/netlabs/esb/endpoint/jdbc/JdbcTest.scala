@@ -48,6 +48,7 @@ class JdbcTest extends FunSpec with BeforeAndAfter {
         val appContext = myApp
 
         val result = Promise[Option[String]]()
+        
         val flow = new Flow("Poll DB")(Poll(Jdbc.const("SELECT * FROM Coffees", rowMapper, dataSource), 1.seconds)) { //initial delay is 0
           logic { m =>
             result.success(m.payload.length === 3)
