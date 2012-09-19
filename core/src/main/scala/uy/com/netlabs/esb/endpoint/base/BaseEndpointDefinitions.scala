@@ -38,7 +38,7 @@ trait BaseSource extends Source {
  * 
  */
 trait BaseResponsible extends Responsible {
-  protected var onRequests = Set.empty[Message[_] => Future[Message[_]]]
+  protected var onRequests = Set.empty[Message[_] => Future[Message[OneOf[_, SupportedResponseTypes]]]]
   def onRequest(thunk: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]]) {
     onRequests += thunk.asInstanceOf[Message[_] => Future[Message[OneOf[_, SupportedResponseTypes]]]]
   }
@@ -61,7 +61,7 @@ trait BaseResponsible extends Responsible {
      } onFailure {case ex => appContext.actorSystem.log.error(ex, "Error on flow " + flow)}
     }
   }
-  protected def sendMessage(m: Message[_]): Unit
+  protected def sendMessage(m: Message[OneOf[_, SupportedResponseTypes]]): Unit
 }
 
 /**
