@@ -12,14 +12,15 @@ trait Flow {
   val appContext: AppContext
   val rootEndpoint: InboundEndpoint
   val log: LoggingAdapter
-  private[this] var instantiatedEndpoints = Vector.empty[Endpoint]
+  private[this] var instantiatedEndpoints = Map.empty[EndpointFactory[_], Endpoint]
 
-  def start() { 
+  def start() {
     rootEndpoint.start()
   }
   def stop() {
     rootEndpoint.dispose()
-    instantiatedEndpoints foreach (_.dispose())
+    instantiatedEndpoints.values foreach (_.dispose())
+    instantiatedEndpoints = Map.empty
     appContext.actorSystem.stop(workerActors)
   }
 
@@ -28,10 +29,14 @@ trait Flow {
 
   implicit def self = this
   implicit def endpointFactory2Endpoint[T <: Endpoint](ef: EndpointFactory[T]): T = {
-    val res = ef(this)
-    instantiatedEndpoints :+= res
-    res.start()
-    res
+    instantiatedEndpoints.get(ef) match {
+      case Some(endpoint) => endpoint.asInstanceOf[T]
+      case None =>
+        val res = ef(this)
+        instantiatedEndpoints += ef -> res
+        res.start()
+        res
+    }
   }
 
   /**

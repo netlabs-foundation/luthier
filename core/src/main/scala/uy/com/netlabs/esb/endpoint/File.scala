@@ -7,9 +7,10 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import java.nio.file._
 
 object File {
-  def apply(path: String, charset: String = "UTF-8") = new EndpointFactory[FileEndpoint] {
+  private case class EF(path: String, charset: String ) extends EndpointFactory[FileEndpoint] {
     def apply(f: Flow) = new FileEndpoint(f, path, charset)
   }
+  def apply(path: String, charset: String = "UTF-8"): EndpointFactory[FileEndpoint] = EF(path, charset)
 }
 class FileEndpoint(f: Flow, path: String, charset: String) extends Sink with PullEndpoint {
   type Payload = Array[Byte]

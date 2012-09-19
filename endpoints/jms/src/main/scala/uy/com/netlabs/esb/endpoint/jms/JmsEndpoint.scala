@@ -140,7 +140,7 @@ class JmsQueueEndpoint(val flow: Flow,
     }
   }
 
-  protected def sendMessage(msg: uy.com.netlabs.esb.Message[_]) {
+  protected def sendMessage(msg) {
     implicit val session = threadLocalSession.get()
     val producer = session.createProducer(JmsUtils.pathToDestination(msg.replyTo, session))
     producer.send(msg)
@@ -164,10 +164,12 @@ class JmsTopicEndpoint(val flow: Flow,
   }
 }
 object Jms {
-  def queue(queue: String, connection: Connection, messageSelector: String = null, ioThreads: Int = 4) = new EndpointFactory[JmsQueueEndpoint] {
+  private case class EFQ(queue: String, connection: Connection, messageSelector: String, ioThreads: Int) extends EndpointFactory[JmsQueueEndpoint] {
     def apply(f: Flow) = new JmsQueueEndpoint(f, queue, connection, messageSelector, ioThreads)
   }
-  def topic(topic: String, connection: Connection, messageSelector: String = null, ioThreads: Int = 4) = new EndpointFactory[JmsTopicEndpoint] {
+  def queue(queue: String, connection: Connection, messageSelector: String = null, ioThreads: Int = 4): EndpointFactory[JmsQueueEndpoint] = EFQ(queue, connection, messageSelector, ioThreads)
+  private case class EFT(topic: String, connection: Connection, messageSelector: String, ioThreads: Int) extends EndpointFactory[JmsTopicEndpoint] {
     def apply(f: Flow) = new JmsTopicEndpoint(f, topic, connection, messageSelector, ioThreads)
   }
+  def topic(topic: String, connection: Connection, messageSelector: String = null, ioThreads: Int = 4): EndpointFactory[JmsTopicEndpoint] = EFT(topic, connection, messageSelector, ioThreads)
 }

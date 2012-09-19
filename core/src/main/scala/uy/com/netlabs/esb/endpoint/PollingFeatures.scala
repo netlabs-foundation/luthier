@@ -52,11 +52,13 @@ object PollingFeatures {
     }
     val flow = f
   }
-  def Poll[A <: Askable, P](endpoint: EndpointFactory[A], every: Duration, message: Message[P], initialDelay: Duration = Duration.Zero)(implicit ev: TypeSupportedByTransport[A#SupportedTypes, P]) = new EndpointFactory[PollAskableEndpoint[A, P]] {
+  private case class EFA[A <: Askable, P](endpoint: EndpointFactory[A], every: Duration, message: Message[P], initialDelay: Duration)(implicit ev: TypeSupportedByTransport[A#SupportedTypes, P]) extends EndpointFactory[PollAskableEndpoint[A, P]] {
     def apply(f: Flow) = new PollAskableEndpoint(f, endpoint, initialDelay, every, message)
   }
-  def Poll[A <: PullEndpoint](endpoint: EndpointFactory[A], every: Duration, initialDelay: Duration = Duration.Zero) = new EndpointFactory[PollPullEndpoint[A]] {
+  def Poll[A <: Askable, P](endpoint: EndpointFactory[A], every: Duration, message: Message[P], initialDelay: Duration = Duration.Zero)(implicit ev: TypeSupportedByTransport[A#SupportedTypes, P]): EndpointFactory[PollAskableEndpoint[A, P]] = EFA(endpoint, every, message, initialDelay)
+  private case class EFP[A <: PullEndpoint, P](endpoint: EndpointFactory[A], every: Duration, initialDelay: Duration) extends EndpointFactory[PollPullEndpoint[A]] {
     def apply(f: Flow) = new PollPullEndpoint(f, endpoint, initialDelay, every)
   }
+  def Poll[A <: PullEndpoint](endpoint: EndpointFactory[A], every: Duration, initialDelay: Duration = Duration.Zero): EndpointFactory[PollPullEndpoint[A]] = EFP(endpoint, every, initialDelay)
 
 }

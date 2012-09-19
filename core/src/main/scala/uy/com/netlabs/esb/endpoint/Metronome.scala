@@ -19,10 +19,9 @@ class Metronome[P](f: Flow, pulse: P, initialDelay: Duration, every: Duration) e
 }
 
 object Metronome {
-  def apply(every: Duration, initialDelay: Duration = Duration.Zero) = new EndpointFactory[Metronome[Unit]] {
-    def apply(f: Flow) = new Metronome(f, (), initialDelay, every)
-  }
-  def apply[P](pulse: P, every: Duration, initialDelay: Duration = Duration.Zero) = new EndpointFactory[Metronome[P]] {
+  private case class EF[P](pulse: P, every: Duration, initialDelay: Duration) extends EndpointFactory[Metronome[P]] {
     def apply(f: Flow) = new Metronome(f, pulse, initialDelay, every)
   }
+  def apply(every: Duration, initialDelay: Duration = Duration.Zero): EndpointFactory[Metronome[Unit]] = EF((), every, initialDelay)
+  def apply[P](pulse: P, every: Duration, initialDelay: Duration = Duration.Zero): EndpointFactory[Metronome[P]] = EF(pulse, every, initialDelay)
 }

@@ -41,10 +41,9 @@ object Http {
     }
   }
 
-  def apply[R](req: (Request, FunctionHandler[R]), ioThreads: Int = 1) = new EndpointFactory[PullEndpoint { type Payload = R }] {
-    def apply(f: Flow) = new HttpEndpoint(f, Some(req), ioThreads)
+  private case class EF[R](req: Option[(Request, FunctionHandler[R])], ioThreads: Int = 1) extends EndpointFactory[HttpEndpoint[R]] {
+    def apply(f: Flow) = new HttpEndpoint(f, req, ioThreads)
   }
-  def apply[R](ioThreads: Int = 1) = new EndpointFactory[Askable { type Response = R; type SupportedTypes = HttpEndpoint[R]#SupportedTypes }] {
-    def apply(f: Flow) = new HttpEndpoint(f, None, ioThreads)
-  }
+  def apply[R](req: (Request, FunctionHandler[R]), ioThreads: Int = 1): EndpointFactory[PullEndpoint { type Payload = R }] = EF(Some(req), ioThreads)
+  def apply[R](ioThreads: Int = 1): EndpointFactory[Askable { type Response = R; type SupportedTypes = HttpEndpoint[R]#SupportedTypes }] = EF(None, ioThreads)
 }

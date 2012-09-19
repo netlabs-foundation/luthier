@@ -12,7 +12,7 @@ trait Endpoint {
   def appContext = flow.appContext
   def log = appContext.actorSystem.log
 }
-trait EndpointFactory[+E <: Endpoint] {
+trait EndpointFactory[+E <: Endpoint] extends Equals {
   def apply(flow: Flow): E
 }
 
