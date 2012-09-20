@@ -1,0 +1,22 @@
+require(args.length == 2, "Expected two args, port and path")
+
+import endpoint.cxf.codefirst._
+import javax.jws._
+@WebService
+trait WSEndpoint {
+    def sum(a: Double, b: Double): Double
+    def echo(s: String): Unit
+}
+
+val sei = Sei[WSEndpoint](s"http://localhost:${args(0)}/${args(1)}")
+new Flow("sum")(Ws(sei)(_.sum _) RequestResponse) {
+  logic {m =>
+    m.map(t => t._1 + t._2)
+  }
+}
+new Flow("echo")(Ws(sei)(_.echo _) RequestResponse) {
+  logic {m =>
+    println("Echoing: " + m.payload)
+    m.map(_ => ())
+  }
+}
