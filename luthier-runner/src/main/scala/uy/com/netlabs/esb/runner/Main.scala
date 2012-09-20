@@ -15,6 +15,8 @@ object Main {
     val settings = new Settings
     settings.YmethodInfer.value = true
     settings.usejavacp.value = true
+    settings.classpath.value = classpath()
+    
     val compiler = new IMain(settings)
     val initialized = Promise[Unit]()
     compiler.initialize(initialized.success(()))
@@ -71,5 +73,29 @@ object Main {
       println(Console.GREEN + f"  App fully initialized. Total time: ${totalTime / 1000000000d}%.3f" + Console.RESET)
     }
     println("all apps initialized")
+  }
+  
+  def classpath() = {
+    import java.net.URLClassLoader
+    def cp(cl: URLClassLoader) = {
+      println("Possible roots:\n\t" + cl.getResources("").toSeq.mkString("\n\t"))
+      cl.getURLs().map(u => new java.io.File(u.toURI()))
+    }
+    val urlsFromClasspath = Seq(getClass.getClassLoader(), ClassLoader.getSystemClassLoader()).flatMap {
+      case cl: URLClassLoader => cp(cl)
+      case other => println("Weird classloader: " + other); Set.empty
+    }.distinct
+    
+    //now urls declared in the manifest
+    
+    val manifest = new java.util.jar.Manifest(getClass.getResourceAsStream("/META-INF/MANIFEST.MF"))
+    val mainAttrs = manifest.getMainAttributes()
+    val cpInManifest = mainAttrs.getValue(java.util.jar.Attributes.Name.CLASS_PATH)
+    val urlsFromManifest = cpInManifest.split(" ").map(new java.io.File(_))
+    val allUrls = urlsFromClasspath ++ urlsFromManifest
+    
+    println("Using classpath:")
+    allUrls foreach println
+    allUrls.map(_.toString).mkString(":")
   }
 }
