@@ -11,8 +11,13 @@ trait Flows {
   import uy.com.netlabs.esb.{ Flow => GFlow }
   implicit def appContext: AppContext
   implicit def long2Duration(l: Long) = new scala.concurrent.util.DurationLong(l)
+  //from message stright to future
   implicit def message2FutureOneOf[MT, TL <: TypeList](m: Message[MT])(implicit contained: Contained[TL, MT]): Future[Message[OneOf[_, TL]]] = {
     Future.successful(m map (p =>  new OneOf[MT, TL](p)))
+  }
+  //future to future
+  implicit def futureMessage2FutureOneOf[MT, TL <: TypeList](f: Future[Message[MT]])(implicit contained: Contained[TL, MT]): Future[Message[OneOf[_, TL]]] = {
+    f.map (m => m.map (p => new OneOf(p): OneOf[_, TL]))(appContext.actorSystem.dispatcher)
   }
   implicit val flowLogSource = new akka.event.LogSource[GFlow] {
     def genString(f) = f.appContext.name + ":" + f.name

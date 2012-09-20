@@ -62,7 +62,7 @@ object Main {
         compiler.lastRequest.getEvalTyped[Flows]
     }
     for (f <- definedFlows) {
-      println("Starting App: " + f.appContext)
+      println("Starting App: " + f.appContext.name)
       val appStartTime = System.nanoTime()
       f.registeredFlows foreach { f =>
         print(s"  Starting flow: ${f.name}...")
@@ -78,20 +78,25 @@ object Main {
   def classpath() = {
     import java.net.URLClassLoader
     def cp(cl: URLClassLoader) = {
-      println("Possible roots:\n\t" + cl.getResources("").toSeq.mkString("\n\t"))
       cl.getURLs().map(u => new java.io.File(u.toURI()))
     }
     val urlsFromClasspath = Seq(getClass.getClassLoader(), ClassLoader.getSystemClassLoader()).flatMap {
       case cl: URLClassLoader => cp(cl)
-      case other => println("Weird classloader: " + other); Set.empty
+      case other => println("Weird classloader: " + other + ": " + other.getClass); Set.empty
     }.distinct
     
     //now urls declared in the manifest
-    
     val manifest = new java.util.jar.Manifest(getClass.getResourceAsStream("/META-INF/MANIFEST.MF"))
     val mainAttrs = manifest.getMainAttributes()
     val cpInManifest = mainAttrs.getValue(java.util.jar.Attributes.Name.CLASS_PATH)
-    val urlsFromManifest = cpInManifest.split(" ").map(new java.io.File(_))
+    val baseDir = Paths.get(".")
+    val basePathForLibs = getClass.getResource("Main.class") match {
+      case null => throw new IllegalStateException("Could not deduct where I'm running from!")
+      case u => 
+        val p = u.toString.stripPrefix("jar:file:")
+        Paths.get(p.substring(0, p.lastIndexOf('!'))).getParent
+    }
+    val urlsFromManifest = cpInManifest.split(" ").map(j => j.split("/").foldLeft(basePathForLibs)((d, p) => d.resolve(p)))
     val allUrls = urlsFromClasspath ++ urlsFromManifest
     
     println("Using classpath:")

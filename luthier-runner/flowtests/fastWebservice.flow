@@ -6,6 +6,7 @@ import javax.jws._
 trait WSEndpoint {
     def sum(a: Double, b: Double): Double
     def echo(s: String): Unit
+    def testCmd(cmd: String): String
 }
 
 val sei = Sei[WSEndpoint](s"http://localhost:${args(0)}/${args(1)}")
@@ -18,5 +19,14 @@ new Flow("echo")(Ws(sei)(_.echo _) RequestResponse) {
   logic {m =>
     println("Echoing: " + m.payload)
     m.map(_ => ())
+  }
+}
+
+//Flow that executes a process and return its result
+import scala.sys.process._
+new Flow("testCmd")(Ws(sei)(_.testCmd _) RequestResponse) {
+  logic {m =>
+   //futureMessage2FutureOneOf(endpoint.Process.string(m.payload).pull map {res => res.header ++= m.header; res })
+   endpoint.Process.string(m.payload).pull map {res => res }
   }
 }
