@@ -11,6 +11,7 @@ object CocoonBuild extends Build {
     scalaVersion := _scalaVersion,
     fork := true,
     fork in test := true,
+    exportJars := true,
     resolvers ++= Seq(
       "Local maven repo" at "file://" + Path.userHome + "/.m2/repository/"
     ),
@@ -48,4 +49,7 @@ object CocoonBuild extends Build {
   lazy val httpEndpoint = Project(id = "httpEndpoint", base = file("endpoints/http")).dependsOn(core).settings(defSettings:_*)
   lazy val cxfEndpoint = Project(id = "cxfEndpoint", base = file ("endpoints/cxf")).dependsOn(core).settings(defSettings:_*)
   lazy val wsutil = Project(id = "wsutil", base = file("wsutil")).settings(defSettings:_*)
+
+  lazy val luthierRunner = Project(id = "luthier-runner", base = file("luthier-runner")).settings(defSettings:_*).settings(Dist.settings:_*).
+    dependsOn(core, jmsEndpoint, jdbcEndpoint, httpEndpoint, cxfEndpoint)
 }
