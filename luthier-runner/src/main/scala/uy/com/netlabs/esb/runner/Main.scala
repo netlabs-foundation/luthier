@@ -22,13 +22,13 @@ object Main {
     compiler.initialize(initialized.success(()))
     val (flows, restOfArgs) = args.span(_.endsWith(".flow"))
 
-    val fileContents = for {
-      f <- flows
-      p = Paths.get(f) if Files.exists(p)
-    } yield f -> Files.readAllLines(p, java.nio.charset.Charset.forName("utf-8")).toVector
-
-    //warn about flows that didn't exist
-    flows diff fileContents.map(_._1) foreach (f => println(s"File $f didn't exists"))
+//    val fileContents = for {
+//      f <- flows
+//      p = Paths.get(f) if Files.exists(p)
+//    } yield f -> Files.readAllLines(p, java.nio.charset.Charset.forName("utf-8")).toVector
+//
+//    //warn about flows that didn't exist
+//    flows diff fileContents.map(_._1) foreach (f => println(s"File $f didn't exists"))
 
     //await compiler initialization
     if (!initialized.isCompleted) println("Waiting for compiler to finish initializing")
@@ -41,37 +41,50 @@ object Main {
       "uy.com.netlabs.esb.typelist._",
       "scala.language._") == IR.Success, "Could not add default imports")
 
+    val runner = new AppContext {
+      val name = "Runner"
+      val rootLocation = Paths.get("")  
+    }
+    val runnerFlows = new Flows {
+      val appContext = runner
+    }
+      
     //instantiate the flows:
-    val definedFlows = fileContents flatMap {
-      case (f, content) =>
-        val appName = {
-          val r = f.dropRight(5).replace('/', '-')
-          if (r.charAt(0) == '-') r.drop(1) else r
-        }
-        val script = s"""val app = new AppContext {
-        val name = "${appName}"
-        val rootLocation = java.nio.file.Paths.get("$f")
-      }
-      val flow = new Flows {
-        val appContext = app
-        
-        ${content.mkString("\n")}
-      }
-      """
-        require(compiler.interpret(script) == IR.Success, "Failed compiling flow " + f)
-        compiler.lastRequest.getEvalTyped[Flows]
+    for (f <- flows) {
+      val h = new FlowHandler(compiler, f)
+      h.load() //attempt to initialize it synchronously
+      h.startWatching(runnerFlows)
     }
-    for (f <- definedFlows) {
-      println("Starting App: " + f.appContext.name)
-      val appStartTime = System.nanoTime()
-      f.registeredFlows foreach { f =>
-        print(s"  Starting flow: ${f.name}...")
-        f.start()
-        println(" started")
-      }
-      val totalTime = System.nanoTime() - appStartTime
-      println(Console.GREEN + f"  App fully initialized. Total time: ${totalTime / 1000000000d}%.3f" + Console.RESET)
-    }
+//    val definedFlows = fileContents flatMap {
+//      case (f, content) =>
+//        val appName = {
+//          val r = f.dropRight(5).replace('/', '-')
+//          if (r.charAt(0) == '-') r.drop(1) else r
+//        }
+//        val script = s"""val app = new AppContext {
+//        val name = "${appName}"
+//        val rootLocation = java.nio.file.Paths.get("$f")
+//      }
+//      val flow = new Flows {
+//        val appContext = app
+//        
+//        ${content.mkString("\n")}
+//      }
+//      """
+//        require(compiler.interpret(script) == IR.Success, "Failed compiling flow " + f)
+//        compiler.lastRequest.getEvalTyped[Flows]
+//    }
+//    for (f <- definedFlows) {
+//      println("Starting App: " + f.appContext.name)
+//      val appStartTime = System.nanoTime()
+//      f.registeredFlows foreach { f =>
+//        print(s"  Starting flow: ${f.name}...")
+//        f.start()
+//        println(" started")
+//      }
+//      val totalTime = System.nanoTime() - appStartTime
+//      println(Console.GREEN + f"  App fully initialized. Total time: ${totalTime / 1000000000d}%.3f" + Console.RESET)
+//    }
     println("all apps initialized")
   }
   
