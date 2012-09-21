@@ -10,12 +10,12 @@ trait WSEndpoint {
 }
 
 val sei = Sei[WSEndpoint](s"http://localhost:${args(0)}/${args(1)}")
-new Flow("sum")(Ws(sei)(_.sum _) RequestResponse) {
+new Flow("sum")(Ws(sei)(_.sum _)) {
   logic {m =>
     m.map(t => t._1 + t._2)
   }
 }
-new Flow("echo")(Ws(sei)(_.echo _) RequestResponse) {
+new Flow("echo")(Ws(sei)(_.echo _)) {
   logic {m =>
     println("Echoing: " + m.payload)
     m.map(_ => ())
@@ -24,10 +24,10 @@ new Flow("echo")(Ws(sei)(_.echo _) RequestResponse) {
 
 //Flow that executes a process and return its result
 import scala.sys.process._
-new Flow("testCmd")(Ws(sei)(_.testCmd _) RequestResponse) {
+new Flow("testCmd")(Ws(sei)(_.testCmd _)) {
   logic {m =>
    //futureMessage2FutureOneOf(endpoint.Process.string(m.payload).pull map {res => res.header ++= m.header; res })
-   endpoint.Process.string(m.payload).pull map {res => res.header ++= m.header; res }
-   //endpoint.Process.string(m.payload).pull map {res => res }
+   //endpoint.Process.string(m.payload).pull map {res => res.header ++= m.header; res }
+   endpoint.Process.string(m.payload).pull.map{res => res }(implicitly)
   }
 }

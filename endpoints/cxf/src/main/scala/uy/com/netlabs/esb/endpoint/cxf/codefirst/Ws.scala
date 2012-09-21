@@ -65,5 +65,10 @@ object Ws {
   private case class EF[I, PL, R](s: Sei[I], maxResponseTimeout: Duration, ioWorkers: Int)(f: I => MethodRef[I, PL, R]) extends EndpointFactory[WsResponsible[I, PL, R]] {
     def apply(flow: Flow) = new WsResponsible[I, PL, R](flow, s, f(null.asInstanceOf[I]), maxResponseTimeout, ioWorkers)
   } 
-  def apply[I, PL, R](s: Sei[I], maxResponseTimeout: Duration = 30.seconds, ioWorkers: Int = 4)(f: I => MethodRef[I, PL, R]): EndpointFactory[WsResponsible[I, PL, R]] = EF(s, maxResponseTimeout, ioWorkers)(f)
+  def apply[I, PL, R](s: Sei[I],
+      maxResponseTimeout: Duration = 30.seconds,
+      ioWorkers: Int = 4)(f: I => MethodRef[I, PL, R]): EndpointFactory[Responsible { //weird type declaration used instead of just WsResponsible[I, PL, R] because of bug in scalac
+        type SupportedResponseTypes = WsResponsible[I, PL, R]#SupportedResponseTypes
+        type Payload = WsResponsible[I, PL, R]#Payload
+        }] = EF(s, maxResponseTimeout, ioWorkers)(f)
 }
