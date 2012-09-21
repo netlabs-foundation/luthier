@@ -22,6 +22,7 @@ trait Flow {
     instantiatedEndpoints.values foreach (_.dispose())
     instantiatedEndpoints = Map.empty
     appContext.actorSystem.stop(workerActors)
+    blockingExecutor.shutdown()
   }
 
   type Logic <: Message[rootEndpoint.Payload] => _
@@ -61,10 +62,10 @@ trait Flow {
     res.promise.future
   }
   def scheduleOnce(delay: Duration)(f: ⇒ Unit): Cancellable = {
-    appContext.actorSystem.scheduler.scheduleOnce(delay)(f)(workerActorsExecutionContext)
+    appContext.actorSystem.scheduler.scheduleOnce(delay)(f)(blockingExecutorContext)
   }
   def schedule(initialDelay: Duration, frequency: Duration)(f: ⇒ Unit): Cancellable = {
-    appContext.actorSystem.scheduler.schedule(initialDelay, frequency)(f)(workerActorsExecutionContext)
+    appContext.actorSystem.scheduler.schedule(initialDelay, frequency)(f)(blockingExecutorContext)
   }
   /**
    * Implicit ExecutionContext so future composition inside a flow
@@ -83,10 +84,11 @@ trait Flow {
    */
   var blockingWorkers: Int = 10
 
+  private lazy val blockingExecutor = java.util.concurrent.Executors.newFixedThreadPool(blockingWorkers)
   /**
    * Private executor meant for IO
    */
-  private lazy val blockingExecutor = ExecutionContext.fromExecutor(java.util.concurrent.Executors.newFixedThreadPool(blockingWorkers))
+  private lazy val blockingExecutorContext = ExecutionContext.fromExecutor(blockingExecutor)
 
   /**
    * Primitive to execute blocking code asynchronously without blocking
@@ -95,7 +97,7 @@ trait Flow {
    * @returns A future for the computation
    */
   def blocking[R](code: => R): Future[R] = {
-    Future(code)(blockingExecutor)
+    Future(code)(blockingExecutorContext)
   }
 }
 object Flow {
