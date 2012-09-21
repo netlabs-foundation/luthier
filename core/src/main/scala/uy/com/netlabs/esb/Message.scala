@@ -23,7 +23,7 @@ trait Message[Payload] {
   def correlationGroupSize_=(groupSize: Int)
   def correlationSequence: Int
   def correlationSequence_=(seq: Int)
-  
+
   def mapTo[R] = this.asInstanceOf[Message[R]]
   def map[R](f: Payload => R) = Message(f(payload), header, replyTo, correlationId, correlationGroupSize, correlationSequence)
 }
