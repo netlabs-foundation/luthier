@@ -13,14 +13,12 @@ class FlowHandler(compiler: IMain, file: String) {
   @volatile var theFlows: Flows = _
   def startWatching(runnerFlows: Flows) {
     import runnerFlows._
-    new runnerFlows.Flow("Watch " + file)(endpoint.Metronome(100.millis)) {
-      def logic {m: Message[Unit] =>
+    new runnerFlows.Flow("Watch " + file.replace('/', '_'))(endpoint.Metronome(100.millis)) {
+      logic {m =>
         try {
-          println("Checking")
           if (Files.exists(filePath)) {
             val attrs = Files.readAttributes(filePath, classOf[attribute.BasicFileAttributes])
             if (attrs.lastModifiedTime().toMillis() > lastUpdate) {
-              lastUpdate = attrs.lastModifiedTime().toMillis()
               println(Console.MAGENTA + s"Reloading flow $file" + Console.RESET)
               if (theFlows != null) {
                 println(Console.MAGENTA + s"Stoping previous incarnation" + Console.RESET)
@@ -32,11 +30,12 @@ class FlowHandler(compiler: IMain, file: String) {
           }
         } catch { case ex => println("Error while loading flow " + file); ex.printStackTrace() }
       }
-    }.start
+    }.start()
     println("Started watching file " + file)
   }
   def load() {
     if (Files.exists(filePath)) {
+      lastUpdate = System.currentTimeMillis()
       try {
         val content = Files.readAllLines(filePath, java.nio.charset.Charset.forName("utf8")).toSeq
         val appName = {

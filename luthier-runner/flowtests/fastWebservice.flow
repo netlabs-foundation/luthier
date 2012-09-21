@@ -26,7 +26,8 @@ new Flow("echo")(Ws(sei)(_.echo _) RequestResponse) {
 import scala.sys.process._
 new Flow("testCmd")(Ws(sei)(_.testCmd _) RequestResponse) {
   logic {m =>
-   futureMessage2FutureOneOf(endpoint.Process.string(m.payload).pull map {res => res.header ++= m.header; res })
+   //futureMessage2FutureOneOf(endpoint.Process.string(m.payload).pull map {res => res.header ++= m.header; res })
+   endpoint.Process.string(m.payload).pull map {res => res.header ++= m.header; res }
    //endpoint.Process.string(m.payload).pull map {res => res }
   }
 }
