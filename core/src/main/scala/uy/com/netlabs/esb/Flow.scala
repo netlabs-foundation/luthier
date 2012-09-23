@@ -1,6 +1,7 @@
 package uy.com.netlabs.esb
 
 import scala.language.implicitConversions
+import language.experimental._
 import akka.actor.{ Actor, Props, Cancellable }
 import akka.routing.RoundRobinRouter
 import akka.event.LoggingAdapter
@@ -29,6 +30,10 @@ trait Flow {
   def logic(l: Logic)
 
   implicit def self = this
+  implicit def messageFactory: MessageFactory = macro Flow.findNearestMessageMacro
+  def testMe(implicit mf: MessageFactory) {
+    println("Found message factory: " + mf)
+  }
   implicit def endpointFactory2Endpoint[T <: Endpoint](ef: EndpointFactory[T]): T = {
     instantiatedEndpoints.get(ef) match {
       case Some(endpoint) => endpoint.asInstanceOf[T]
@@ -104,4 +109,16 @@ object Flow {
   class Work[R](val task: () => R) {
     protected[Flow] val promise = Promise[R]()
   }
+
+  import scala.reflect.macros.{Context, Universe}
+  def findNearestMessageMacro(c: Context): c.Expr[MessageFactory] = {
+    import c.universe._
+    val collected = c.enclosingClass.collect {
+      case a@Apply(Ident(i), List(Function(List(param@ValDef(modifiers, paramName, _, _)), _))) if i.encoded == "logic" &&
+      modifiers.hasFlag(Flag.PARAM) && param.symbol.typeSignature.toString == "uy.com.netlabs.esb.Message[this.rootEndpoint.Payload]" =>
+        paramName
+    }.head
+    c.Expr(c.parse(s"uy.com.netlabs.esb.MessageFactory.factoryFromMessage(${collected.encoded})"))
+  }
+
 }
