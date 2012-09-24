@@ -48,20 +48,16 @@ trait BaseResponsible extends Responsible {
 
   val ioExecutionContext: ExecutionContext
   
-  protected def requestArrived(m: Message[Payload]) {
+  protected def requestArrived(m: Message[Payload], messageSender: Try[Message[OneOf[_, SupportedResponseTypes]]] => Unit) {
     implicit val ec = flow.workerActorsExecutionContext
     for (h <- onRequests) {
      flow.doWork {
        val f = h(m)
-       f.onComplete {
-         case Success(m) => sendMessage(m)
-         case Failure(ex) => appContext.actorSystem.log.error(ex, "Error on flow " + flow)
-       } (ioExecutionContext) //use ioExecutionContext to sendMessages
+       f.onComplete(messageSender)(ioExecutionContext) //use ioExecutionContext to sendMessages
        f
      } onFailure {case ex => appContext.actorSystem.log.error(ex, "Error on flow " + flow)}
     }
   }
-  protected def sendMessage(m: Message[OneOf[_, SupportedResponseTypes]]): Unit
 }
 
 /**
@@ -72,12 +68,12 @@ trait BaseResponsible extends Responsible {
  */
 trait BasePullEndpoint extends PullEndpoint {
   val ioExecutionContext: ExecutionContext
-  def pull(): Future[Message[Payload]] = {
+  def pull()(implicit mf: MessageFactory): Future[Message[Payload]] = {
     implicit val ec = ioExecutionContext
-    Future {retrieveMessage}
+    Future {retrieveMessage(mf)}
   }
   
-  protected def retrieveMessage(): Message[Payload]
+  protected def retrieveMessage(mf: MessageFactory): Message[Payload]
 }
 
 /**

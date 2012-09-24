@@ -28,6 +28,6 @@ new Flow("testCmd")(Ws(sei)(_.testCmd _)) {
   logic {m =>
    //futureMessage2FutureOneOf(endpoint.Process.string(m.payload).pull map {res => res.header ++= m.header; res })
    //endpoint.Process.string(m.payload).pull map {res => res.header ++= m.header; res }
-   endpoint.Process.string(m.payload).pull.map{res => res }(implicitly)
+   endpoint.Process.string(m.payload).pull
   }
 }

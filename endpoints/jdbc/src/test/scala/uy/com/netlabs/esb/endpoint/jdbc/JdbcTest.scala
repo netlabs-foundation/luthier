@@ -8,7 +8,7 @@ import scala.concurrent.util.{ Duration, duration }, duration._
 import scala.util._
 import language._
 
-import endpoint.PollingFeatures._
+import endpoint.logical.Polling._
 import endpoint.Metronome
 
 import org.h2.jdbcx.JdbcConnectionPool

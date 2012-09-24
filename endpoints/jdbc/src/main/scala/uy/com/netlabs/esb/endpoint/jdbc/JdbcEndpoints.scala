@@ -30,17 +30,17 @@ class JdbcPull[R](val flow: Flow,
     }
   }
 
-  private[this] var ioExecutor = java.util.concurrent.Executors.newFixedThreadPool(ioThreads)
-  implicit val ioExecutionContext = ExecutionContext.fromExecutor(ioExecutor)
+  private[this] lazy val ioExecutor = java.util.concurrent.Executors.newFixedThreadPool(ioThreads)
+  implicit lazy val ioExecutionContext = ExecutionContext.fromExecutor(ioExecutor)
 
-  protected def retrieveMessage(): uy.com.netlabs.esb.Message[Payload] = {
+  protected def retrieveMessage(mf): uy.com.netlabs.esb.Message[Payload] = {
     val res = Try {
       val rs = preparedStatement.executeQuery()
       val res = collection.mutable.ArrayBuffer[R]()
       while (rs.next) res += rowMapper(Row(rs))
       res: Payload
     }
-    Message(res.get)
+    mf(res.get)
   }
 }
 
@@ -89,7 +89,7 @@ class JdbcAskable[R](val flow: Flow,
         while (rs.next) res += rowMapper(Row(rs))
         res: Response
       }
-      Message(res.get)
+      msg map (_ => res.get)
     }(ioExecutionContext)
   }
 }

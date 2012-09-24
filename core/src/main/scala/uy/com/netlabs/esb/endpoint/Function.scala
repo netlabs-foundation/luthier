@@ -14,7 +14,7 @@ object Function {
 
     private[this] var ioExecutor = java.util.concurrent.Executors.newFixedThreadPool(ioThreads)
     implicit val ioExecutionContext = ExecutionContext.fromExecutor(ioExecutor)
-    protected def retrieveMessage(): Message[Payload] = Message(function())
+    protected def retrieveMessage(mf): Message[Payload] = mf(function())
     
     def ask[Payload: SupportedType](msg, timeOut): Future[Message[Response]] = {
       Future(msg.mapTo[Function0[R]] map (_()))

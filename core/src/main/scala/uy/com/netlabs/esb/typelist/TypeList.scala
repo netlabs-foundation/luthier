@@ -28,7 +28,9 @@ trait TypeSelectorImplicits[Selector[TL <: TypeList, A]] extends LowPrioritySele
 trait Contained[TL <: TypeList, E]
 object Contained extends TypeSelectorImplicits[Contained]
 
-class OneOf[+E, TL <: TypeList](val value: E)(implicit contained: Contained[TL, E])
+class OneOf[+E, TL <: TypeList](val value: E)(implicit contained: Contained[TL, E]) {
+  override def toString = "OneOf(" + value + ")"
+}
 object OneOf {
   implicit def anyToOneOf[E, TL <: TypeList](e: E)(implicit contained: Contained[TL, E]) = new OneOf[E, TL](e)
 }
