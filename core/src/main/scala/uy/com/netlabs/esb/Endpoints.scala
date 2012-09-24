@@ -21,6 +21,7 @@ trait EndpointFactory[+E <: Endpoint] extends Equals {
 
 trait InboundEndpoint extends Endpoint {
   type Payload <: Any
+  def messageFactory = flow.messageFactory
 }
 
 trait Source extends InboundEndpoint {
@@ -89,6 +90,6 @@ object Askable {
 
 trait PullEndpoint extends Endpoint {
   type Payload <: Any
-  def pull(): Future[Message[Payload]]
+  def pull()(implicit mf: MessageFactory): Future[Message[Payload]]
 }
 

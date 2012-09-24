@@ -53,10 +53,10 @@ object Message {
                                                    var correlationId: String,
                                                    var correlationGroupSize: Int,
                                                    var correlationSequence: Int) extends Message[Payload]
-  def apply[Payload](payload: Payload,
-                     header: Map[String, Map[String, _ <: Any]] = Map.empty,
-                     replyTo: Destination = null,
-                     correlationId: String = null,
-                     correlationGroupSize: Int = 0,
-                     correlationSequence: Int = 0): Message[Payload] = MessageImpl(payload, header, replyTo, correlationId, correlationGroupSize, correlationSequence)
+  private[esb] def apply[Payload](payload: Payload,
+                                  header: Map[String, Map[String, _ <: Any]] = Map.empty,
+                                  replyTo: Destination = null,
+                                  correlationId: String = null,
+                                  correlationGroupSize: Int = 0,
+                                  correlationSequence: Int = 0): Message[Payload] = MessageImpl(payload, header, replyTo, correlationId, correlationGroupSize, correlationSequence)
 }

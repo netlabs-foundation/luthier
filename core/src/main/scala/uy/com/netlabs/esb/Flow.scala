@@ -25,15 +25,15 @@ trait Flow {
     appContext.actorSystem.stop(workerActors)
     blockingExecutor.shutdown()
   }
+  private[esb] val messageFactory: MessageFactory = new MessageFactory {
+    def apply[P](payload: P) = Message(payload)
+  }
 
   type Logic <: Message[rootEndpoint.Payload] => _
   def logic(l: Logic)
 
   implicit def self = this
-  implicit def messageFactory: MessageFactory = macro Flow.findNearestMessageMacro
-  def testMe(implicit mf: MessageFactory) {
-    println("Found message factory: " + mf)
-  }
+  implicit def messageFactoryFromLogicMessage: MessageFactory = macro Flow.findNearestMessageMacro
   implicit def endpointFactory2Endpoint[T <: Endpoint](ef: EndpointFactory[T]): T = {
     instantiatedEndpoints.get(ef) match {
       case Some(endpoint) => endpoint.asInstanceOf[T]
@@ -118,7 +118,8 @@ object Flow {
       modifiers.hasFlag(Flag.PARAM) && param.symbol.typeSignature.toString == "uy.com.netlabs.esb.Message[this.rootEndpoint.Payload]" =>
         paramName
     }.head
-    c.Expr(c.parse(s"uy.com.netlabs.esb.MessageFactory.factoryFromMessage(${collected.encoded})"))
+    val selectMessage = c.Expr(c.parse(collected.encoded))
+    reify(uy.com.netlabs.esb.MessageFactory.factoryFromMessage(selectMessage.splice))
   }
 
 }

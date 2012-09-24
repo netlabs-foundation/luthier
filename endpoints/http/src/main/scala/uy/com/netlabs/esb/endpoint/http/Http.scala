@@ -23,10 +23,10 @@ object Http {
       dispatcher.shutdown
     }
 
-    def pull(): Future[Message[Payload]] = {
+    def pull()(implicit mf: MessageFactory): Future[Message[Payload]] = {
       val promise = Promise[Message[Payload]]()
       dispatcher(req.get).onComplete {
-        case Right(res) => promise.success(Message(res))
+        case Right(res) => promise.success(mf(res))
         case Left(err)  => promise.failure(err)
       }
       promise.future
@@ -34,7 +34,7 @@ object Http {
     def ask[Payload: SupportedType](msg, timeOut): Future[Message[Response]] = {
       val promise = Promise[Message[Response]]()
       dispatcher(msg.mapTo[(Request, FunctionHandler[R])].payload).onComplete {
-        case Right(res) => promise.success(Message(res))
+        case Right(res) => promise.success(msg map (_ => res))
         case Left(err)  => promise.failure(err)
       }
       promise.future

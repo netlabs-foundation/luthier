@@ -1,7 +1,10 @@
 package uy.com.netlabs.esb
 package endpoint
 
-import scala.concurrent.util.{Duration, duration}, duration._
+import scala.concurrent.util.Duration
+import scala.concurrent.util.duration._
+import uy.com.netlabs.esb.EndpointFactory
+import uy.com.netlabs.esb.Flow
 
 class Metronome[P](f: Flow, pulse: P, initialDelay: Duration, every: Duration) extends endpoint.base.BaseSource {
   type Payload = P

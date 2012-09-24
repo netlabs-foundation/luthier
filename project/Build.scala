@@ -37,6 +37,8 @@ object CocoonBuild extends Build {
 
   lazy val root = Project(id = "Luthier", base = file(".")).aggregate(
     core,
+    logicalEndpoints,
+    fileEndpoint,
     jmsEndpoint,
     jdbcEndpoint,
     httpEndpoint,
@@ -44,12 +46,14 @@ object CocoonBuild extends Build {
     wsutil
   ).settings(defSettings:_*)
   lazy val core = Project(id = "core", base = file("core")).settings(defSettings:_*)
-  lazy val jmsEndpoint = Project(id = "jmsEndpoint", base = file("endpoints/jms")).dependsOn(core).settings(defSettings:_*)
-  lazy val jdbcEndpoint = Project(id = "jdbcEndpoint", base = file("endpoints/jdbc")).dependsOn(core).settings(defSettings:_*)
-  lazy val httpEndpoint = Project(id = "httpEndpoint", base = file("endpoints/http")).dependsOn(core).settings(defSettings:_*)
-  lazy val cxfEndpoint = Project(id = "cxfEndpoint", base = file ("endpoints/cxf")).dependsOn(core).settings(defSettings:_*)
+  lazy val logicalEndpoints = Project(id = "logicalEndpoints", base = file("endpoints/logical")).dependsOn(core).settings(defSettings:_*)
+  lazy val fileEndpoint = Project(id = "fileEndpoint", base = file("endpoints/file")).dependsOn(core, logicalEndpoints).settings(defSettings:_*)
+  lazy val jmsEndpoint = Project(id = "jmsEndpoint", base = file("endpoints/jms")).dependsOn(core, logicalEndpoints).settings(defSettings:_*)
+  lazy val jdbcEndpoint = Project(id = "jdbcEndpoint", base = file("endpoints/jdbc")).dependsOn(core, logicalEndpoints).settings(defSettings:_*)
+  lazy val httpEndpoint = Project(id = "httpEndpoint", base = file("endpoints/http")).dependsOn(core, logicalEndpoints).settings(defSettings:_*)
+  lazy val cxfEndpoint = Project(id = "cxfEndpoint", base = file ("endpoints/cxf")).dependsOn(core, logicalEndpoints).settings(defSettings:_*)
   lazy val wsutil = Project(id = "wsutil", base = file("wsutil")).settings(defSettings:_*)
 
   lazy val luthierRunner = Project(id = "luthier-runner", base = file("luthier-runner")).settings(defSettings:_*).settings(Dist.settings:_*).
-    dependsOn(core, jmsEndpoint, jdbcEndpoint, httpEndpoint, cxfEndpoint)
+    dependsOn(core, logicalEndpoints, fileEndpoint, jmsEndpoint, jdbcEndpoint, httpEndpoint, cxfEndpoint)
 }

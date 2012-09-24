@@ -1,16 +1,14 @@
 package uy.com.netlabs.esb
 package endpoint
 
-import java.nio.file.{ Paths, Files }
-
-import scala.concurrent._
-import scala.concurrent.util.{ Duration, duration }, duration._
+import java.nio.file.Paths
+import scala.concurrent._, util.duration._
 import scala.util._
 import language._
-
-import endpoint.PollingFeatures._
-
+import logical.Polling._
 import org.scalatest._
+import uy.com.netlabs.esb.AppContext
+import uy.com.netlabs.esb.Flows
 
 class FunctionTest extends FunSpec with BeforeAndAfter {
   var myApp: AppContext = _

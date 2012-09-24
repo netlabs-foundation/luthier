@@ -1,12 +1,11 @@
 package uy.com.netlabs.esb
-package endpoint
+package endpoint.logical
 
-import scala.concurrent.Future
 import scala.concurrent.util.Duration
 import scala.util._
 import language._
 
-object PollingFeatures {
+object Polling {
 
   class PollAskableEndpoint[A <: Askable, P](f: Flow, endpoint: EndpointFactory[A], initialDelay: Duration, every: Duration, message: Message[P])(implicit ev: TypeSupportedByTransport[A#SupportedTypes, P]) extends endpoint.base.BaseSource {
     lazy val dest = endpoint(f)
@@ -40,7 +39,7 @@ object PollingFeatures {
       implicit val ec = flow.workerActorsExecutionContext
       scheduledAction = appContext.actorSystem.scheduler.schedule(initialDelay, every) {
         flow.log.debug(s"Flow ${flow.name} polling")
-        dest.pull onComplete {
+        dest.pull()(messageFactory) onComplete {
           case Success(response)  => messageArrived(response.asInstanceOf[Message[Payload]])
           case Failure(err) => flow.log.error(err, s"Poller ${flow.name} failed")
         }
