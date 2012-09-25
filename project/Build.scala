@@ -31,9 +31,10 @@ object CocoonBuild extends Build {
       "-implicits-show-all",
       "-expand-all-types" 
     ),
+    initialCommands += "import uy.com.netlabs.esb._",
 
     resolvers += Resolver.sonatypeRepo("snapshots")
-  )
+  ) ++ Dist.settings
 
   lazy val root = Project(id = "Luthier", base = file(".")).aggregate(
     core,
@@ -54,6 +55,6 @@ object CocoonBuild extends Build {
   lazy val cxfEndpoint = Project(id = "cxfEndpoint", base = file ("endpoints/cxf")).dependsOn(core, logicalEndpoints).settings(defSettings:_*)
   lazy val wsutil = Project(id = "wsutil", base = file("wsutil")).settings(defSettings:_*)
 
-  lazy val luthierRunner = Project(id = "luthier-runner", base = file("luthier-runner")).settings(defSettings:_*).settings(Dist.settings:_*).
+  lazy val luthierRunner = Project(id = "luthier-runner", base = file("luthier-runner")).settings(defSettings:_*).
     dependsOn(core, logicalEndpoints, fileEndpoint, jmsEndpoint, jdbcEndpoint, httpEndpoint, cxfEndpoint)
 }
