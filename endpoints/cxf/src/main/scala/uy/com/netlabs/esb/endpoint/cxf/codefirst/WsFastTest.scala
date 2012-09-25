@@ -32,7 +32,6 @@ object WsFastTest extends App {
       logic { m =>
         println(s"I should go to  ${m.payload}")
         m.map(_ => 2354349857l)
-        "lalalal"
       }
     }
   }.registeredFlows foreach (_.start)
