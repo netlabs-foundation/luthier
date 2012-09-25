@@ -31,5 +31,5 @@ object Dist {
     destZip
   }
 
-  def settings = Seq(distArtifactSetting, packageOptionsSetting, distSetting)
+  def settings = Seq[Setting[_]](distArtifactSetting, packageOptionsSetting, distSetting)
 }

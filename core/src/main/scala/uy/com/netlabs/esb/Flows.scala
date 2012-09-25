@@ -1,13 +1,16 @@
 package uy.com.netlabs.esb
 
 import scala.language._
+import language.experimental.macros
+import scala.reflect.macros.Context
 import scala.concurrent.Future
 import typelist._
+
 
 /**
  * This class defines a scope where flows can be defined.
  */
-trait Flows {
+trait Flows extends ErrorReporting {
   import uy.com.netlabs.esb.{ Flow => GFlow }
   implicit def appContext: AppContext
   implicit def long2Duration(l: Long) = new scala.concurrent.util.DurationLong(l)
@@ -67,4 +70,24 @@ object Flows {
     type SS = Source { type Payload = S#Payload }
     def OneWay: EndpointFactory[SS] = s.asInstanceOf[EndpointFactory[SS]]
   }
+  
+  
+  def genericInvalidResponseImpl[V, TL <: TypeList](c: Context)(value: c.Expr[V])(implicit valueEv: c.AbsTypeTag[V], tlEv: c.AbsTypeTag[TL]): c.Expr[Future[Message[OneOf[_, TL]]]] = {
+    val expectedTypes = TypeList.describe(tlEv)
+    c.abort(c.enclosingPosition, "\nInvalid response found: " + valueEv.tpe + ".\n" + 
+         "Expected a Message[T] or a Future[Message[T]] where T could be any of [" + expectedTypes.mkString("\n\t", "\n\t", "]"))
+  }
+}
+
+/**
+ * Trait to be mixed in Flows which provides with implicits for error reporting
+ */
+private[esb] sealed trait ErrorReporting extends ErrorReporting0 {
+//  implicit def noOneOfError[MT, TL <: TypeList](m: Message[MT])(implicit contained: Contained[TL, MT]): Future[Message[OneOf[_, TL]]]
+}
+/**
+ * Even lower implicits
+ */
+private[esb] sealed trait ErrorReporting0 {
+  implicit def genericInvalidResponse[V, TL <: TypeList](value: V): Future[Message[OneOf[_, TL]]] = macro Flows.genericInvalidResponseImpl[V, TL]
 }

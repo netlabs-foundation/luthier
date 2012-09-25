@@ -1,10 +1,28 @@
 package uy.com.netlabs.esb.typelist
 
-import language.{higherKinds, implicitConversions}
+import language.{ higherKinds, implicitConversions }
+import scala.reflect.base.{ TypeTags, Types, Universe }
 
 trait TypeList {
   type Head
   type Tail <: TypeList
+}
+
+object TypeList {
+  private[TypeList] val typeListFullName = scala.reflect.runtime.universe.typeTag[::[_, _]].tpe.typeSymbol.fullName
+  private[TypeList] val typeNilFullName = scala.reflect.runtime.universe.typeTag[TypeNil].tpe.typeSymbol.fullName
+  def describe[TL <: TypeList](tl: TypeTags#AbsTypeTag[TL]): List[String] = {
+    import tl.mirror.universe._
+    def disect(tpe: Type): List[String] = {
+      tpe.asInstanceOf[Type] match {
+        case TypeRef(prefix, sym, args) if sym.fullName == typeListFullName => args.flatMap(disect)
+        case typeNil if typeNil.toString == typeNilFullName => Nil
+        case TypeRef(RefinedType(parents, decls), sym, args) => decls.flatMap(disect)
+        case other => List(other.toString)
+      }
+    }
+    disect(tl.tpe.asInstanceOf[Type])
+  }
 }
 
 trait ::[A, T <: TypeList] extends TypeList {
