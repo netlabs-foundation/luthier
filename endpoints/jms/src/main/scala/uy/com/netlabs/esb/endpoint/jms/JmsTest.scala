@@ -29,15 +29,17 @@ object JmsTest extends App {
     
     val askMeQueue = Jms.queue("askMe", jmsConnection)
 
+    class Lala()
+    
     new Flow("say hello")(askMeQueue RequestResponse) {
       logic { req =>
-        req.map(prev => "Hello " + prev)
+        req.map("Hello " + _)
       }
     }
 
     new Flow("logQuestion")(Jms.queue("logQuestion", jmsConnection) OneWay) {
       logic { req =>
-        askMeQueue.ask(req.mapTo[String]) onSuccess {case r => Jms.topic("result", jmsConnection).push(r.mapTo[String])}
+        askMeQueue.ask(req) onSuccess {case r => Jms.topic("result", jmsConnection).push(r.mapTo[String])}
       }
     }
     new Flow("listenResult")(Jms.topic("result", jmsConnection)) {

@@ -10,10 +10,9 @@ import typelist._
 /**
  * This class defines a scope where flows can be defined.
  */
-trait Flows extends ErrorReporting {
+trait Flows extends FlowsImplicits0 {
   import uy.com.netlabs.esb.{ Flow => GFlow }
   implicit def appContext: AppContext
-  implicit def long2Duration(l: Long) = new scala.concurrent.util.DurationLong(l)
   //from message stright to future
   implicit def message2FutureOneOf[MT, TL <: TypeList](m: Message[MT])(implicit contained: Contained[TL, MT]): Future[Message[OneOf[_, TL]]] = {
     Future.successful(m map (p =>  new OneOf[MT, TL](p)))
@@ -75,19 +74,18 @@ object Flows {
   def genericInvalidResponseImpl[V, TL <: TypeList](c: Context)(value: c.Expr[V])(implicit valueEv: c.AbsTypeTag[V], tlEv: c.AbsTypeTag[TL]): c.Expr[Future[Message[OneOf[_, TL]]]] = {
     val expectedTypes = TypeList.describe(tlEv)
     c.abort(c.enclosingPosition, "\nInvalid response found: " + valueEv.tpe + ".\n" + 
-         "Expected a Message[T] or a Future[Message[T]] where T could be any of [" + expectedTypes.mkString("\n\t", "\n\t", "]"))
+         "Expected a Message[T] or a Future[Message[T]] where T could be any of [" + expectedTypes.mkString("\n    ", "\n    ", "\n]"))
   }
 }
 
 /**
  * Trait to be mixed in Flows which provides with implicits for error reporting
  */
-private[esb] sealed trait ErrorReporting extends ErrorReporting0 {
-//  implicit def noOneOfError[MT, TL <: TypeList](m: Message[MT])(implicit contained: Contained[TL, MT]): Future[Message[OneOf[_, TL]]]
+private[esb] sealed trait FlowsImplicits0 extends FlowsImplicits1 {
 }
 /**
  * Even lower implicits
  */
-private[esb] sealed trait ErrorReporting0 {
+private[esb] sealed trait FlowsImplicits1 {
   implicit def genericInvalidResponse[V, TL <: TypeList](value: V): Future[Message[OneOf[_, TL]]] = macro Flows.genericInvalidResponseImpl[V, TL]
 }
