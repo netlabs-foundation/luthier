@@ -47,12 +47,13 @@ object CocoonBuild extends Build {
     wsutil
   ).settings(defSettings:_*)
   lazy val core = Project(id = "core", base = file("core")).settings(defSettings:_*)
-  lazy val logicalEndpoints = Project(id = "logicalEndpoints", base = file("endpoints/logical")).dependsOn(core).settings(defSettings:_*)
-  lazy val fileEndpoint = Project(id = "fileEndpoint", base = file("endpoints/file")).dependsOn(core, logicalEndpoints).settings(defSettings:_*)
-  lazy val jmsEndpoint = Project(id = "jmsEndpoint", base = file("endpoints/jms")).dependsOn(core, logicalEndpoints).settings(defSettings:_*)
-  lazy val jdbcEndpoint = Project(id = "jdbcEndpoint", base = file("endpoints/jdbc")).dependsOn(core, logicalEndpoints).settings(defSettings:_*)
-  lazy val httpEndpoint = Project(id = "httpEndpoint", base = file("endpoints/http")).dependsOn(core, logicalEndpoints).settings(defSettings:_*)
-  lazy val cxfEndpoint = Project(id = "cxfEndpoint", base = file ("endpoints/cxf")).dependsOn(core, logicalEndpoints).settings(defSettings:_*)
+  val coreAsDep = core % "compile->compile;test->test"
+  lazy val logicalEndpoints = Project(id = "logicalEndpoints", base = file("endpoints/logical")).dependsOn(coreAsDep).settings(defSettings:_*)
+  lazy val fileEndpoint = Project(id = "fileEndpoint", base = file("endpoints/file")).dependsOn(coreAsDep, logicalEndpoints).settings(defSettings:_*)
+  lazy val jmsEndpoint = Project(id = "jmsEndpoint", base = file("endpoints/jms")).dependsOn(coreAsDep, logicalEndpoints).settings(defSettings:_*)
+  lazy val jdbcEndpoint = Project(id = "jdbcEndpoint", base = file("endpoints/jdbc")).dependsOn(coreAsDep, logicalEndpoints).settings(defSettings:_*)
+  lazy val httpEndpoint = Project(id = "httpEndpoint", base = file("endpoints/http")).dependsOn(coreAsDep, logicalEndpoints).settings(defSettings:_*)
+  lazy val cxfEndpoint = Project(id = "cxfEndpoint", base = file ("endpoints/cxf")).dependsOn(coreAsDep, logicalEndpoints).settings(defSettings:_*)
   lazy val wsutil = Project(id = "wsutil", base = file("wsutil")).settings(defSettings:_*)
 
   lazy val luthierRunner = Project(id = "luthier-runner", base = file("luthier-runner")).settings(defSettings:_*).
