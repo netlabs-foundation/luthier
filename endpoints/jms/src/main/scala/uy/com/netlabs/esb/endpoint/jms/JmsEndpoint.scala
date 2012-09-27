@@ -71,11 +71,13 @@ private[jms] trait BaseJmsEndpoint extends endpoint.base.BaseSource with endpoin
     import collection.JavaConversions._
     import collection.mutable.Map
     val properties = Map(m.getPropertyNames.map { case n: String => n -> m.getObjectProperty(n) }.toSeq: _*)
-    mf(payload, Map("INBOUND" -> properties),
-      optional(m.getJMSReplyTo, JmsDestination.apply),
-      m.getJMSCorrelationID,
-      if (m.propertyExists("correlation-group-size")) m.getIntProperty("correlation-group-size") else 0,
-      if (m.propertyExists("correlation-seq")) m.getIntProperty("correlation-seq") else 0)
+    val res = mf(payload)
+    res.header ++= Map("INBOUND" -> properties)
+    res.replyTo = optional(m.getJMSReplyTo, JmsDestination.apply)
+    res.correlationId = m.getJMSCorrelationID
+    res.correlationGroupSize = if (m.propertyExists("correlation-group-size")) m.getIntProperty("correlation-group-size") else 0
+    res.correlationSequence = if (m.propertyExists("correlation-seq")) m.getIntProperty("correlation-seq") else 0
+    res
   }
 
   implicit protected def esbMessageToJmsMessage(m: Message[_ <: Any])(implicit s: Session): jmsMessage = {
@@ -84,7 +86,7 @@ private[jms] trait BaseJmsEndpoint extends endpoint.base.BaseSource with endpoin
       case str: String                        => s.createTextMessage(str)
       case bytes: Array[Byte]                 => val res = s.createBytesMessage; res.writeBytes(bytes); res
       case serializable: java.io.Serializable => s.createObjectMessage(serializable)
-      case other                              => throw new IllegalArgumentException(s"Unsupported jms payload with type ${s.getClass} = $s")
+      case other                              => throw new IllegalArgumentException(s"Unsupported jms payload with type ${other.getClass} = $other")
     }
     res.setJMSReplyTo(optional(m.replyTo, JmsUtils.pathToDestination(_: Destination, s)))
     if (m.correlationGroupSize > 0) {
@@ -144,7 +146,7 @@ class JmsQueueEndpoint(val flow: Flow,
     implicit val session = threadLocalSession.get()
     val producer = session.createProducer(dest)
     msg match {
-      case Success(m) => producer.send(m)
+      case Success(m) => producer.send(m.map(_.value))
       case Failure(ex) => producer.send(session.createObjectMessage(ex))
     }
     

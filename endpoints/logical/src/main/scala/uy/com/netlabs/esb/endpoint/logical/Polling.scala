@@ -10,7 +10,6 @@ object Polling {
   class PollAskableEndpoint[A <: Askable, P](f: Flow, endpoint: EndpointFactory[A], initialDelay: Duration, every: Duration, message: Message[P])(implicit ev: TypeSupportedByTransport[A#SupportedTypes, P]) extends endpoint.base.BaseSource {
     lazy val dest = endpoint(f)
     type Payload = A#Response
-
     var scheduledAction: akka.actor.Cancellable = _
     def start() {
       dest.start()

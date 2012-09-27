@@ -8,7 +8,7 @@ import uy.com.netlabs.esb.Flow
 
 class Metronome[P](f: Flow, pulse: P, initialDelay: Duration, every: Duration) extends endpoint.base.BaseSource {
   type Payload = P
-
+  
   var scheduledAction: akka.actor.Cancellable = _
   def start() {
     scheduledAction = flow.schedule(initialDelay, every) {

@@ -21,8 +21,7 @@ trait BaseSource extends Source {
   def cancelEventListener(thunk: Message[Payload] => Unit) { onEvents -= thunk.asInstanceOf[Message[_] => Unit] }
 
   protected def messageArrived(m: Message[Payload]) {
-    implicit val ec = flow.workerActorsExecutionContext
-    for (h <- onEvents) flow.doWork(h(m)) onFailure {case f => appContext.actorSystem.log.error(f, "Error on flow " + flow)}
+    for (h <- onEvents) flow.doWork(h(m)).onFailure {case f => appContext.actorSystem.log.error(f, "Error on flow " + flow)}(flow.workerActorsExecutionContext)
   }
 }
 
