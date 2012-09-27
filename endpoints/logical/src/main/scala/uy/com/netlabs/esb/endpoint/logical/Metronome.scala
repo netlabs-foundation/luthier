@@ -1,5 +1,5 @@
 package uy.com.netlabs.esb
-package endpoint
+package endpoint.logical
 
 import scala.concurrent.util.Duration
 import scala.concurrent.util.duration._
@@ -22,9 +22,10 @@ class Metronome[P](f: Flow, pulse: P, initialDelay: Duration, every: Duration) e
 }
 
 object Metronome {
+  private val DefaultInitialDelay = 1.milli
   private case class EF[P](pulse: P, every: Duration, initialDelay: Duration) extends EndpointFactory[Metronome[P]] {
     def apply(f: Flow) = new Metronome(f, pulse, initialDelay, every)
   }
-  def apply(every: Duration, initialDelay: Duration = Duration.Zero): EndpointFactory[Metronome[Unit]] = EF((), every, initialDelay)
-  def apply[P](pulse: P, every: Duration, initialDelay: Duration = Duration.Zero): EndpointFactory[Metronome[P]] = EF(pulse, every, initialDelay)
+  def apply(every: Duration, initialDelay: Duration = DefaultInitialDelay): EndpointFactory[Metronome[Unit]] = EF((), every, initialDelay)
+  def apply[P](pulse: P, every: Duration, initialDelay: Duration = DefaultInitialDelay): EndpointFactory[Metronome[P]] = EF(pulse, every, initialDelay)
 }
