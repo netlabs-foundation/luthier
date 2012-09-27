@@ -10,7 +10,7 @@ object File {
   private case class EF(path: String, charset: String, ioThreads: Int) extends EndpointFactory[FileEndpoint] {
     def apply(f: Flow) = new FileEndpoint(f, path, charset, ioThreads)
   }
-  def apply(path: String, charset: String = "UTF-8", ioThreads: Int): EndpointFactory[FileEndpoint] = EF(path, charset, ioThreads)
+  def apply(path: String, charset: String = "UTF-8", ioThreads: Int = 1): EndpointFactory[FileEndpoint] = EF(path, charset, ioThreads)
 }
 class FileEndpoint(f: Flow, path: String, charset: String, ioThreads: Int) extends endpoint.base.BaseSink with endpoint.base.BasePullEndpoint {
   type Payload = Array[Byte]
@@ -25,7 +25,7 @@ class FileEndpoint(f: Flow, path: String, charset: String, ioThreads: Int) exten
     msg.payload match {
       case it: Iterable[Byte @unchecked] => Files.write(Paths.get(path), it.toArray, StandardOpenOption.CREATE)
       case arr: Array[Byte] => Files.write(Paths.get(path), arr, StandardOpenOption.CREATE)
-      case str: String => Files.write(Paths.get(path), java.util.Arrays.asList(str), java.nio.charset.Charset.forName(charset), StandardOpenOption.CREATE)
+      case str: String => Files.write(Paths.get(path), str.getBytes(charset), StandardOpenOption.CREATE)
       case obj: java.io.Serializable =>
         val out = new java.io.ObjectOutputStream(Files.newOutputStream(Paths.get(path), StandardOpenOption.CREATE))
         try out.writeObject(obj)
@@ -38,6 +38,8 @@ class FileEndpoint(f: Flow, path: String, charset: String, ioThreads: Int) exten
 
   protected def retrieveMessage(mf) = mf(Files.readAllBytes(Paths.get(path)))
 
-  def dispose() {}
+  def dispose() {
+    ioExecutor.shutdown()
+  }
   def start() {}
 }
