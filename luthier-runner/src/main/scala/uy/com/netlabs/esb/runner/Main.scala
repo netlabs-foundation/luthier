@@ -63,17 +63,19 @@ object Main {
       case other => println("Weird classloader: " + other + ": " + other.getClass); Set.empty
     }.distinct
     
-    //now urls declared in the manifest
-    val manifest = new java.util.jar.Manifest(getClass.getResourceAsStream("/META-INF/MANIFEST.MF"))
-    val mainAttrs = manifest.getMainAttributes()
-    val cpInManifest = mainAttrs.getValue(java.util.jar.Attributes.Name.CLASS_PATH)
     val baseDir = Paths.get(".")
-    val basePathForLibs = getClass.getResource("Main.class") match {
+    val (basePathForLibs, baseUrl) = getClass.getResource(getClass.getSimpleName + ".class") match {
       case null => throw new IllegalStateException("Could not deduct where I'm running from!")
       case u => 
-        val p = u.toString.stripPrefix("jar:file:")
-        Paths.get(p.substring(0, p.lastIndexOf('!'))).getParent
+        val p = u.toString
+        val pathToJar = p.substring(0, p.lastIndexOf('!'))
+        Paths.get(pathToJar.stripPrefix("jar:file:")).getParent -> pathToJar
     }
+    //having found myself in this universe
+    val manifest = new java.util.jar.Manifest(new java.net.URL(baseUrl + "!/META-INF/MANIFEST.MF").openStream())
+    val mainAttrs = manifest.getMainAttributes()
+    val cpInManifest = mainAttrs.getValue(java.util.jar.Attributes.Name.CLASS_PATH)
+
     val urlsFromManifest = cpInManifest.split(" ").map(j => j.split("/").foldLeft(basePathForLibs)((d, p) => d.resolve(p)))
     val allUrls = urlsFromClasspath ++ urlsFromManifest
     
