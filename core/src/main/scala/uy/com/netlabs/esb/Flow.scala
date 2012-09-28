@@ -25,7 +25,7 @@ trait Flow {
     appContext.actorSystem.stop(workerActors)
     blockingExecutor.shutdown()
   }
-  val messageFactory: MessageFactory = new MessageFactory {
+  private[esb] val messageFactory: MessageFactory = new MessageFactory {
     def apply[P](payload: P) = Message(payload)
   }
 
