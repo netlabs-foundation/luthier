@@ -1,5 +1,6 @@
 package uy.com.netlabs.esb
-package endpoint.jdbc
+package endpoint
+package jdbc
 
 import java.nio.file.{ Paths, Files }
 
@@ -9,7 +10,7 @@ import scala.util._
 import language._
 
 import endpoint.logical.Polling._
-import endpoint.Metronome
+import endpoint.logical.Metronome
 
 import org.h2.jdbcx.JdbcConnectionPool
 

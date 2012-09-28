@@ -1,14 +1,20 @@
 package uy.com.netlabs.esb
 package endpoint
+package logical
 
 import java.nio.file.Paths
-import scala.concurrent._, util.duration._
+import scala.concurrent._
+import util.duration._
 import scala.util._
 import language._
 import logical.Polling._
 import org.scalatest._
 import uy.com.netlabs.esb.AppContext
 import uy.com.netlabs.esb.Flows
+import scala.sys.process.stringSeqToProcess
+import scala.sys.process.stringToProcess
+import uy.com.netlabs.esb.MessageFactory.factoryFromMessage
+import uy.com.netlabs.esb.endpoint.Process
 
 class FunctionTest extends FunSpec with BeforeAndAfter {
   var myApp: AppContext = _
@@ -45,43 +51,29 @@ class FunctionTest extends FunSpec with BeforeAndAfter {
       new Flows {
         val appContext = myApp
 
-        val result = Promise[Option[String]]()
-        val flow = new Flow("Ask Function")(Metronome(1.seconds)) { //initial delay is 0
-          logic { m =>
-            val msg = "this is a function that returns a text"
-            result completeWith {
-              Function[String]().ask(Message(() => msg)) map (m => m.payload === msg)
-            }
-          }
+        val res = inFlow { flow =>
+          import flow._
+          val msg = "this is a function that returns a text"
+          Await.result(Function[String]().ask(messageFactory(() => msg)) map (m => m.payload === msg), 0.3.seconds)
         }
-        flow.start
-        val res = Try(Await.result(result.future, 0.25.seconds))
-        flow.stop
-        assert(res.get)
+        Try(assert(Await.result(res, 0.3.seconds)))
       }
     }
   }
-  
+
   describe("A Process Endpoint") {
     it("Should be able to run processes") {
-      
+
       new Flows {
         val appContext = myApp
 
-        val result = Promise[Option[String]]()
-        val flow = new Flow("Run processes")(Metronome(1.seconds)) { //initial delay is 0
-          logic { m =>
-            result completeWith {
-              import scala.sys.process.{Process => _, _}
-              Process.string("ifconfig" #| Seq("grep","inet addr")).pull onSuccess {case r => println(r)}
-              Process.string("echo hi there!").pull map (m => m.payload === "hi there!")
-            }
-          }
+        val res = inFlow { flow =>
+          import flow._
+          import scala.sys.process.{ Process => _, _ }
+          Process.string("ifconfig" #| Seq("grep", "inet addr")).pull()(flow.messageFactory) onSuccess { case r => println(r) }
+          Await.result(Process.string("echo hi there!").pull()(flow.messageFactory) map (m => m.payload === "hi there!"), 0.3.seconds)
         }
-        flow.start
-        val res = Try(Await.result(result.future, 0.3.seconds))
-        flow.stop
-        assert(res.get)
+        Try(assert(Await.result(res, 0.3.seconds)))
       }
     }
   }
