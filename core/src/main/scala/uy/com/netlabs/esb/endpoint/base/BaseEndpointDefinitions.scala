@@ -1,7 +1,7 @@
 package uy.com.netlabs.esb
 package endpoint.base
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{ ExecutionContext, Future }
 import scala.util._
 import typelist._
 
@@ -21,7 +21,28 @@ trait BaseSource extends Source {
   def cancelEventListener(thunk: Message[Payload] => Unit) { onEvents -= thunk.asInstanceOf[Message[_] => Unit] }
 
   protected def messageArrived(m: Message[Payload]) {
-    for (h <- onEvents) flow.doWork(h(m)).onFailure {case f => appContext.actorSystem.log.error(f, "Error on flow " + flow)}(flow.workerActorsExecutionContext)
+    for (h <- onEvents) flow.doWork(h(m)).onFailure { case f => appContext.actorSystem.log.error(f, "Error on flow " + flow) }(flow.workerActorsExecutionContext)
+  }
+}
+class DummySource extends EndpointFactory[DummySource.DummySourceEndpoint] {
+  def canEqual(that: Any) = that.asInstanceOf[AnyRef] eq this
+  def apply(f: uy.com.netlabs.esb.Flow) = new DummySource.DummySourceEndpoint {
+    implicit def flow = f
+    def start() {}
+    def dispose() {}
+    /**
+     * Run registered logics asynchronously
+     */
+    def runLogic() {
+      val m = messageFactory(())
+      flow.doWork(onEvents foreach (_(m))) 
+    }
+  }
+}
+object DummySource {
+  trait DummySourceEndpoint extends BaseSource {
+    type Payload = Unit
+    def runLogic()
   }
 }
 
@@ -34,7 +55,7 @@ trait BaseSource extends Source {
  *
  * For example, a JMS Responsible would register a consumer, and upon message arrival call
  * `requestArrived`.
- * 
+ *
  */
 trait BaseResponsible extends Responsible {
   protected var onRequests = Set.empty[Message[_] => Future[Message[OneOf[_, SupportedResponseTypes]]]]
@@ -46,15 +67,15 @@ trait BaseResponsible extends Responsible {
   }
 
   val ioExecutionContext: ExecutionContext
-  
+
   protected def requestArrived(m: Message[Payload], messageSender: Try[Message[OneOf[_, SupportedResponseTypes]]] => Unit) {
     implicit val ec = flow.workerActorsExecutionContext
     for (h <- onRequests) {
-     flow.doWork {
-       val f = h(m)
-       f.onComplete(messageSender)(ioExecutionContext) //use ioExecutionContext to sendMessages
-       f
-     } onFailure {case ex => appContext.actorSystem.log.error(ex, "Error on flow " + flow)}
+      flow.doWork {
+        val f = h(m)
+        f.onComplete(messageSender)(ioExecutionContext) //use ioExecutionContext to sendMessages
+        f
+      } onFailure { case ex => appContext.actorSystem.log.error(ex, "Error on flow " + flow) }
     }
   }
 }
@@ -63,15 +84,15 @@ trait BaseResponsible extends Responsible {
  * Base implementation of PullEndpoint.
  * It implements pull by delegating to the ioExecutionContext a call to the
  * abstract `retrieveMessage()`
- * 
+ *
  */
 trait BasePullEndpoint extends PullEndpoint {
   val ioExecutionContext: ExecutionContext
   def pull()(implicit mf: MessageFactory): Future[Message[Payload]] = {
     implicit val ec = ioExecutionContext
-    Future {retrieveMessage(mf)}
+    Future { retrieveMessage(mf) }
   }
-  
+
   protected def retrieveMessage(mf: MessageFactory): Message[Payload]
 }
 
@@ -79,14 +100,14 @@ trait BasePullEndpoint extends PullEndpoint {
  * Base implementation of Sink.
  * It implements push by delegating to the ioExecutionContext a call to the
  * abstract `pushMessage()`
- * 
+ *
  */
 trait BaseSink extends Sink {
   val ioExecutionContext: ExecutionContext
   def push[Payload: SupportedType](msg: Message[Payload]): Future[Unit] = {
     implicit val ec = ioExecutionContext
-    Future {pushMessage(msg)}
+    Future { pushMessage(msg) }
   }
-  
+
   protected def pushMessage[Payload: SupportedType](msg: Message[Payload])
 }

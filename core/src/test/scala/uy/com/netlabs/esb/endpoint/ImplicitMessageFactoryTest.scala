@@ -9,14 +9,7 @@ class ImplicitMessageFactoryTest extends BaseFlowsTest {
     it("should succeed") {
       new Flows {
         val appContext = testApp
-        val fakeEndpoint: EndpointFactory[Source] = new EndpointFactory[Source] {
-          def canEqual(that: Any) = that.asInstanceOf[AnyRef] eq this
-          def apply(f: uy.com.netlabs.esb.Flow) = new base.BaseSource {
-            implicit def flow = f
-            def start() {}
-            def dispose() {}
-          }
-        }
+        val fakeEndpoint: EndpointFactory[Source] = new base.DummySource
         new Flow("test")(fakeEndpoint) {
           logic { m =>
             val mf = implicitly[MessageFactory]
