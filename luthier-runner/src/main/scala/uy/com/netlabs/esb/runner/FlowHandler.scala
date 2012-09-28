@@ -13,7 +13,7 @@ class FlowHandler(compiler: IMain, file: String) {
   @volatile var theFlows: Flows = _
   def startWatching(runnerFlows: Flows) {
     import runnerFlows._
-    new runnerFlows.Flow("Watch " + file.replace('/', '_'))(endpoint.Metronome(100.millis)) {
+    new runnerFlows.Flow("Watch " + file.replace('/', '_'))(endpoint.logical.Metronome(100.millis)) {
       logic {m =>
         try {
           if (Files.exists(filePath)) {
