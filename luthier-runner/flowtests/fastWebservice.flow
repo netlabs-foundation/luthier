@@ -1,5 +1,3 @@
-require(args.length == 2, "Expected two args, port and path")
-
 import endpoint.cxf.codefirst._
 import javax.jws._
 @WebService
@@ -9,7 +7,7 @@ trait WSEndpoint {
     def testCmd(cmd: String): String
 }
 
-val sei = Sei[WSEndpoint](s"http://localhost:${args(0)}/${args(1)}")
+val sei = Sei[WSEndpoint](s"http://localhost:8080/basicws")
 new Flow("sum")(Ws(sei)(_.sum _)) {
   logic {m =>
     m.map(t => t._1 + t._2)
@@ -26,8 +24,6 @@ new Flow("echo")(Ws(sei)(_.echo _)) {
 import scala.sys.process._
 new Flow("testCmd")(Ws(sei)(_.testCmd _)) {
   logic {m =>
-   //futureMessage2FutureOneOf(endpoint.Process.string(m.payload).pull map {res => res.header ++= m.header; res })
-   //endpoint.Process.string(m.payload).pull map {res => res.header ++= m.header; res }
    endpoint.Process.string(m.payload).pull
   }
 }
