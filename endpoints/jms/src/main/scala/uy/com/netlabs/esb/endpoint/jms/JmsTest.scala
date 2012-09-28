@@ -39,7 +39,7 @@ object JmsTest extends App {
 
     new Flow("logQuestion")(Jms.queue("logQuestion", jmsConnection) OneWay) {
       logic { req =>
-        askMeQueue.ask(req) onSuccess {case r => Jms.topic("result", jmsConnection).push(r.mapTo[String])}
+        askMeQueue.ask(req.mapTo[String]) onSuccess {case r => Jms.topic("result", jmsConnection).push(r.mapTo[String])}
       }
     }
     new Flow("listenResult")(Jms.topic("result", jmsConnection)) {
