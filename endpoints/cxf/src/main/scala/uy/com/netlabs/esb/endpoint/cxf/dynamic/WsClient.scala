@@ -39,7 +39,7 @@ case class WsClient(val url: String) {
 }
 
 object WsInvoker {
-  class DynamicWsClient[Result] private[WsInvoker] (val flow: Flow, client: WsClient, operation: String) extends Askable {
+  class DynamicWsClient[Result] private[WsInvoker] (val flow: Flow, client: WsClient, operation: String, shutDownClientOnEndpointDispose: Boolean) extends Askable {
     type SupportedTypes = Seq[_] :: Product :: TypeNil
     type Response = Result
     def ask[Payload: SupportedType](msg, timeout) = {
@@ -48,21 +48,24 @@ object WsInvoker {
           case traversable: Seq[Any] => client.dynamicClient.invoke(operation, traversable.asInstanceOf[Seq[AnyRef]].toArray:_*)
           case product: Product => client.dynamicClient.invoke(operation, product.productIterator.asInstanceOf[Iterator[AnyRef]].toArray:_*)
         }
-        println("Result: " + res.mkString(", "))
-        try {
         msg map (_ =>
           if (res.length == 1) res(0).asInstanceOf[Response]
           else res.asInstanceOf[Response]
         )
-        } catch {case ex => ex.printStackTrace; null}
       }
     }
     def start() {}
-    def dispose() {}
+    def dispose() {
+      if (shutDownClientOnEndpointDispose) {
+        client.dynamicClient.getBus().shutdown(true)
+        client.dynamicClient.getConduit().close()
+        client.dynamicClient.destroy()
+      }
+    }
   }
 
-  case class EF[Result] private[WsInvoker](client: WsClient, operation: String) extends EndpointFactory[DynamicWsClient[Result]] {
-    def apply(f: Flow) = new DynamicWsClient(f, client, operation)
+  case class EF[Result] private[WsInvoker](client: WsClient, operation: String, shutDownClientOnEndpointDispose: Boolean) extends EndpointFactory[DynamicWsClient[Result]] {
+    def apply(f: Flow) = new DynamicWsClient(f, client, operation, shutDownClientOnEndpointDispose)
   }
-  def apply[Result](client: WsClient, operation: String) = EF[Result](client, operation)
+  def apply[Result](client: WsClient, operation: String, shutDownClientOnEndpointDispose: Boolean = false) = EF[Result](client, operation,shutDownClientOnEndpointDispose)
 }
