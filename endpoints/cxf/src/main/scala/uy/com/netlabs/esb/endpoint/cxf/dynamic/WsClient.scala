@@ -45,13 +45,16 @@ object WsInvoker {
     def ask[Payload: SupportedType](msg, timeout) = {
       flow.blocking {
         val res = msg.payload match {
-          case traversable: Seq[Any] => client.dynamicClient.invoke(operation, traversable.toArray)
-          case product: Product => client.dynamicClient.invoke(operation, product.productIterator.toArray)
+          case traversable: Seq[Any] => client.dynamicClient.invoke(operation, traversable.asInstanceOf[Seq[AnyRef]].toArray:_*)
+          case product: Product => client.dynamicClient.invoke(operation, product.productIterator.asInstanceOf[Iterator[AnyRef]].toArray:_*)
         }
+        println("Result: " + res.mkString(", "))
+        try {
         msg map (_ =>
           if (res.length == 1) res(0).asInstanceOf[Response]
           else res.asInstanceOf[Response]
         )
+        } catch {case ex => ex.printStackTrace; null}
       }
     }
     def start() {}
@@ -61,5 +64,5 @@ object WsInvoker {
   case class EF[Result] private[WsInvoker](client: WsClient, operation: String) extends EndpointFactory[DynamicWsClient[Result]] {
     def apply(f: Flow) = new DynamicWsClient(f, client, operation)
   }
-  def apply(client: WsClient, operation: String) = EF(client, operation)
+  def apply[Result](client: WsClient, operation: String) = EF[Result](client, operation)
 }
