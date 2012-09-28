@@ -38,10 +38,10 @@ class HttpTest extends BaseFlowsTest {
       new Flows {
         val appContext = testApp
 
-        val res = inFlow { flow =>
+        val res = inFlow { (flow, m) =>
           import flow._
           val req = url("http://notes.implicit.ly/post/30567701311/dispatch-0-9-1") OK as.jsoup.Document
-          Await.result(Http[org.jsoup.nodes.Document]().ask(Message(req)) map { m =>
+          Await.result(Http[org.jsoup.nodes.Document]().ask(m.map(_ => req)) map { m =>
             if (m.payload.select("a[href]").size != 0) None
             else Some("payload with 0 links?")
           }, 5.seconds)

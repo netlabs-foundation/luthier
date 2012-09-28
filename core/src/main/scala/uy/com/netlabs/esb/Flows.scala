@@ -57,12 +57,12 @@ trait Flows extends FlowsImplicits0 {
 
   }
   
-  def inFlow[R](code: Flow[_, Unit] => R): Future[R]= {
+  def inFlow[R](code: (Flow[_, Unit], Message[Unit]) => R): Future[R]= {
     val result = scala.concurrent.Promise[R]()
     val flowName = ("anon@" + new Exception().getStackTrace()(2)).replace("$", "_").replaceAll("[()<>]", ";")
     val flow = new Flow(flowName)(new endpoint.base.DummySource) {
       logic {m => 
-        try result.success(code(this))
+        try result.success(code(this, m))
         catch {case ex: Exception => result.failure(ex)}
       }
     }

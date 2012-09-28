@@ -51,10 +51,10 @@ class FunctionTest extends FunSpec with BeforeAndAfter {
       new Flows {
         val appContext = myApp
 
-        val res = inFlow { flow =>
+        val res = inFlow { (flow, m) =>
           import flow._
           val msg = "this is a function that returns a text"
-          Await.result(Function[String]().ask(messageFactory(() => msg)) map (m => m.payload === msg), 0.3.seconds)
+          Await.result(Function[String]().ask(m.map(_ => () => msg)) map (m => m.payload === msg), 0.3.seconds)
         }
         Try(assert(Await.result(res, 0.3.seconds)))
       }
@@ -67,11 +67,11 @@ class FunctionTest extends FunSpec with BeforeAndAfter {
       new Flows {
         val appContext = myApp
 
-        val res = inFlow { flow =>
+        val res = inFlow { (flow, m) =>
           import flow._
           import scala.sys.process.{ Process => _, _ }
-          Process.string("ifconfig" #| Seq("grep", "inet addr")).pull()(flow.messageFactory) onSuccess { case r => println(r) }
-          Await.result(Process.string("echo hi there!").pull()(flow.messageFactory) map (m => m.payload === "hi there!"), 0.3.seconds)
+          Process.string("ifconfig" #| Seq("grep", "inet addr")).pull()(m) onSuccess { case r => println(r) }
+          Await.result(Process.string("echo hi there!").pull()(m) map (m => m.payload === "hi there!"), 0.3.seconds)
         }
         Try(assert(Await.result(res, 0.3.seconds)))
       }
