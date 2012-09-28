@@ -8,7 +8,7 @@ class BaseFlowsTest extends FunSpec with BeforeAndAfter {
   var testApp: AppContext = _
   before {
     testApp = new AppContext {
-      val name = "Test Function App"
+      val name = "Test App"
       val rootLocation = Paths.get(".")
     }
   }

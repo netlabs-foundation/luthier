@@ -49,11 +49,27 @@ trait Flows extends FlowsImplicits0 {
     val rootEndpoint = endpoint(this)
     val appContext = Flows.this.appContext
     val log = akka.event.Logging(appContext.actorSystem, this)
+    val flowsContext = Flows.this //backreference
 
     def logic(l: Logic) {
       exchangePattern.registerLogic(rootEndpoint)(l.asInstanceOf[Message[E#Payload] => ResponseType])
     }
 
+  }
+  
+  def inFlow[R](code: Flow[_, Unit] => R): Future[R]= {
+    val result = scala.concurrent.Promise[R]()
+    val flowName = ("anon@" + new Exception().getStackTrace()(2)).replace("$", "_").replaceAll("[()<>]", ";")
+    val flow = new Flow(flowName)(new endpoint.base.DummySource) {
+      logic {m => 
+        try result.success(code(this))
+        catch {case ex: Exception => result.failure(ex)}
+      }
+    }
+    flow.rootEndpoint.runLogic
+    val res = result.future
+    res.onComplete(_ => flow.stop())(flow.workerActorsExecutionContext) // code already got executed, can request the flow to stop
+    res
   }
 
 }
