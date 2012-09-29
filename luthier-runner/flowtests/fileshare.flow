@@ -21,6 +21,7 @@ new Flow("DirShare")(Jms.queue("dirshare", jmsConnection) RequestResponse) {
     lazy val s = Files.newDirectoryStream(dirToWatch)
     val someFile = try {s.toList.headOption} finally {if (s != null) s.close()}
     if(someFile.isDefined) {
+      log.info("Sending file " + someFile)
       val bytes = Files.readAllBytes(someFile.get)
       Files.delete(someFile.get)
       m.map(_ => someFile.get.getFileName.toString -> bytes)
