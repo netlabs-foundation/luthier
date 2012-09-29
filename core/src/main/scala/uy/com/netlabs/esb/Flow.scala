@@ -32,7 +32,7 @@ trait Flow {
   type Logic <: Message[rootEndpoint.Payload] => _
   def logic(l: Logic)
 
-  implicit def self = this
+  implicit def self: this.type = this
   implicit def messageFactoryFromLogicMessage: MessageFactory = macro Flow.findNearestMessageMacro
   implicit def endpointFactory2Endpoint[T <: Endpoint](ef: EndpointFactory[T]): T = {
     instantiatedEndpoints.get(ef) match {
