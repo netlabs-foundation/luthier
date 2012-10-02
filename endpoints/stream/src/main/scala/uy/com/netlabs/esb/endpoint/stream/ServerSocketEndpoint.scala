@@ -2,8 +2,13 @@ package uy.com.netlabs.esb
 package endpoint
 package stream
 
+import language._
+
 import java.net._
 import scala.util._
+import scala.concurrent._
+
+import typelist._
 
 /*
  * Syntax ideal
@@ -70,9 +75,11 @@ trait Streams {
     private[stream] def dispose() {}
   }
 
-  class Reader[P] private[Streams] (val socket: SocketEndpointFactory,
-                                    val reader: P) extends Source with EndpointFactory[Reader[P]] {
+  class Handler[P, R] private[Streams] (val socket: SocketEndpointFactory,
+                                        val reader: Consumer[_, P],
+                                        val serializer: R => Array[Byte]) extends Source with Responsible with EndpointFactory[Handler[P, R]] {
     type Payload = P
+    type SupportedResponseTypes = R :: TypeNil
     implicit def flow: uy.com.netlabs.esb.Flow = ???
     def start() {
       //TODO: somehow register my self to the SocketEndpointFactory
@@ -82,36 +89,42 @@ trait Streams {
 
     def canEqual(that) = that == this
 
-    private var logic: Message[Payload] => Unit = _
-    def onEvent(thunk) { logic = thunk }
+    private var onSource: Message[Payload] => Unit = _
+    private var onRequest: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]] = _
+    def onEvent(thunk) { onSource = thunk }
     def cancelEventListener(thunk) { throw new UnsupportedOperationException }
+    def onRequest(thunk) { onRequest = thunk }
+    def cancelRequestListener(thunk) { throw new UnsupportedOperationException }
 
   }
-  def closeClient()(implicit flow: Flow { val rootEndpoint: Reader[_] }) {
+  def closeClient(client: Message[SocketEndpointFactory]) {
     //TODO: close the client
   }
-  def reply(content: Any)(implicit flow: Flow { val rootEndpoint: Reader[_] }) {
-    //TODO: send content
-  }
 
-  object Reader {
-    def apply[P](message: Message[SocketEndpointFactory], reader: P) = new Reader(message.payload, reader)
+  object Handler {
+    def apply[P, R](message: Message[SocketEndpointFactory],
+        reader: Consumer[_, P]): EndpointFactory[Source {type Payload = Handler[P,R]#Payload}] = new Handler(message.payload, reader, null)
+    def apply[P, R](message: Message[SocketEndpointFactory],
+        reader: Consumer[_, P],
+        serializer: R => Array[Byte]): EndpointFactory[Responsible {type Payload = Handler[P,R]#Payload
+          type SupportedResponseTypes = Handler[P,R]#SupportedResponseTypes}] = new Handler(message.payload, reader, serializer)
+    
   }
 
   val test = new Flows {
     val appContext = AppContext.quick("streams")
     new Flow("ss")(TcpServer(1500)) {
-      logic { m =>
-        new Flow("clientHandler")(Reader(m, "stringReader")) {
-          def logic { m: Message[String] =>
+      logic { client =>
+        new Flow("clientHandler")(Handler(client, consumers.lines(), serializers.string)) {
+          logic { m: Message[String] =>
             val msg: String = m.payload
-            reply(msg)
+            m
           }
         }
-        new Flow("clientHandler")(Reader(m, "stringReader")) {
-          def logic { m: Message[String] =>
+        new Flow("clientHandler2")(Handler(client, consumers.lines())) {
+          logic { m: Message[String] =>
             m.payload match {
-              case "exit" => closeClient() 
+              case "exit" => closeClient(client)
               case _ => //do nothing
             }
           }
