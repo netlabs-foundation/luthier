@@ -15,4 +15,7 @@ object MessageFactory {
   implicit def factoryFromMessage[P](m: Message[P]) = new MessageFactory {
     def apply[Payload](p: Payload) = m.map(_ => p)
   }
+  implicit def factoryFromImplicitMessage[P](implicit m: Message[P]) = new MessageFactory {
+	  def apply[Payload](p: Payload) = m.map(_ => p)
+  }
 }

@@ -33,7 +33,7 @@ trait Flow {
   def logic(l: Logic)
 
   implicit def self: this.type = this
-  implicit def messageFactoryFromLogicMessage: MessageFactory = macro Flow.findNearestMessageMacro
+  implicit def messageInLogicImplicit: Message[rootEndpoint.Payload] = macro Flow.findNearestMessageMacro[rootEndpoint.Payload]
   implicit def endpointFactory2Endpoint[T <: Endpoint](ef: EndpointFactory[T]): T = {
     instantiatedEndpoints.get(ef) match {
       case Some(endpoint) => endpoint.asInstanceOf[T]
@@ -111,15 +111,16 @@ object Flow {
   }
 
   import scala.reflect.macros.{Context, Universe}
-  def findNearestMessageMacro(c: Context): c.Expr[MessageFactory] = {
+  def findNearestMessageMacro[Payload](c: Context): c.Expr[Message[Payload]] = {
     import c.universe._
     val collected = c.enclosingClass.collect {
       case a@Apply(Ident(i), List(Function(List(param@ValDef(modifiers, paramName, _, _)), _))) if i.encoded == "logic" &&
-      modifiers.hasFlag(Flag.PARAM) && param.symbol.typeSignature.toString == "uy.com.netlabs.esb.Message[this.rootEndpoint.Payload]" =>
+      modifiers.hasFlag(Flag.PARAM) && param.symbol.typeSignature.toString == "uy.com.netlabs.esb.Message[this.rootEndpoint.Payload]" && 
+      !c.typeCheck(c.parse(paramName.encoded), param.symbol.typeSignature, silent = true).isEmpty =>
         paramName
     }.head
     val selectMessage = c.Expr(c.parse(collected.encoded))
-    reify(uy.com.netlabs.esb.MessageFactory.factoryFromMessage(selectMessage.splice))
+    reify(selectMessage.splice)
   }
 
 }

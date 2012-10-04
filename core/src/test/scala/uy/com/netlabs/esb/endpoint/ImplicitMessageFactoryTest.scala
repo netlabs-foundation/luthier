@@ -15,6 +15,20 @@ class ImplicitMessageFactoryTest extends BaseFlowsTest {
             val mf = implicitly[MessageFactory]
             m.map(_ => "another message!")
           }
+          logic {m2 =>
+            val mf2: MessageFactory = m2
+            m2
+          }
+        }
+      }
+      new Flows {
+        val appContext = testApp
+        val fakeEndpoint: EndpointFactory[Source] = new base.DummySource
+        new Flow("test2")(fakeEndpoint) {
+          logic { m =>
+            val implicitRootMessage: Message[rootEndpoint.Payload] = implicitly
+            implicitRootMessage
+          }
         }
       }
     }
