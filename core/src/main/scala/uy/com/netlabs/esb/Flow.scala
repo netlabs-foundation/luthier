@@ -8,7 +8,7 @@ import akka.event.LoggingAdapter
 import scala.concurrent.{ ExecutionContext, Promise, Future, util }, util.Duration
 import scala.util._
 
-trait Flow {
+trait Flow extends Disposable {
   def name: String
   val appContext: AppContext
   val rootEndpoint: InboundEndpoint
@@ -18,12 +18,19 @@ trait Flow {
   def start() {
     rootEndpoint.start()
   }
-  def stop() {
+  protected def disposeImpl() {
     rootEndpoint.dispose()
     instantiatedEndpoints.values foreach (_.dispose())
     instantiatedEndpoints = Map.empty
     appContext.actorSystem.stop(workerActors)
     blockingExecutor.shutdown()
+  }
+  /**
+   * Bind the life of this flow to that of the disposable.
+   */
+  def bind(d: Disposable): this.type = {
+    d.onDispose(_ => dispose())
+    this
   }
   private[esb] val messageFactory: MessageFactory = new MessageFactory {
     def apply[P](payload: P) = Message(payload)

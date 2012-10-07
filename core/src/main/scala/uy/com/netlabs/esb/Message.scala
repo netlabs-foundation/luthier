@@ -3,13 +3,14 @@ package uy.com.netlabs.esb
 import collection.mutable.Map
 import language.implicitConversions
 import scala.reflect.ClassTag
+import scala.annotation.unchecked.uncheckedVariance
 
 /**
  * Dead simple definition of Message that will not last much. Right now is just a prototype
  */
-trait Message[Payload] {
+trait Message[+Payload] {
   def payload: Payload
-  def payload_=(a: Payload)
+  def payload_=(a: Payload @uncheckedVariance) //possibly, a very bad idea. Just possibly...
 
   def header: Map[String, Map[String, _ <: Any]]
 

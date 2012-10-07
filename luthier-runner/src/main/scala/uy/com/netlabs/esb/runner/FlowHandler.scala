@@ -22,7 +22,7 @@ class FlowHandler(compiler: IMain, file: String) {
               println(Console.MAGENTA + s"Reloading flow $file" + Console.RESET)
               if (theFlows != null) {
                 println(Console.MAGENTA + s"Stoping previous incarnation" + Console.RESET)
-                theFlows.registeredFlows foreach (_.stop)
+                theFlows.registeredFlows foreach (_.dispose())
                 println(Console.MAGENTA + s"Done" + Console.RESET)
               }
               load()
