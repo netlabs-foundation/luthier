@@ -68,7 +68,7 @@ trait Flows extends FlowsImplicits0 {
     }
     flow.rootEndpoint.runLogic
     val res = result.future
-    res.onComplete(_ => flow.stop())(flow.workerActorsExecutionContext) // code already got executed, can request the flow to stop
+    res.onComplete(_ => flow.dispose())(flow.workerActorsExecutionContext) // code already got executed, can request the flow to stop
     res
   }
 
