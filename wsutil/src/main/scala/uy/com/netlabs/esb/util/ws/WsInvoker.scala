@@ -12,12 +12,13 @@ object WsInvoker {
   def runScript(classpath: Seq[URL])(script: String): () => Any = {
     import scala.tools.nsc.interpreter._
     val settings = new scala.tools.nsc.Settings
+    settings.usejavacp.value = true
     settings.classpath.value = classpath.map(u => Paths.get(u.toURI)).mkString(java.io.File.pathSeparator)
 
     val main = new IMain(settings)
     main.initializeSynchronous()
     try {
-      main.quietRun("val f = () => {" + script + "}") match {
+      main.quietRun("() => {" + script + "}") match {
         case Results.Success => main.lastRequest.getEvalTyped[() => Any].get
         case other           => throw new Exception("Invalid script")
       }
@@ -36,7 +37,9 @@ object WsInvoker {
     Files.createDirectories(tempDir)
     val jarPath = Paths.get(s"$tempDir/ws.jar")
     if (!Files.exists(jarPath)) {
-      if (s"wsimport -clientjar $jarPath $wsdl".! != 0) throw new Exception("wsimport failed")
+      val cmd = s"wsimport -clientjar $jarPath $wsdl"
+      println(Console.YELLOW + "Running " + cmd + Console.RESET)
+      if (cmd.! != 0) throw new Exception("wsimport failed")
     }
 
     val cp = c.libraryClassPath :+ jarPath.toUri.toURL
