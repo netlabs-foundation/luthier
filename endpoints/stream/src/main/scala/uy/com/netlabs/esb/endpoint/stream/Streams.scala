@@ -23,6 +23,11 @@ import typelist._
  */
 trait Streams {
 
+  @inline
+  private final def debug(s: Any) {
+    //println(s)
+  }
+  
   private def keyDescr(k: SelectionKey) = s"Key($k),R:${k.isReadable()},W:${k.isWritable()},A:${k.isAcceptable()}. Chnl: ${k.channel()}"
 
   /**
@@ -66,15 +71,15 @@ trait Streams {
       })
       selectingFuture = flow.blocking {
         while (!stopServer) {
-          println(Console.MAGENTA + "Selecting..." + Console.RESET)
+          debug(Console.MAGENTA + "Selecting..." + Console.RESET)
           if (selector.select() > 0) {
-            println(Console.YELLOW + s"${selector.selectedKeys().size} keys selected" + Console.RESET)
+            debug(Console.YELLOW + s"${selector.selectedKeys().size} keys selected" + Console.RESET)
             val sk = selector.selectedKeys().iterator()
             while (sk.hasNext()) {
               val k = sk.next()
-              println(Console.GREEN + "Processing " + keyDescr(k) + Console.RESET)
+              debug(Console.GREEN + "Processing " + keyDescr(k) + Console.RESET)
               k.attachment().asInstanceOf[Function0[Unit]]()
-              println(Console.GREEN + "Done with " + keyDescr(k) + Console.RESET)
+              debug(Console.GREEN + "Done with " + keyDescr(k) + Console.RESET)
               sk.remove()
             }
           }
@@ -98,7 +103,7 @@ trait Streams {
    * Also, clients are the wrappers around the selectable channel used for the
    * asynchronous IO.
    */
-  trait Client {
+  trait Client extends Disposable {
     val server: ServerEndpoint[_ >: this.type]
     val channel: SelectableChannel with ByteChannel
     val readBuffer: ByteBuffer
@@ -110,41 +115,49 @@ trait Streams {
         sendPending :+= buff
         key.interestOps(SelectionKey.OP_READ | SelectionKey.OP_WRITE)
         server.selector.wakeup() //so that he register my recent update of interests
-      } else println("Key is invalid")
+      } else debug("Key is invalid")
     }
 
     val key: SelectionKey = channel.register(server.selector, SelectionKey.OP_READ)
     key.attach(() => {
-      var reachedEOF = false
-      if (key.isReadable()) {
-        readBuffer.clear
-        reachedEOF = channel.read(readBuffer) == -1
-        readBuffer.flip
-        readers foreach (_(readBuffer.duplicate()))
-      }
-      if (key.isWritable()) {
-        var canWrite = true
-        sendPending
-        while (canWrite && sendPending.nonEmpty) {
-          val (h, t) = (sendPending.head, sendPending.tail)
-          val wrote = channel.write(h)
-          if (h.hasRemaining()) { //could not write all of the content
-            canWrite = false
-          } else {
-            sendPending = sendPending.tail
+      try {
+        debug("Client operating: " + keyDescr(key))
+        var reachedEOF = false
+        if (key.isReadable()) {
+          readBuffer.clear
+          reachedEOF = channel.read(readBuffer) == -1
+          readBuffer.flip
+          debug("  Reading")
+          readers foreach (_(readBuffer.duplicate()))
+          debug("  Done")
+        }
+        if (key.isWritable()) {
+          var canWrite = true
+          sendPending
+          debug("Start writing")
+          while (canWrite && sendPending.nonEmpty) {
+            val (h, t) = (sendPending.head, sendPending.tail)
+            val wrote = channel.write(h)
+            if (h.hasRemaining()) { //could not write all of the content
+              canWrite = false
+            } else {
+              sendPending = sendPending.tail
+            }
           }
         }
+        debug("pendings: " + sendPending)
+        if (sendPending.isEmpty) key.interestOps(SelectionKey.OP_READ)
+        if (reachedEOF || !channel.isOpen()) dispose()
+      } catch {
+        case ex: Exception => server.log.error(ex, "Error on client " + keyDescr(key))
       }
-      println("pendings: " + sendPending)
-      if (sendPending.isEmpty) key.interestOps(SelectionKey.OP_READ)
-      if (reachedEOF) dispose()
     })
 
-    private[Streams] def dispose() {
+    protected[Streams] def disposeImpl() {
       server.currentClients -= this
       key.cancel()
       disposeClient()
-      println(s"$channel disposed")
+      debug(s"$channel disposed")
     }
     protected def disposeClient()
   }
@@ -162,14 +175,16 @@ trait Streams {
     type SupportedResponseTypes = R :: TypeNil
     implicit var flow: uy.com.netlabs.esb.Flow = _
     private var state: S = null.asInstanceOf[S]
-    def start() {
+
+    { //do setup
+      client.onDispose { _ => flow.dispose}
       state = reader.initialState
       client.readers += { content =>
         flow.doWork {
-          println("Reading " + content.remaining() + " bytes")
+          debug("Reading " + content.remaining() + " bytes")
           val res = if (!content.hasRemaining()) reader.consume(NoMoreInput(state))
           else reader.consume(Content(state, content))
-          println("Reading result: " + res)
+          debug("Reading result: " + res)
           state = res.state
           res match {
             case reader.ByProduct(ps, s) =>
@@ -179,25 +194,28 @@ trait Streams {
                 ps foreach { p =>
                   val resp = onRequest(messageFactory(p))
                   resp.onComplete {
-                    case Success(m) => client addPending ByteBuffer.wrap(serializer(m.payload.value.asInstanceOf[R]))
+                    case Success(m)   => client addPending ByteBuffer.wrap(serializer(m.payload.value.asInstanceOf[R]))
                     case Failure(err) => log.error(err, "Failed to respond to client")
                   }(flow.workerActorsExecutionContext)
                 }
             case _ =>
           }
-        }.onComplete {case r => println(client + " loop result: " + r)}(flow.workerActorsExecutionContext)
+        }
       }
     }
-    def dispose() { flow.dispose }
+
+    def start() {}
+    def dispose() {}
     def apply(f) = { flow = f; this }
 
     def canEqual(that) = that == this
 
     private var onSource: Message[Payload] => Unit = _
     private var onRequest: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]] = _
-    def onEvent(thunk) { onSource = thunk }
+    //I start the flow as soon as the logic is given to me.
+    def onEvent(thunk) { flow.start; onSource = thunk }
     def cancelEventListener(thunk) { throw new UnsupportedOperationException }
-    def onRequest(thunk) { onRequest = thunk }
+    def onRequest(thunk) { flow.start; onRequest = thunk }
     def cancelRequestListener(thunk) { throw new UnsupportedOperationException }
 
   }

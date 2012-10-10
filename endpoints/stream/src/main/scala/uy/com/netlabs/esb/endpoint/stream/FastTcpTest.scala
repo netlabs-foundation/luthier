@@ -9,13 +9,13 @@ object FastTcpTest extends App {
     val appContext = AppContext.quick("streams")
     new Flow("ss")(Server(1500, 1024)) {
       logic { client =>
-        new Flow("clientHandler")(Handler(client, consumers.lines(), serializers.string)) {
+        new Flow("clientHandler-" + client.payload)(Handler(client, consumers.lines(), serializers.string)) {
           logic { m: Message[String] =>
             println("Client message: " + m.payload)
             m
           }
-        }.start
-        new Flow("clientHandler2")(Handler(client, consumers.lines())) {
+        }
+        new Flow("clientHandler2-" + client.payload)(Handler(client, consumers.lines())) {
           logic { m: Message[String] =>
             m.payload match {
               case exit if exit.trim == "exit" =>
@@ -24,7 +24,7 @@ object FastTcpTest extends App {
               case other =>
             }
           }
-        }.start
+        }
       }
     }.start
   }

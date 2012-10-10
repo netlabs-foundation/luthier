@@ -17,6 +17,7 @@ trait Flow extends Disposable {
 
   def start() {
     rootEndpoint.start()
+    log.info("Flow " + name + " started")
   }
   protected def disposeImpl() {
     rootEndpoint.dispose()
@@ -24,6 +25,7 @@ trait Flow extends Disposable {
     instantiatedEndpoints = Map.empty
     appContext.actorSystem.stop(workerActors)
     blockingExecutor.shutdown()
+    log.info("Flow " + name + " disposed")
   }
   /**
    * Bind the life of this flow to that of the disposable.
