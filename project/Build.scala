@@ -6,7 +6,7 @@ object CocoonBuild extends Build {
   val _scalaVersion = "2.10.0-M7"
 
   val defSettings = Seq(
-    version := "2.0.0",
+    version := "2.0.0-SNAPSHOT",
     organization := "uy.com.netlabs",
     scalaVersion := _scalaVersion,
     fork := true,
@@ -47,7 +47,7 @@ object CocoonBuild extends Build {
     streamEndpoint,
     wsutil
   ).settings(defSettings:_*)
-  lazy val core = Project(id = "core", base = file("core")).settings(defSettings:_*)
+  lazy val core = Project(id = "luthier-core", base = file("core")).settings(defSettings:_*)
   val coreAsDep = core % "compile->compile;test->test"
   lazy val logicalEndpoints = Project(id = "logicalEndpoints", base = file("endpoints/logical")).dependsOn(coreAsDep).settings(defSettings:_*)
   lazy val fileEndpoint = Project(id = "fileEndpoint", base = file("endpoints/file")).dependsOn(coreAsDep, logicalEndpoints).settings(defSettings:_*)
