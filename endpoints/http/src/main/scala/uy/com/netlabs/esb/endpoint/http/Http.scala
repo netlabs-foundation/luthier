@@ -2,10 +2,12 @@ package uy.com.netlabs.esb
 package endpoint.http
 
 import scala.concurrent._
+import scala.collection.mutable.Map
+import scala.collection.JavaConversions._
 
 import typelist._
 
-import com.ning.http.client.Request
+import com.ning.http.client.{AsyncCompletionHandler, Cookie, RequestBuilder => Request}
 import dispatch.{ Promise => _, _ }
 
 object Http {
@@ -20,21 +22,68 @@ object Http {
 
     def start() {}
     def dispose() {
-      dispatcher.shutdown
+      try dispatcher.shutdown catch {case ex: Exception => flow.log.error(ex, "Could not shutdown dispatcher")}
     }
 
+    private type HeaderBaggage = Seq[Cookie]
+    
+    private def wrapRequest(r: (Request, FunctionHandler[R])) = {
+      r._1.build() -> new AsyncCompletionHandler[(R, HeaderBaggage)] {
+        def onCompleted(response) = r._2.onCompleted(response) -> response.getCookies
+        //proxy all methods -- must call all supers because this AsyncCompletionHandler is horribly statefull
+        override def onBodyPartReceived(content) = {
+          super.onBodyPartReceived(content)
+          r._2.onBodyPartReceived(content)
+        }
+        override def onContentWriteCompleted() = {
+          super.onContentWriteCompleted()
+          r._2.onContentWriteCompleted()
+        }
+        override def onContentWriteProgress(amount, current, total) = {
+          super.onContentWriteProgress(amount, current, total)
+          r._2.onContentWriteProgress(amount, current, total)
+        }
+        override def onHeadersReceived(h) = {
+          super.onHeadersReceived(h)
+          r._2.onHeadersReceived(h)
+        }
+        override def onHeaderWriteCompleted() = {
+          super.onHeaderWriteCompleted()
+          r._2.onHeaderWriteCompleted()
+        }
+        override def onStatusReceived(s) = {
+          super.onStatusReceived(s)
+          r._2.onStatusReceived(s)
+        }
+        override def onThrowable(t) = {
+          super.onThrowable(t)
+          r._2.onThrowable(t)
+        }
+      }
+    }
+    private def toMessage(resp: (R, HeaderBaggage), mf: MessageFactory) = {
+      import collection.JavaConversions._
+      val res = mf(resp._1)
+      res.header.put("INBOUND", Map("Cookies"->resp._2))
+      res
+    }
+    
     def pull()(implicit mf: MessageFactory): Future[Message[Payload]] = {
       val promise = Promise[Message[Payload]]()
-      dispatcher(req.get).onComplete {
-        case Right(res) => promise.success(mf(res))
+      dispatcher(wrapRequest(req.get)).onComplete {
+        case Right(res) => promise.success(toMessage(res, mf))
         case Left(err)  => promise.failure(err)
       }
       promise.future
     }
     def ask[Payload: SupportedType](msg, timeOut): Future[Message[Response]] = {
       val promise = Promise[Message[Response]]()
-      dispatcher(msg.mapTo[(Request, FunctionHandler[R])].payload).onComplete {
-        case Right(res) => promise.success(msg map (_ => res))
+      val req = msg.mapTo[(Request, FunctionHandler[R])].payload
+      val cookies = msg.header.getOrElse("INBOUND", Map.empty).getOrElse("Cookies", Seq.empty).asInstanceOf[Seq[Cookie]] 
+      cookies foreach req._1.addCookie
+//      println("Sending cookies: " + cookies)
+      dispatcher(wrapRequest(req)).onComplete {
+        case Right(res) => promise.success(toMessage(res, msg))
         case Left(err)  => promise.failure(err)
       }
       promise.future
