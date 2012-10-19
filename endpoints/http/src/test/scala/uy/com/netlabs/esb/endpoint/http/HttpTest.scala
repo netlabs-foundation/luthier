@@ -20,7 +20,7 @@ class HttpTest extends BaseFlowsTest {
       new Flows {
         val appContext = testApp
         val result = Promise[Option[String]]()
-        val flow = new Flow("Poll Http")(Poll(Http(url("http://notes.implicit.ly/post/30567701311/dispatch-0-9-1") OK as.jsoup.Document), 1.seconds)) { //initial delay is 0
+        val flow = new Flow("Poll Http")(Poll(Http(url("http://www.google.com/").setFollowRedirects(true) -> new OkFunctionHandler(as.jsoup.Document)), 1.seconds)) { //initial delay is 0
           logic { m =>
             result success {
               if (m.payload.select("a[href]").size != 0) None
@@ -40,13 +40,16 @@ class HttpTest extends BaseFlowsTest {
 
         val res = inFlow { (flow, m) =>
           import flow._
-          val req = url("http://notes.implicit.ly/post/30567701311/dispatch-0-9-1") OK as.jsoup.Document
+          val req = url("http://www.google.com/").setFollowRedirects(true) -> new OkFunctionHandler(as.jsoup.Document)
           Await.result(Http[org.jsoup.nodes.Document]().ask(m.map(_ => req)) map { m =>
+            println("Cookies: ")
+            println(m.header.get("INBOUND").get("Cookies"))
+            
             if (m.payload.select("a[href]").size != 0) None
             else Some("payload with 0 links?")
           }, 5.seconds)
         }
-        Try(assert(Await.result(res, 6.seconds)))
+        assert(Await.result(res, 6.seconds))
       }
     }
   }
