@@ -6,8 +6,21 @@ import java.net._
 import java.io.EOFException
 import java.nio.ByteBuffer
 import java.nio.channels._
+import scala.util._
+import scala.concurrent._, duration._
+import language._
 
-object Tcp extends Streams {
+import typelist._
+
+object Tcp {
+
+  @inline
+  private final def debug(s: =>Any) {
+    //println(s)
+  }
+
+  private def keyDescr(k: SelectionKey) = s"Key($k),R:${k.isReadable()},W:${k.isWritable()},A:${k.isAcceptable()}. Chnl: ${k.channel()}"
+
   object Server {
     case class EF private[Server] (addr: SocketAddress, readBuffer: Int) extends EndpointFactory[ServerSocketEndpoint] {
       def apply(f) = new ServerSocketEndpoint(f, addr, readBuffer)
@@ -16,8 +29,8 @@ object Tcp extends Streams {
     def apply(port: Int, readBuffer: Int) = EF(new InetSocketAddress(port), readBuffer)
   }
 
-  class ServerSocketEndpoint private[Tcp] (val flow: Flow, socketAddress: SocketAddress, readBuffer: Int) extends ServerEndpoint[SocketClient] {
-    type ServerChannel = ServerSocketChannel
+  class ServerSocketEndpoint private[Tcp] (val flow: Flow, socketAddress: SocketAddress, readBuffer: Int) extends base.BaseSource {
+    type Payload = SocketClient
     val serverChannel = {
       val res = ServerSocketChannel.open()
       res.configureBlocking(false)
@@ -25,18 +38,115 @@ object Tcp extends Streams {
       res.setOption(StandardSocketOptions.SO_REUSEADDR, true: java.lang.Boolean)
       res
     }
-    val clientAcceptOp = SelectionKey.OP_ACCEPT
     def accept() = {
       Option(serverChannel.accept()) map { s =>
         s.configureBlocking(false)
         new SocketClient(this, s, ByteBuffer.allocate(readBuffer))
       }
     }
+
+    lazy val selector = Selector.open()
+
+    @volatile private[Tcp] var currentClients = Set.empty[SocketClient]
+    /**
+     * This method should be called by the server with the new Client.
+     */
+    private def clientArrived(client: SocketClient) {
+      currentClients += client
+      messageArrived(messageFactory(client))
+    }
+    private var selectingFuture: Future[Unit] = _
+    private var stopServer = false
+
+    def start() {
+      val selKey = serverChannel.register(selector, SelectionKey.OP_ACCEPT, new SelectionKeyReactor)
+      selKey.attachment().asInstanceOf[SelectionKeyReactor].acceptor = key => {
+        var it = accept()
+        while (it.isDefined) {
+          clientArrived(it.get)
+          it = accept()
+        }
+      }
+      selectingFuture = flow.blocking {
+        while (!stopServer) {
+          debug(Console.MAGENTA + "Selecting..." + Console.RESET)
+          if (selector.select() > 0) {
+            debug(Console.YELLOW + s"${selector.selectedKeys().size} keys selected" + Console.RESET)
+            val sk = selector.selectedKeys().iterator()
+            while (sk.hasNext()) {
+              val k = sk.next()
+              debug(Console.GREEN + "Processing " + keyDescr(k) + Console.RESET)
+              k.attachment().asInstanceOf[SelectionKeyReactor].react(k)
+              debug(Console.GREEN + "Done with " + keyDescr(k) + Console.RESET)
+              sk.remove()
+            }
+          }
+        }
+      }
+    }
+    def dispose() {
+      stopServer = true
+      Try(selector.wakeup())
+      Try(Await.ready(selectingFuture, 5.seconds))
+      Try(serverChannel.close())
+      currentClients foreach (_.dispose())
+    }
   }
 
-  private[Tcp] class SocketClient(val server: ServerSocketEndpoint, val channel: SocketChannel, val readBuffer: ByteBuffer) extends Client {
-    protected def disposeClient() {
+  private[Tcp] class SocketClient(val server: ServerSocketEndpoint, val channel: SocketChannel, val readBuffer: ByteBuffer) extends Disposable {
+    var readers = Set[ByteBuffer => Unit]() //set of readers
+    private var sendPending = Vector.empty[ByteBuffer]
+    def addPending(buff: ByteBuffer) {
+      if (key.isValid()) {
+        sendPending :+= buff
+        key.interestOps(SelectionKey.OP_READ | SelectionKey.OP_WRITE)
+        server.selector.wakeup() //so that he register my recent update of interests
+      } else debug("Key is invalid")
+    }
+
+    val key: SelectionKey = channel.register(server.selector, SelectionKey.OP_READ)
+    val reactor = new SelectionKeyReactor
+    @volatile var reachedEOF = false
+    reactor.afterProcessingInterests = key => {
+      try {
+        debug("Client operating: " + keyDescr(key))
+        var reachedEOF = false
+        if (key.isReadable()) {
+          readBuffer.clear
+          reachedEOF = channel.read(readBuffer) == -1
+          readBuffer.flip
+          debug("  Reading")
+          readers foreach (_(readBuffer.duplicate()))
+          debug("  Done")
+        }
+        if (key.isWritable()) {
+          var canWrite = true
+          sendPending
+          debug("Start writing")
+          while (canWrite && sendPending.nonEmpty) {
+            val (h, t) = (sendPending.head, sendPending.tail)
+            val wrote = channel.write(h)
+            if (h.hasRemaining()) { //could not write all of the content
+              canWrite = false
+            } else {
+              sendPending = sendPending.tail
+            }
+          }
+        }
+        debug("pendings: " + sendPending)
+        if (sendPending.isEmpty) key.interestOps(SelectionKey.OP_READ)
+        if (reachedEOF || !channel.isOpen()) dispose()
+      } catch {
+        case ex: Exception => server.log.error(ex, "Error on client " + keyDescr(key))
+      }
+    }
+    key.attach(reactor)
+
+    protected[Tcp] def disposeImpl() {
+      server.currentClients -= this
+      key.cancel()
       try channel.close() catch { case _: Exception => }
+      debug(s"$channel disposed")
     }
   }
 
@@ -46,6 +156,66 @@ object Tcp extends Streams {
     res.setOption(StandardSocketOptions.SO_REUSEADDR, true: java.lang.Boolean)
     res.connect(addr)
     res
+  }
+
+  /**
+   * Handlers are endpoint factories and the endpoint per se. They are source or
+   * responsible endpoints, so there is no need to produce a different endpoint.
+   * This class is desgined to work in a subflow for a server endpoint, registring
+   * the reader and serializer into the client.
+   */
+  class Handler[S, P, R] private[Tcp] (val client: SocketClient,
+                                       val reader: Consumer[S, P],
+                                       val serializer: R => Array[Byte]) extends Source with Responsible with EndpointFactory[Handler[S, P, R]] {
+    type Payload = P
+    type SupportedResponseTypes = R :: TypeNil
+    implicit var flow: uy.com.netlabs.esb.Flow = _
+    private var state: S = null.asInstanceOf[S]
+
+    { //do setup
+      client.onDispose { _ => flow.dispose }
+      client.readers += 
+      Consumer.Asynchronous(reader) { p =>
+        if (onSource != null) onSource(flow.messageFactory(p))
+        else {
+          val resp = onRequest(messageFactory(p))
+          resp.onComplete {
+            case Success(m) => client addPending ByteBuffer.wrap(serializer(m.payload.value.asInstanceOf[R]))
+            case Failure(err) => log.error(err, "Failed to respond to client")
+          }(flow.workerActorsExecutionContext)
+        }
+      }
+    }
+
+    def start() {}
+    def dispose() {}
+    def apply(f) = { flow = f; this }
+
+    def canEqual(that) = that == this
+
+    private var onSource: Message[Payload] => Unit = _
+    private var onRequest: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]] = _
+    //I start the flow as soon as the logic is given to me.
+    def onEvent(thunk) { flow.start; onSource = thunk }
+    def cancelEventListener(thunk) { throw new UnsupportedOperationException }
+    def onRequest(thunk) { flow.start; onRequest = thunk }
+    def cancelRequestListener(thunk) { throw new UnsupportedOperationException }
+
+  }
+  def closeClient(client: Message[SocketClient]) {
+    client.payload.dispose
+  }
+
+  object Handler {
+    def apply[S, P, R](message: Message[SocketClient],
+                       reader: Consumer[S, P]): EndpointFactory[Source { type Payload = Handler[S, P, R]#Payload }] = new Handler(message.payload, reader, null)
+    def apply[S, P, R](message: Message[SocketClient],
+                       reader: Consumer[S, P],
+                       serializer: R => Array[Byte]): EndpointFactory[Responsible {
+      type Payload = Handler[S, P, R]#Payload
+      type SupportedResponseTypes = Handler[S, P, R]#SupportedResponseTypes
+    }] = new Handler(message.payload, reader, serializer)
+
   }
 
   /**
@@ -74,32 +244,9 @@ object Tcp extends Streams {
         ioExecutor.shutdown()
       }
 
-      private val inBff = ByteBuffer.allocate(readBuffer)
-      private var lastState = reader.initialState
-      private var bufferedInput: Seq[R] = Seq.empty
+      private val syncConsumer = Consumer.Synchronous(reader, readBuffer)
       protected def retrieveMessage(mf: uy.com.netlabs.esb.MessageFactory): uy.com.netlabs.esb.Message[Payload] = {
-        if (bufferedInput.nonEmpty) {
-          val res = bufferedInput.head
-          bufferedInput = bufferedInput.tail
-          mf(res)
-        } else {
-          def iterate(): R = {
-            inBff.clear()
-            val read = socket.read(inBff)
-            inBff.flip
-            val r = reader.consume(Content(lastState, inBff))
-            lastState = r.state
-            r match {
-              case reader.NeedMore(_) =>
-                if (read < 0) throw new EOFException()
-                else iterate()
-              case reader.ByProduct(content, state) =>
-                bufferedInput = content.tail
-                content.head
-            }
-          }
-          mf(iterate())
-        }
+        mf(syncConsumer.consume(socket))
       }
 
       val ioExecutor = java.util.concurrent.Executors.newFixedThreadPool(ioWorkers)
