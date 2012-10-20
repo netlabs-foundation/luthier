@@ -5,8 +5,8 @@ import scala.reflect.macros._
 
 object MacroTest {
 
-  def showMeTheTypesImpl[T: c.AbsTypeTag](c: scala.reflect.macros.Context): c.Expr[Unit] = {
-    val tt = implicitly[c.AbsTypeTag[T]]
+  def showMeTheTypesImpl[T: c.WeakTypeTag](c: scala.reflect.macros.Context): c.Expr[Unit] = {
+    val tt = implicitly[c.WeakTypeTag[T]]
     println("Type is = " + tt)
     c.universe.reify(())
   }

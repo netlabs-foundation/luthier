@@ -3,7 +3,7 @@ package endpoint
 package cxf.dynamic
 
 import language.dynamics
-import scala.concurrent.util.Duration
+import scala.concurrent.duration._
 import typelist._
 import org.apache.cxf.jaxws.endpoint.dynamic.JaxWsDynamicClientFactory
 

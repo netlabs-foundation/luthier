@@ -42,7 +42,7 @@ object WsInvoker {
       if (cmd.! != 0) throw new Exception("wsimport failed")
     }
 
-    val cp = c.libraryClassPath :+ jarPath.toUri.toURL
+    val cp = c.classPath :+ jarPath.toUri.toURL
     val cpExpr = c.Expr[Seq[URL]](c.parse(cp.map(u => "new java.net.URL(\"" + u + "\")").mkString("Seq(", ", ", ")")))
     //    println(s"Using classpath ${cp.mkString("\n")}")
     Try(runScript(cp)(scriptTest)) match {
