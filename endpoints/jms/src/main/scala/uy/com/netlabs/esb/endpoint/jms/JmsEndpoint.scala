@@ -4,7 +4,7 @@ package endpoint.jms
 import typelist._
 import javax.jms.{ Connection, Queue, MessageListener, Session, Message => jmsMessage, TextMessage, ObjectMessage, BytesMessage }
 import scala.concurrent.{ ExecutionContext, Future }
-import scala.concurrent.util.{ Duration, duration }, duration._
+import scala.concurrent.duration._
 import scala.util.{ Try, Success, Failure }
 import language._
 
@@ -126,7 +126,7 @@ class JmsQueueEndpoint(val flow: Flow,
     connection.start()
   }
 
-  def ask[Payload: SupportedType](msg: Message[Payload], timeOut: Duration): Future[Message[Response]] = {
+  def ask[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
     implicit val session = threadLocalSession.get()
     val producer = session.createProducer(session.createQueue(queue))
     val tempQueue = session.createTemporaryQueue

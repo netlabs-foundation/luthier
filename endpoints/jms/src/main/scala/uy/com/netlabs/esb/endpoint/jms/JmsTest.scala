@@ -3,7 +3,7 @@ package endpoint.jms
 
 import java.nio.file.{ Paths, Files }
 import scala.concurrent.Future
-import scala.concurrent.util.{ Duration, duration }, duration._
+import scala.concurrent.duration._
 import language._
 
 object JmsTest extends App {
