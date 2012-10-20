@@ -1,7 +1,7 @@
 package uy.com.netlabs.esb
 
 import scala.concurrent._
-import scala.concurrent.util.{Duration, duration}, duration._
+import scala.concurrent.duration._
 import language.implicitConversions
 import typelist._
 
@@ -55,7 +55,7 @@ trait Sink extends OutboundEndpoint {
 
 trait Askable extends OutboundEndpoint {
   type Response <: Any
-  def ask[Payload: SupportedType](msg: Message[Payload], timeOut: Duration = 10.seconds): Future[Message[Response]]
+  def ask[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration = 10.seconds): Future[Message[Response]]
 }
 object Askable {
   implicit class SourceAndSink2Askable[In <: Source, Out <: Sink](t: (In, Out)) extends Askable {
@@ -63,7 +63,7 @@ object Askable {
     val in = t._1
     type Response = in.Payload
     type SupportedTypes = out.SupportedTypes
-    def ask[Payload: SupportedType](msg: Message[Payload], timeOut: Duration) = {
+    def ask[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration) = {
       out.push(msg)
       val resp = Promise[Message[Response]]()
       flow.scheduleOnce(timeOut)(resp.tryFailure(new TimeoutException()))

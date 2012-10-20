@@ -2,7 +2,7 @@ package uy.com.netlabs.esb.typelist
 
 import language.{ higherKinds, implicitConversions }
 import language.experimental.macros
-import scala.reflect.base.{ TypeTags, Types}
+import scala.reflect.api.{ TypeTags, Types}
 
 trait TypeList {
   type Head
@@ -12,7 +12,7 @@ trait TypeList {
 object TypeList {
   private[TypeList] val typeListFullName = scala.reflect.runtime.universe.typeTag[::[_, _]].tpe.typeSymbol.fullName
   private[TypeList] val typeNilFullName = scala.reflect.runtime.universe.typeTag[TypeNil].tpe.typeSymbol.fullName
-  def describe[TL <: TypeList](tl: TypeTags#AbsTypeTag[TL]): List[String] = {
+  def describe[TL <: TypeList](tl: TypeTags#WeakTypeTag[TL]): List[String] = {
     val internalUniverse = tl.mirror.universe.asInstanceOf[scala.reflect.internal.SymbolTable]
     import internalUniverse._
     def disect(tpe: Type): List[String] = {
@@ -55,7 +55,7 @@ trait TypeSelectorImplicits[Selector[TL <: TypeList, A]] extends LowPrioritySele
 }
 object TypeSelectorImplicits {
   import scala.reflect.macros.Context
-  def noSelectorErrorImpl[Selector[_ <: TypeList, _], T <: TypeList: c.AbsTypeTag, A: c.AbsTypeTag](c: Context): c.Expr[Selector[T, A]] = {
+  def noSelectorErrorImpl[Selector[_ <: TypeList, _], T <: TypeList: c.WeakTypeTag, A: c.WeakTypeTag](c: Context): c.Expr[Selector[T, A]] = {
     c.abort(c.enclosingPosition, "EEEXXXPLOOOOOOOOOTIOOON!")
   }
 }

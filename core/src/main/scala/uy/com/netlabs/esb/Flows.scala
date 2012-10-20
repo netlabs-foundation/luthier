@@ -87,7 +87,7 @@ object Flows {
   }
   
   
-  def genericInvalidResponseImpl[V, TL <: TypeList](c: Context)(value: c.Expr[V])(implicit valueEv: c.AbsTypeTag[V], tlEv: c.AbsTypeTag[TL]): c.Expr[Future[Message[OneOf[_, TL]]]] = {
+  def genericInvalidResponseImpl[V, TL <: TypeList](c: Context)(value: c.Expr[V])(implicit valueEv: c.WeakTypeTag[V], tlEv: c.WeakTypeTag[TL]): c.Expr[Future[Message[OneOf[_, TL]]]] = {
     val expectedTypes = TypeList.describe(tlEv)
     c.abort(c.enclosingPosition, "\nInvalid response found: " + valueEv.tpe + ".\n" + 
          "Expected a Message[T] or a Future[Message[T]] where T could be any of [" + expectedTypes.mkString("\n    ", "\n    ", "\n]"))

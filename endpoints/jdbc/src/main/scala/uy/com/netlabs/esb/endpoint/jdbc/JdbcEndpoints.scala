@@ -4,7 +4,7 @@ package endpoint.jdbc
 import javax.sql.DataSource
 import java.sql.{ Connection, PreparedStatement, ResultSet }
 import scala.reflect._
-import scala.concurrent.{ ExecutionContext, Future, util }, util.Duration
+import scala.concurrent.{ ExecutionContext, Future, duration }, duration._
 import scala.util.Try
 import typelist._
 
@@ -67,7 +67,7 @@ class JdbcAskable[R](val flow: Flow,
   implicit val ioExecutionContext = ExecutionContext.fromExecutor(ioExecutor)
 
   //TODO: Honor the timeout 
-  def ask[Payload: SupportedType](msg: Message[Payload], timeOut: Duration): Future[Message[Response]] = {
+  def ask[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
     Future {
       val args = {
         msg.payload match {

@@ -5,7 +5,7 @@ import language.experimental._
 import akka.actor.{ Actor, Props, Cancellable }
 import akka.routing.RoundRobinRouter
 import akka.event.LoggingAdapter
-import scala.concurrent.{ ExecutionContext, Promise, Future, util }, util.Duration
+import scala.concurrent.{ ExecutionContext, Promise, Future, duration }, duration._
 import scala.util._
 
 trait Flow extends Disposable {
@@ -72,13 +72,13 @@ trait Flow extends Disposable {
    */
   def doWork[R](task: => R) = {
     val res = new Flow.Work(() => task)
-    workerActors tell res
+    workerActors ! res
     res.promise.future
   }
-  def scheduleOnce(delay: Duration)(f: ⇒ Unit): Cancellable = {
+  def scheduleOnce(delay: FiniteDuration)(f: ⇒ Unit): Cancellable = {
     appContext.actorSystem.scheduler.scheduleOnce(delay)(f)(blockingExecutorContext)
   }
-  def schedule(initialDelay: Duration, frequency: Duration)(f: ⇒ Unit): Cancellable = {
+  def schedule(initialDelay: FiniteDuration, frequency: FiniteDuration)(f: ⇒ Unit): Cancellable = {
     appContext.actorSystem.scheduler.schedule(initialDelay, frequency)(f)(blockingExecutorContext)
   }
   /**
