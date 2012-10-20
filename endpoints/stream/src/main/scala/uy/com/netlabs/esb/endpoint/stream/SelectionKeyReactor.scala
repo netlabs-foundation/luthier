@@ -21,6 +21,6 @@ class SelectionKeyReactor {
     if (key.isWritable() && writer != null) writer(key)
     if (key.isConnectable() && connector != null) connector(key)
     if (key.isAcceptable() && acceptor!= null) acceptor(key)
-    if (beforeProcessingInterests != null) beforeProcessingInterests(key)
+    if (afterProcessingInterests != null) afterProcessingInterests(key)
   }
 }

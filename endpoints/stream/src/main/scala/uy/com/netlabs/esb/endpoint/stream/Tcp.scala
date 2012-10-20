@@ -16,7 +16,7 @@ object Tcp {
 
   @inline
   private final def debug(s: =>Any) {
-    //println(s)
+//    println(s)
   }
 
   private def keyDescr(k: SelectionKey) = s"Key($k),R:${k.isReadable()},W:${k.isWritable()},A:${k.isAcceptable()}. Chnl: ${k.channel()}"
