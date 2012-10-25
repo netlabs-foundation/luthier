@@ -182,7 +182,7 @@ object Tcp {
 
       private val syncConsumer = Consumer.Synchronous(reader, readBuffer)
       protected def retrieveMessage(mf: uy.com.netlabs.esb.MessageFactory): uy.com.netlabs.esb.Message[Payload] = {
-        mf(syncConsumer.consume(socket))
+        mf(syncConsumer.consume(socket.read))
       }
 
       val ioExecutor = java.util.concurrent.Executors.newFixedThreadPool(ioWorkers)

@@ -32,7 +32,7 @@ object Consumer {
     private val inBff = ByteBuffer.allocate(readBuffer)
     private var lastState = consumer.initialState
     private var bufferedInput: Seq[Prod] = Seq.empty
-    def consume(chnl: ReadableByteChannel): Prod = {
+    def consume(readOp: ByteBuffer => Int): Prod = {
       if (bufferedInput.nonEmpty) {
         val res = bufferedInput.head
         bufferedInput = bufferedInput.tail
@@ -40,7 +40,7 @@ object Consumer {
       } else {
         def iterate(): Prod = {
           inBff.clear()
-          val read = chnl.read(inBff)
+          val read = readOp(inBff)
           inBff.flip
           val r = consumer.consume(Content(lastState, inBff))
           lastState = r.state
@@ -61,10 +61,10 @@ object Consumer {
   def Asynchronous[State, Prod](consumer: Consumer[State, Prod])(handler: Prod => Unit): ByteBuffer => Unit = {
     var state = consumer.initialState
     content => {
-      //      debug("Reading " + content.remaining() + " bytes")
+      debug("Reading " + content.remaining() + " bytes")
       val res = if (!content.hasRemaining()) consumer.consume(NoMoreInput(state))
       else consumer.consume(Content(state, content))
-      //      debug("Reading result: " + res)
+      debug("Reading result: " + res)
       state = res.state
       res match {
         case consumer.ByProduct(ps, s) =>
