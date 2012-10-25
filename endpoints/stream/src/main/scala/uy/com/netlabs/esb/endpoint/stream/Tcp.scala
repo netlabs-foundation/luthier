@@ -14,13 +14,6 @@ import typelist._
 
 object Tcp {
 
-  @inline
-  private final def debug(s: =>Any) {
-//    println(s)
-  }
-
-  private def keyDescr(k: SelectionKey) = s"Key($k),R:${k.isReadable()},W:${k.isWritable()},A:${k.isAcceptable()}. Chnl: ${k.channel()}"
-
   object Server {
     case class EF private[Server] (addr: SocketAddress, readBuffer: Int) extends EndpointFactory[ServerSocketEndpoint] {
       def apply(f) = new ServerSocketEndpoint(f, addr, readBuffer)
@@ -67,22 +60,10 @@ object Tcp {
           it = accept()
         }
       }
-      selectingFuture = flow.blocking {
-        while (!stopServer) {
-          debug(Console.MAGENTA + "Selecting..." + Console.RESET)
-          if (selector.select() > 0) {
-            debug(Console.YELLOW + s"${selector.selectedKeys().size} keys selected" + Console.RESET)
-            val sk = selector.selectedKeys().iterator()
-            while (sk.hasNext()) {
-              val k = sk.next()
-              debug(Console.GREEN + "Processing " + keyDescr(k) + Console.RESET)
-              k.attachment().asInstanceOf[SelectionKeyReactor].react(k)
-              debug(Console.GREEN + "Done with " + keyDescr(k) + Console.RESET)
-              sk.remove()
-            }
-          }
-        }
-      }
+      selectingFuture = flow blocking new SelectionKeyReactorSelector {
+        val selector = ServerSocketEndpoint.this.selector
+        def mustStop = stopServer
+      }.selectionLoop
     }
     def dispose() {
       stopServer = true
@@ -94,53 +75,8 @@ object Tcp {
   }
 
   private[Tcp] class SocketClient(val server: ServerSocketEndpoint, val channel: SocketChannel, val readBuffer: ByteBuffer) extends Disposable {
-    var readers = Set[ByteBuffer => Unit]() //set of readers
-    private var sendPending = Vector.empty[ByteBuffer]
-    def addPending(buff: ByteBuffer) {
-      if (key.isValid()) {
-        sendPending :+= buff
-        key.interestOps(SelectionKey.OP_READ | SelectionKey.OP_WRITE)
-        server.selector.wakeup() //so that he register my recent update of interests
-      } else debug("Key is invalid")
-    }
-
     val key: SelectionKey = channel.register(server.selector, SelectionKey.OP_READ)
-    val reactor = new SelectionKeyReactor
-    @volatile var reachedEOF = false
-    reactor.afterProcessingInterests = key => {
-      try {
-        debug("Client operating: " + keyDescr(key))
-        var reachedEOF = false
-        if (key.isReadable()) {
-          readBuffer.clear
-          reachedEOF = channel.read(readBuffer) == -1
-          readBuffer.flip
-          debug("  Reading")
-          readers foreach (_(readBuffer.duplicate()))
-          debug("  Done")
-        }
-        if (key.isWritable()) {
-          var canWrite = true
-          sendPending
-          debug("Start writing")
-          while (canWrite && sendPending.nonEmpty) {
-            val (h, t) = (sendPending.head, sendPending.tail)
-            val wrote = channel.write(h)
-            if (h.hasRemaining()) { //could not write all of the content
-              canWrite = false
-            } else {
-              sendPending = sendPending.tail
-            }
-          }
-        }
-        debug("pendings: " + sendPending)
-        if (sendPending.isEmpty) key.interestOps(SelectionKey.OP_READ)
-        if (reachedEOF || !channel.isOpen()) dispose()
-      } catch {
-        case ex: Exception => server.log.error(ex, "Error on client " + keyDescr(key))
-      }
-    }
-    key.attach(reactor)
+    val multiplexer = new ChannelMultiplexer(key, server.selector, readBuffer, channel.read, channel.write, this, server.log)
 
     protected[Tcp] def disposeImpl() {
       server.currentClients -= this
@@ -174,17 +110,17 @@ object Tcp {
 
     { //do setup
       client.onDispose { _ => flow.dispose }
-      client.readers += 
-      Consumer.Asynchronous(reader) { p =>
-        if (onSource != null) onSource(flow.messageFactory(p))
-        else {
-          val resp = onRequest(messageFactory(p))
-          resp.onComplete {
-            case Success(m) => client addPending ByteBuffer.wrap(serializer(m.payload.value.asInstanceOf[R]))
-            case Failure(err) => log.error(err, "Failed to respond to client")
-          }(flow.workerActorsExecutionContext)
+      client.multiplexer.readers +=
+        Consumer.Asynchronous(reader) { p =>
+          if (onSource != null) onSource(flow.messageFactory(p))
+          else {
+            val resp = onRequest(messageFactory(p))
+            resp.onComplete {
+              case Success(m) => client.multiplexer addPending ByteBuffer.wrap(serializer(m.payload.value.asInstanceOf[R]))
+              case Failure(err) => log.error(err, "Failed to respond to client")
+            }(flow.workerActorsExecutionContext)
+          }
         }
-      }
     }
 
     def start() {}
