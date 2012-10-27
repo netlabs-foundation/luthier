@@ -24,6 +24,22 @@ trait InboundEndpoint extends Endpoint {
   def messageFactory = flow.messageFactory
 }
 
+object InboundEndpoint {
+  implicit class SelectOneWay[S <: Source](val s: S) {
+    type SourceOnly = Source {
+      type Payload = S#Payload
+    }
+    def asSource = s.asInstanceOf[SourceOnly]
+  }
+  implicit class SelectRequestResponse[R <: Responsible](val r: R) {
+    type ResponsibleOnly = Responsible {
+      type Payload = R#Payload
+      type SupportedResponseTypes = R#SupportedResponseTypes
+    }
+    def asResponsible = r.asInstanceOf[ResponsibleOnly]
+  }
+}
+
 trait Source extends InboundEndpoint {
   def onEvent(thunk: Message[Payload] => Unit): Unit
   def cancelEventListener(thunk: Message[Payload] => Unit): Unit
