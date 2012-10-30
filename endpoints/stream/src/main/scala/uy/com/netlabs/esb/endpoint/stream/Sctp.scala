@@ -99,7 +99,15 @@ object Sctp {
             readBuffer.clear
             val recievedMessageInfo = channel.receive(readBuffer, null, new NotificationHandler[Null] {
               def handleNotification(notif, attachment) = notif match {
-                case _: AssociationChangeNotification | _: SendFailedNotification | _: ShutdownNotification =>
+                case a: AssociationChangeNotification => a.event match {
+                  case AssociationChangeNotification.AssocChangeEvent.COMM_LOST |
+                    AssociationChangeNotification.AssocChangeEvent.SHUTDOWN |
+                    AssociationChangeNotification.AssocChangeEvent.RESTART =>
+                    reachedEOF = true //hackish.. but legal. Pot gets you doing stuff...
+                    HandlerResult.RETURN
+                  case _ => HandlerResult.CONTINUE
+                }
+                case _: SendFailedNotification | _: ShutdownNotification =>
                   reachedEOF = true //hackish.. but legal. Pot gets you doing stuff...
                   HandlerResult.RETURN
                 case _ => HandlerResult.CONTINUE
@@ -136,7 +144,7 @@ object Sctp {
         if (sendPending.isEmpty) key.interestOps(SelectionKey.OP_READ)
         if (reachedEOF || !key.channel.isOpen()) dispose()
       } catch {
-        case ex: Exception => server.log.error(ex, "Error on client " + keyDescr(key))
+        case ex: Exception => server.log.error(ex, "Error on client " + keyDescr(key) + ". Disposing"); dispose()
       }
     }
     key.attach(reactor)
@@ -145,7 +153,7 @@ object Sctp {
       server.currentClients -= this
       key.cancel()
       try channel.close() catch { case _: Exception => }
-      debug(s"$channel disposed")
+      debug(s"$channel disposed from: " + new Exception().getStackTraceString)
     }
   }
 
@@ -181,8 +189,8 @@ object Sctp {
             val resp = onRequest(messageFactory(p))
             resp.onComplete {
               case Success(m) =>
-                val (stream, r) = m.payload.asInstanceOf[(Int, R)]
-                client addPending stream->ByteBuffer.wrap(serializer(r))
+                val (stream, r) = m.payload.value.asInstanceOf[(Int, R)]
+                client addPending stream -> ByteBuffer.wrap(serializer(r))
               case Failure(err) => log.error(err, "Failed to respond to client")
             }(flow.workerActorsExecutionContext)
           }
@@ -226,7 +234,7 @@ object Sctp {
    * Simple Sctp client.
    * Given the nature of a single socket, there is no need for selectors. A simple implementation
    * of the base endpoints will suffice.
-   * 
+   *
    * *Implementation notes* When ask is performed, the first message received will be retrieved,
    * in whichever stream it comes.
    */
