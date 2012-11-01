@@ -32,29 +32,30 @@ trait Flows extends FlowsImplicits0 {
 
   @scala.annotation.implicitNotFound("There is no ExchangePattern for ${T}.")
   sealed trait ExchangePattern[T <: InboundEndpoint, ResponseType] {
-    def registerLogic: T => (Message[T#Payload] => ResponseType) => Unit
+    private[Flows] def setup(t: T, f: Flow[T, ResponseType]): Unit
   }
   object ExchangePattern {
     implicit def OneWayCommunicationPattern[In <: Source] = new ExchangePattern[In, Unit] {
-      def registerLogic = (i: In) => (i.onEvent _).asInstanceOf[(Message[In#Payload] => Unit) => Unit]
+      private[Flows] def setup(endpoint, flow) {
+        endpoint.onEvent(flow.runFlow(_))
+      } 
     }
     implicit def RequestResponseCommunicationPattern[In <: Responsible] = new ExchangePattern[In, Future[Message[OneOf[_, In#SupportedResponseTypes]]]] {
-      def registerLogic = (i: In) => (i.onRequest _).asInstanceOf[(Message[In#Payload] => Future[Message[OneOf[_, In#SupportedResponseTypes]]]) => Unit]
+      private[Flows] def setup(endpoint, flow) {
+        endpoint.onRequest(flow.runFlow(_).mapTo)
+      }
     }
   }
 
   abstract class Flow[E <: InboundEndpoint, ResponseType](val name: String)(endpoint: EndpointFactory[E])(implicit val exchangePattern: ExchangePattern[E, ResponseType]) extends GFlow {
     registeredFlows += this
-    type Logic = Message[rootEndpoint.Payload] => ResponseType
+    type InboundEndpointTpe = E
+    type Logic = RootMessage[E#Payload] => ResponseType
     val rootEndpoint = endpoint(this)
     val appContext = Flows.this.appContext
     val log = akka.event.Logging(appContext.actorSystem, this)
     val flowsContext = Flows.this //backreference
-
-    def logic(l: Logic) {
-      exchangePattern.registerLogic(rootEndpoint)(l.asInstanceOf[Message[E#Payload] => ResponseType])
-    }
-
+    exchangePattern.setup(rootEndpoint, this)
   }
   
   def inFlow[R](code: (Flow[_, Unit], Message[Unit]) => R): Future[R]= {

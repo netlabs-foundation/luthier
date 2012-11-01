@@ -12,7 +12,8 @@ class ImplicitMessageFactoryTest extends BaseFlowsTest {
         val fakeEndpoint: EndpointFactory[Source] = new base.DummySource
         new Flow("test")(fakeEndpoint) {
           logic { m =>
-            val mf = implicitly[MessageFactory]
+            val fr = flowRun //this call should succeed
+            val mf = implicitly[MessageFactory] //a flowrun is a messageFactory
             m.map(_ => "another message!")
           }
           logic {m2 =>
@@ -26,7 +27,7 @@ class ImplicitMessageFactoryTest extends BaseFlowsTest {
         val fakeEndpoint: EndpointFactory[Source] = new base.DummySource
         new Flow("test2")(fakeEndpoint) {
           logic { m =>
-            val implicitRootMessage: Message[rootEndpoint.Payload] = implicitly
+            val implicitRootMessage: RootMessage[InboundEndpointTpe#Payload] = implicitly //this call should succeed by means of the macro
             implicitRootMessage
           }
         }

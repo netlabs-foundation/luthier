@@ -9,9 +9,11 @@ import scala.concurrent.{ ExecutionContext, Promise, Future, duration }, duratio
 import scala.util._
 
 trait Flow extends Disposable {
+  type InboundEndpointTpe <: InboundEndpoint
+  
   def name: String
   val appContext: AppContext
-  val rootEndpoint: InboundEndpoint
+  val rootEndpoint: InboundEndpointTpe
   val log: LoggingAdapter
   private[this] var instantiatedEndpoints = Map.empty[EndpointFactory[_], Endpoint]
 
@@ -34,15 +36,27 @@ trait Flow extends Disposable {
     d.onDispose(_ => dispose())
     this
   }
-  private[esb] val messageFactory: MessageFactory = new MessageFactory {
-    def apply[P](payload: P) = Message(payload)
+
+  type Logic <: RootMessage[InboundEndpointTpe#Payload] => _
+  private[this] var logic: Logic = _
+  def logic(l: Logic) {
+    logic = l
   }
 
-  type Logic <: Message[rootEndpoint.Payload] => _
-  def logic(l: Logic)
+  def runFlow(rootMessage: Message[InboundEndpointTpe#Payload]): Future[_] = {
+    doWork(logic(new RootMessage[InboundEndpointTpe#Payload] with MessageProxy[InboundEndpointTpe#Payload] {
+      val peer = rootMessage
+      val self = this
+      val flowRun = new FlowRun[InboundEndpointTpe#Payload] {
+        val rootMessage = self
+        val flow = Flow.this
+      }
+    }))
+  }
 
   implicit def self: this.type = this
-  implicit def messageInLogicImplicit: Message[rootEndpoint.Payload] = macro Flow.findNearestMessageMacro[rootEndpoint.Payload]
+  implicit def messageInLogicImplicit: RootMessage[InboundEndpointTpe#Payload] = macro Flow.findNearestMessageMacro[InboundEndpointTpe#Payload]
+  implicit def flowRun(implicit rootMessage: RootMessage[InboundEndpointTpe#Payload]) = rootMessage.flowRun
   implicit def endpointFactory2Endpoint[T <: Endpoint](ef: EndpointFactory[T]): T = {
     instantiatedEndpoints.get(ef) match {
       case Some(endpoint) => endpoint.asInstanceOf[T]
@@ -119,13 +133,13 @@ object Flow {
     protected[Flow] val promise = Promise[R]()
   }
 
-  import scala.reflect.macros.{Context, Universe}
-  def findNearestMessageMacro[Payload](c: Context): c.Expr[Message[Payload]] = {
+  import scala.reflect.macros.{ Context, Universe }
+  def findNearestMessageMacro[Payload](c: Context): c.Expr[RootMessage[Payload]] = {
     import c.universe._
     val collected = c.enclosingClass.collect {
-      case a@Apply(Ident(i), List(Function(List(param@ValDef(modifiers, paramName, _, _)), _))) if i.encoded == "logic" &&
-      modifiers.hasFlag(Flag.PARAM) && param.symbol.typeSignature.toString == "uy.com.netlabs.esb.Message[this.rootEndpoint.Payload]" && 
-      !c.typeCheck(c.parse(paramName.encoded), param.symbol.typeSignature, silent = true).isEmpty =>
+      case a @ Apply(Ident(i), List(Function(List(param @ ValDef(modifiers, paramName, _, _)), _))) if i.encoded == "logic" &&
+        modifiers.hasFlag(Flag.PARAM) && param.symbol.typeSignature.toString.startsWith("uy.com.netlabs.esb.RootMessage") &&
+        !c.typeCheck(c.parse(paramName.encoded), param.symbol.typeSignature, silent = true).isEmpty =>
         paramName
     }.head
     val selectMessage = c.Expr(c.parse(collected.encoded))

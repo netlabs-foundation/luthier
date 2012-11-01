@@ -21,7 +21,8 @@ trait EndpointFactory[+E <: Endpoint] extends Equals {
 
 trait InboundEndpoint extends Endpoint {
   type Payload <: Any
-  def messageFactory = flow.messageFactory
+  
+  def newReceviedMessage[P](payload: P) = Message(payload)
 }
 
 object InboundEndpoint {
@@ -41,14 +42,16 @@ object InboundEndpoint {
 }
 
 trait Source extends InboundEndpoint {
-  def onEvent(thunk: Message[Payload] => Unit): Unit
-  def cancelEventListener(thunk: Message[Payload] => Unit): Unit
+  private[this] var onEventHandler0: Message[Payload] => Unit = _
+  protected def onEventHandler: Message[Payload] => Unit = onEventHandler0
+  def onEvent(thunk: Message[Payload] => Unit) {onEventHandler0 = thunk}
 }
 
 trait Responsible extends InboundEndpoint {
   type SupportedResponseTypes <: TypeList
+  private[this] var onRequestHandler0: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]] = _
+  protected def onRequestHandler: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]] = onRequestHandler0
   def onRequest(thunk: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]])
-  def cancelRequestListener(thunk: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]])
 }
 
 
