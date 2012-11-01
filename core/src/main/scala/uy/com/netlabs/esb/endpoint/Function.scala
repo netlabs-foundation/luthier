@@ -12,8 +12,7 @@ object Function {
     type Response = R
     type SupportedTypes = Function0[R] :: TypeNil
 
-    private[this] var ioExecutor = java.util.concurrent.Executors.newFixedThreadPool(ioThreads)
-    implicit val ioExecutionContext = ExecutionContext.fromExecutor(ioExecutor)
+    val ioProfile = base.IoProfile.threadPool(ioThreads)
     protected def retrieveMessage(mf): Message[Payload] = mf(function())
     
     def ask[Payload: SupportedType](msg, timeOut): Future[Message[Response]] = {
@@ -23,7 +22,7 @@ object Function {
     def start() {
     }
     def dispose() {
-      ioExecutor.shutdownNow()
+      ioProfile.dispose()
     }
   }
   private case class EF[R](function: () => R, ioThreads: Int = 1) extends EndpointFactory[FunctionPull[R]] {

@@ -16,26 +16,22 @@ import typelist._
  * `messageArrived`
  */
 trait BaseSource extends Source {
-  protected var onEvents = Set.empty[Message[_] => Unit]
-  def onEvent(thunk: Message[Payload] => Unit) { onEvents += thunk.asInstanceOf[Message[_] => Unit] }
-  def cancelEventListener(thunk: Message[Payload] => Unit) { onEvents -= thunk.asInstanceOf[Message[_] => Unit] }
 
   protected def messageArrived(m: Message[Payload]) {
-    for (h <- onEvents) flow.doWork(h(m)).onFailure { case f => appContext.actorSystem.log.error(f, "Error on flow " + flow) }(flow.workerActorsExecutionContext)
+    onEventHandler(m)
   }
 }
 class DummySource extends EndpointFactory[DummySource.DummySourceEndpoint] {
   def canEqual(that: Any) = that.asInstanceOf[AnyRef] eq this
   def apply(f: uy.com.netlabs.esb.Flow) = new DummySource.DummySourceEndpoint {
-    implicit def flow = f
+    implicit val flow = f
     def start() {}
     def dispose() {}
     /**
      * Run registered logics asynchronously
      */
     def runLogic() {
-      val m = messageFactory(())
-      flow.doWork(onEvents foreach (_(m))) 
+      flow.runFlow(newReceviedMessage(()).asInstanceOf[Message[flow.InboundEndpointTpe#Payload]]) 
     }
   }
 }
@@ -58,25 +54,13 @@ object DummySource {
  *
  */
 trait BaseResponsible extends Responsible {
-  protected var onRequests = Set.empty[Message[_] => Future[Message[OneOf[_, SupportedResponseTypes]]]]
-  def onRequest(thunk: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]]) {
-    onRequests += thunk.asInstanceOf[Message[_] => Future[Message[OneOf[_, SupportedResponseTypes]]]]
-  }
-  def cancelRequestListener(thunk: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]]) {
-    onRequests -= thunk.asInstanceOf[Message[_] => Future[Message[OneOf[_, SupportedResponseTypes]]]]
-  }
-
-  val ioExecutionContext: ExecutionContext
+  val ioProfile: IoProfile
+  implicit def ioExecutionContext = ioProfile.executionContext
 
   protected def requestArrived(m: Message[Payload], messageSender: Try[Message[OneOf[_, SupportedResponseTypes]]] => Unit) {
-    implicit val ec = flow.workerActorsExecutionContext
-    for (h <- onRequests) {
-      flow.doWork {
-        val f = h(m)
-        f.onComplete(messageSender)(ioExecutionContext) //use ioExecutionContext to sendMessages
-        f
-      } onFailure { case ex => appContext.actorSystem.log.error(ex, "Error on flow " + flow) }
-    }
+    val f = onRequestHandler(m)
+    f.onComplete(messageSender)(ioProfile.executionContext) //use ioExecutionContext to sendMessages
+    f onFailure { case ex => appContext.actorSystem.log.error(ex, "Error on flow " + flow) }
   }
 }
 
@@ -87,9 +71,9 @@ trait BaseResponsible extends Responsible {
  *
  */
 trait BasePullEndpoint extends PullEndpoint {
-  val ioExecutionContext: ExecutionContext
+  val ioProfile: IoProfile
+  implicit def ioExecutionContext = ioProfile.executionContext
   def pull()(implicit mf: MessageFactory): Future[Message[Payload]] = {
-    implicit val ec = ioExecutionContext
     Future { retrieveMessage(mf) }
   }
 
@@ -103,9 +87,9 @@ trait BasePullEndpoint extends PullEndpoint {
  *
  */
 trait BaseSink extends Sink {
-  val ioExecutionContext: ExecutionContext
+  val ioProfile: IoProfile
+  implicit def ioExecutionContext = ioProfile.executionContext
   def push[Payload: SupportedType](msg: Message[Payload]): Future[Unit] = {
-    implicit val ec = ioExecutionContext
     Future { pushMessage(msg) }
   }
 
