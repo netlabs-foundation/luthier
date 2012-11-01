@@ -51,7 +51,7 @@ trait Responsible extends InboundEndpoint {
   type SupportedResponseTypes <: TypeList
   private[this] var onRequestHandler0: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]] = _
   protected def onRequestHandler: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]] = onRequestHandler0
-  def onRequest(thunk: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]])
+  def onRequest(thunk: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]]) {onRequestHandler0 = thunk}
 }
 
 

@@ -42,6 +42,11 @@ object DummySource {
   }
 }
 
+trait IoExecutionContext {
+  val ioProfile: IoProfile
+  implicit def ioExecutionContext = ioProfile.executionContext
+}
+
 /**
  * Base implementation of Responsible.
  * The handlers registered with onRequest are stored in a set, and a job is tasked for each
@@ -53,9 +58,7 @@ object DummySource {
  * `requestArrived`.
  *
  */
-trait BaseResponsible extends Responsible {
-  val ioProfile: IoProfile
-  implicit def ioExecutionContext = ioProfile.executionContext
+trait BaseResponsible extends Responsible with IoExecutionContext {
 
   protected def requestArrived(m: Message[Payload], messageSender: Try[Message[OneOf[_, SupportedResponseTypes]]] => Unit) {
     val f = onRequestHandler(m)
@@ -70,9 +73,7 @@ trait BaseResponsible extends Responsible {
  * abstract `retrieveMessage()`
  *
  */
-trait BasePullEndpoint extends PullEndpoint {
-  val ioProfile: IoProfile
-  implicit def ioExecutionContext = ioProfile.executionContext
+trait BasePullEndpoint extends PullEndpoint with IoExecutionContext {
   def pull()(implicit mf: MessageFactory): Future[Message[Payload]] = {
     Future { retrieveMessage(mf) }
   }
@@ -86,9 +87,7 @@ trait BasePullEndpoint extends PullEndpoint {
  * abstract `pushMessage()`
  *
  */
-trait BaseSink extends Sink {
-  val ioProfile: IoProfile
-  implicit def ioExecutionContext = ioProfile.executionContext
+trait BaseSink extends Sink with IoExecutionContext {
   def push[Payload: SupportedType](msg: Message[Payload]): Future[Unit] = {
     Future { pushMessage(msg) }
   }

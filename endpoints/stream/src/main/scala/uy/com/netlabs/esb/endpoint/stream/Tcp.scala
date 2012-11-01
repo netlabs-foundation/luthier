@@ -46,7 +46,7 @@ object Tcp {
      */
     private def clientArrived(client: SocketClient) {
       currentClients += client
-      messageArrived(messageFactory(client))
+      messageArrived(newReceviedMessage(client))
     }
     private var selectingFuture: Future[Unit] = _
     private var stopServer = false
@@ -112,9 +112,9 @@ object Tcp {
       client.onDispose { _ => flow.dispose }
       client.multiplexer.readers +=
         Consumer.Asynchronous(reader) { p =>
-          if (onSource != null) onSource(flow.messageFactory(p))
+          if (onEventHandler != null) onEventHandler(newReceviedMessage(p))
           else {
-            val resp = onRequest(messageFactory(p))
+            val resp = onRequestHandler(newReceviedMessage(p))
             resp.onComplete {
               case Success(m) => client.multiplexer addPending ByteBuffer.wrap(serializer(m.payload.value.asInstanceOf[R]))
               case Failure(err) => log.error(err, "Failed to respond to client")
@@ -128,15 +128,6 @@ object Tcp {
     def apply(f) = { flow = f; this }
 
     def canEqual(that) = that == this
-
-    private var onSource: Message[Payload] => Unit = _
-    private var onRequest: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]] = _
-    //I start the flow as soon as the logic is given to me.
-    def onEvent(thunk) { flow.start; onSource = thunk }
-    def cancelEventListener(thunk) { throw new UnsupportedOperationException }
-    def onRequest(thunk) { flow.start; onRequest = thunk }
-    def cancelRequestListener(thunk) { throw new UnsupportedOperationException }
-
   }
   def closeClient(client: Message[SocketClient]) {
     client.payload.dispose
@@ -177,7 +168,7 @@ object Tcp {
       }
       def dispose {
         scala.util.Try(socket.close())
-        ioExecutor.shutdown()
+        ioProfile.dispose()
       }
 
       private val syncConsumer = Consumer.Synchronous(reader, readBuffer)
@@ -185,8 +176,7 @@ object Tcp {
         mf(syncConsumer.consume(socket.read))
       }
 
-      val ioExecutor = java.util.concurrent.Executors.newFixedThreadPool(ioWorkers)
-      val ioExecutionContext = ExecutionContext.fromExecutor(ioExecutor)
+      val ioProfile = base.IoProfile.threadPool(ioWorkers)
       protected def pushMessage[MT: SupportedType](msg): Unit = {
         socket.write(ByteBuffer.wrap(writer(msg.payload.asInstanceOf[P])))
       }

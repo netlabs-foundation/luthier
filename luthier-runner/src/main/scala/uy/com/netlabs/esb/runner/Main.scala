@@ -4,7 +4,7 @@ package runner
 import scala.tools.nsc.Settings
 import scala.tools.nsc.interpreter.{ IMain, IR }
 import scala.concurrent._
-import scala.concurrent.util.Duration
+import scala.concurrent.duration._
 import scala.collection.JavaConversions._
 
 import java.nio.file._

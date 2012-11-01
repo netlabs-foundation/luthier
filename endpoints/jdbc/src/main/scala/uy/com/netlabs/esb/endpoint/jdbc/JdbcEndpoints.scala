@@ -21,7 +21,7 @@ class JdbcPull[R](val flow: Flow,
   def dispose(): Unit = {
     Try(preparedStatement.close())
     Try(connection.close())
-    ioExecutor.shutdownNow()
+    ioProfile.dispose()
   }
   def start(): Unit = {
     try {
@@ -30,8 +30,7 @@ class JdbcPull[R](val flow: Flow,
     }
   }
 
-  private[this] lazy val ioExecutor = java.util.concurrent.Executors.newFixedThreadPool(ioThreads)
-  implicit lazy val ioExecutionContext = ExecutionContext.fromExecutor(ioExecutor)
+  lazy val ioProfile = endpoint.base.IoProfile.threadPool(ioThreads)
 
   protected def retrieveMessage(mf): uy.com.netlabs.esb.Message[Payload] = {
     val res = Try {
@@ -57,14 +56,13 @@ class JdbcAskable[R](val flow: Flow,
 
   def dispose(): Unit = {
     Try(connection.close())
-    ioExecutor.shutdownNow()
+    ioProfile.dispose()
   }
   def start(): Unit = {
     connection = dataSource.getConnection()
   }
 
-  private[this] var ioExecutor = java.util.concurrent.Executors.newFixedThreadPool(ioThreads)
-  implicit val ioExecutionContext = ExecutionContext.fromExecutor(ioExecutor)
+  private[this] val ioProfile = endpoint.base.IoProfile.threadPool(ioThreads)
 
   //TODO: Honor the timeout 
   def ask[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
@@ -90,7 +88,7 @@ class JdbcAskable[R](val flow: Flow,
         res: Response
       }
       msg map (_ => res.get)
-    }(ioExecutionContext)
+    }(ioProfile.executionContext)
   }
 }
 

@@ -4,8 +4,7 @@ package http
 
 import java.nio.file.{ Paths, Files }
 
-import scala.concurrent._
-import scala.concurrent.util.{ Duration, duration }, duration._
+import scala.concurrent._, duration._
 import scala.util._
 import language._
 
@@ -30,7 +29,7 @@ class HttpTest extends BaseFlowsTest {
         }
         flow.start
         val res = Try(Await.result(result.future, 5.seconds))
-        flow.stop
+        flow.dispose
         assert(res.get)
       }
     }
@@ -43,7 +42,7 @@ class HttpTest extends BaseFlowsTest {
           val req = url("http://www.google.com/").setFollowRedirects(true) -> new OkFunctionHandler(as.jsoup.Document)
           Await.result(Http[org.jsoup.nodes.Document]().ask(m.map(_ => req)) map { m =>
             println("Cookies: ")
-            println(m.header.get("INBOUND").get("Cookies"))
+            println(m.header.inbound.get("Cookies"))
             
             if (m.payload.select("a[href]").size != 0) None
             else Some("payload with 0 links?")

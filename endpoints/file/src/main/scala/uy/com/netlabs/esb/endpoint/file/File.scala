@@ -18,8 +18,7 @@ class FileEndpoint(f: Flow, path: String, charset: String, ioThreads: Int) exten
 
   implicit val flow = f
   
-  private[this] lazy val ioExecutor = java.util.concurrent.Executors.newFixedThreadPool(ioThreads)
-  implicit lazy val ioExecutionContext = ExecutionContext.fromExecutor(ioExecutor)
+  val ioProfile = endpoint.base.IoProfile.threadPool(ioThreads)
   
   protected def pushMessage[Payload: SupportedType](msg: Message[Payload]) {
     msg.payload match {
@@ -39,7 +38,7 @@ class FileEndpoint(f: Flow, path: String, charset: String, ioThreads: Int) exten
   protected def retrieveMessage(mf) = mf(Files.readAllBytes(Paths.get(path)))
 
   def dispose() {
-    ioExecutor.shutdown()
+    ioProfile.dispose()
   }
   def start() {}
 }

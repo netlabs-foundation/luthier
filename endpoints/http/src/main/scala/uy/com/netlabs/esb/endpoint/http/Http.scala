@@ -64,7 +64,7 @@ object Http {
     private def toMessage(resp: (R, HeaderBaggage), mf: MessageFactory) = {
       import collection.JavaConversions._
       val res = mf(resp._1)
-      res.header.put("INBOUND", Map("Cookies"->resp._2))
+      res.header.inbound += ("Cookies"->resp._2)
       res
     }
     
@@ -79,7 +79,7 @@ object Http {
     def ask[Payload: SupportedType](msg, timeOut): Future[Message[Response]] = {
       val promise = Promise[Message[Response]]()
       val req = msg.mapTo[(Request, FunctionHandler[R])].payload
-      val cookies = msg.header.getOrElse("INBOUND", Map.empty).getOrElse("Cookies", Seq.empty).asInstanceOf[Seq[Cookie]] 
+      val cookies = msg.header.inbound.getOrElse("Cookies", Seq.empty).asInstanceOf[Seq[Cookie]] 
       cookies foreach req._1.addCookie
 //      println("Sending cookies: " + cookies)
       dispatcher(wrapRequest(req)).onComplete {
