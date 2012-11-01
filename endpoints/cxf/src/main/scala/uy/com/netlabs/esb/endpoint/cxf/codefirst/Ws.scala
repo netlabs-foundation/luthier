@@ -29,11 +29,10 @@ object Ws {
     }
     def dispose() {
       server.destroy()
-      ioExecutor.shutdown()
+      ioProfile.dispose()
     }
 
-    private val ioExecutor = Executors.newFixedThreadPool(ioWorkers)
-    implicit val ioExecutionContext = ExecutionContext.fromExecutor(ioExecutor)
+    val ioProfile = base.IoProfile.threadPool(ioWorkers)
 
     sei.InterfaceImplementor.methodImplementors += methodRef.method -> { args =>
       val payload = args match { //map from array to tuple
@@ -49,7 +48,7 @@ object Ws {
         case arr if arr.length == 9 => (arr(0), arr(1), arr(2), arr(3), arr(4), arr(5), arr(6), arr(7), arr(8))
         case arr if arr.length == 10 => (arr(0), arr(1), arr(2), arr(3), arr(4), arr(5), arr(6), arr(7), arr(8), arr(9))
       }
-      val m = messageFactory(payload.asInstanceOf[PL])
+      val m = newReceviedMessage(payload.asInstanceOf[PL])
       val resultPromise = Promise[Message[OneOf[_, SupportedResponseTypes]]]()
       requestArrived(m, resultPromise.complete)
       Await.result(resultPromise.future, maxResponseTimeout).payload.value //re-throw exception in the try on purpose

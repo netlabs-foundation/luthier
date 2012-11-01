@@ -5,7 +5,7 @@ import java.nio.file._
 import scala.tools.nsc.interpreter.{ IMain, IR }
 import scala.util._
 import scala.collection.JavaConversions._
-import scala.concurrent.util.duration._
+import scala.concurrent.duration._
 
 class FlowHandler(compiler: IMain, file: String) {
   val filePath = Paths.get(file)

@@ -3,8 +3,7 @@ package endpoint
 package file
 
 import scala.util._
-import scala.concurrent._
-import scala.concurrent.util.duration._
+import scala.concurrent._, duration._
 
 class FileEndpointTest extends BaseFlowsTest {
   describe("A FileEndpoint") {
@@ -21,7 +20,7 @@ class FileEndpointTest extends BaseFlowsTest {
         }
         flow.start
         val res = Try(Await.result(result.future, 0.25.seconds))
-        flow.stop
+        flow.dispose()
         assert(res.get)
       }
     }
@@ -36,7 +35,7 @@ class FileEndpointTest extends BaseFlowsTest {
         }
         flow.start
         val res = Try(Await.result(result.future, 0.25.seconds))
-        flow.stop
+        flow.dispose()
         assert(res.get)
       }
     }

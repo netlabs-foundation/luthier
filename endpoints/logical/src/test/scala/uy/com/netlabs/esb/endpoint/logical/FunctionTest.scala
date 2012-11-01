@@ -3,8 +3,7 @@ package endpoint
 package logical
 
 import java.nio.file.Paths
-import scala.concurrent._
-import util.duration._
+import scala.concurrent._, duration._
 import scala.util._
 import language._
 import logical.Polling._
@@ -42,7 +41,7 @@ class FunctionTest extends FunSpec with BeforeAndAfter {
         }
         flow.start
         val res = Try(Await.result(result.future, 0.25.seconds))
-        flow.stop
+        flow.dispose
         assert(res.get)
       }
     }

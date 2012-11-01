@@ -46,7 +46,7 @@ object Sctp {
      */
     private def clientArrived(client: SctpClient) {
       currentClients += client
-      messageArrived(messageFactory(client))
+      messageArrived(newReceviedMessage(client))
     }
     private var selectingFuture: Future[Unit] = _
     private var stopServer = false
@@ -184,9 +184,9 @@ object Sctp {
       client.onDispose { _ => flow.dispose }
       client.readers += streamId ->
         Consumer.Asynchronous(reader) { p =>
-          if (onSource != null) onSource(flow.messageFactory(p))
+          if (onEventHandler != null) onEventHandler(newReceviedMessage(p))
           else {
-            val resp = onRequest(messageFactory(p))
+            val resp = onRequestHandler(newReceviedMessage(p))
             resp.onComplete {
               case Success(m) =>
                 val (stream, r) = m.payload.value.asInstanceOf[(Int, R)]
@@ -202,15 +202,6 @@ object Sctp {
     def apply(f) = { flow = f; this }
 
     def canEqual(that) = that == this
-
-    private var onSource: Message[Payload] => Unit = _
-    private var onRequest: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]] = _
-    //I start the flow as soon as the logic is given to me.
-    def onEvent(thunk) { flow.start; onSource = thunk }
-    def cancelEventListener(thunk) { throw new UnsupportedOperationException }
-    def onRequest(thunk) { flow.start; onRequest = thunk }
-    def cancelRequestListener(thunk) { throw new UnsupportedOperationException }
-
   }
   def closeClient(client: Message[SctpClient]) {
     client.payload.dispose
@@ -255,13 +246,12 @@ object Sctp {
       }
       def dispose {
         scala.util.Try(socket.close())
-        ioExecutor.shutdown()
+        ioProfile.dispose()
       }
 
       private val syncConsumer = Consumer.Synchronous(reader, readBuffer)
 
-      val ioExecutor = java.util.concurrent.Executors.newFixedThreadPool(ioWorkers)
-      val ioExecutionContext = ExecutionContext.fromExecutor(ioExecutor)
+      val ioProfile = base.IoProfile.threadPool(ioWorkers)
       protected def pushMessage[MT: SupportedType](msg): Unit = {
         val (stream, p) = msg.payload.asInstanceOf[(Int, P)]
         socket.send(ByteBuffer.wrap(writer(p)), MessageInfo.createOutgoing(socket.association(), null, stream))

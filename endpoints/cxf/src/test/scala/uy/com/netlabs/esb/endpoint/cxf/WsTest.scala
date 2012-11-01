@@ -4,7 +4,7 @@ package cxf
 
 import language.dynamics
 import scala.concurrent._
-import scala.concurrent.util.duration._
+import scala.concurrent.duration._
 
 import javax.jws.WebService
 
@@ -38,7 +38,7 @@ class WsTest extends BaseFlowsTest {
           resp.payload === greet
         }
         val ass = Await.result(res, timeout)
-        server.stop()
+        server.dispose()
         assert(ass)
       }
     }
@@ -68,7 +68,7 @@ class WsTest extends BaseFlowsTest {
           resp.payload === greet
         }
         val ass = Await.result(res, timeout)
-        server.stop()
+        server.dispose()
         assert(ass)
       }
     }

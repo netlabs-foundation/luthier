@@ -38,7 +38,7 @@ object Polling {
       implicit val ec = flow.workerActorsExecutionContext
       scheduledAction = appContext.actorSystem.scheduler.schedule(initialDelay, every) {
         flow.log.debug(s"Flow ${flow.name} polling")
-        dest.pull()(messageFactory) onComplete {
+        dest.pull()(newReceviedMessage(())) onComplete {
           case Success(response)  => messageArrived(response.asInstanceOf[Message[Payload]])
           case Failure(err) => flow.log.error(err, s"Poller ${flow.name} failed")
         }
