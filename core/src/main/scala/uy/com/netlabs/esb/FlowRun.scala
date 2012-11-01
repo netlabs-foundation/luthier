@@ -21,19 +21,23 @@ trait FlowRun[Payload] extends MessageFactory {
    */
   val context: Map[Any, Any] = scala.collection.concurrent.TrieMap.empty
   
-  private[this] var lastSentMessage0: Message[_] = _
+  private[this] var lastProducedMessage0: Message[_] = _
   private[this] var lastReceivedMessage0: Message[_] = rootMessage
-  def lastSentMessage: Message[_] = lastSentMessage0
+  def lastProducedMessage: Message[_] = lastProducedMessage0
   def lastReceivedMessage: Message[_] = lastReceivedMessage0
   def messageSent[P](m: Message[P]) = {
-    lastSentMessage0 = m
+    lastProducedMessage0 = m
     m
   }
   def createReceivedMessage[P](payload: P) = {
-    val res = lastSentMessage.map(_ => payload)
-    lastSentMessage0 = res //FIXME: not sure this makes much sense...
+    val res = lastProducedMessage.map(_ => payload)
+    lastProducedMessage0 = res //FIXME: not sure this makes much sense...
     res
   }
   
-  def apply[P](payload: P) = lastReceivedMessage0.map(_ => payload)
+  def apply[P](payload: P) = {
+    val res = lastReceivedMessage0.map(_ => payload)
+    lastProducedMessage0 = res
+    res
+  }
 }
