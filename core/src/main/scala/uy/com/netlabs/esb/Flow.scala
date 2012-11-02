@@ -48,7 +48,7 @@ trait Flow extends Disposable {
       val peer = rootMessage
       val self = this
       val flowRun = new FlowRun[InboundEndpointTpe#Payload] {
-        val rootMessage = self
+        lazy val rootMessage = self
         val flow = Flow.this
       }
     }))
