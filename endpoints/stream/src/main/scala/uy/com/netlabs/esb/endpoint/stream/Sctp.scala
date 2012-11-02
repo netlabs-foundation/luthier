@@ -236,15 +236,43 @@ object Sctp {
     case class EF[S, P, R] private[Client] (socket: SctpChannel, reader: Consumer[S, R], writer: P => Array[Byte], readBuffer: Int, ioWorkers: Int) extends EndpointFactory[SctpClientEndpoint[S, P, R]] {
       def apply(f: Flow) = new SctpClientEndpoint[S, P, R](f, socket, reader, writer, readBuffer, ioWorkers)
     }
-    def apply[S, P, R](socket: SctpChannel, reader: Consumer[S, R], writer: P => Array[Byte] = null, readBuffer: Int, ioWorkers: Int = 2) = EF(socket, reader, writer, readBuffer, ioWorkers)
+    def apply[S, P, R](socket: SctpChannel, reader: Consumer[S, R], writer: P => Array[Byte] = null, readBuffer: Int = 1024*5, ioWorkers: Int = 2) = EF(socket, reader, writer, readBuffer, ioWorkers)
 
-    class SctpClientEndpoint[S, P, R](val flow: Flow, socket: SctpChannel, reader: Consumer[S, R], writer: P => Array[Byte], readBuffer: Int, ioWorkers: Int) extends base.BaseSink with Askable {
+    class SctpClientEndpoint[S, P, R](val flow: Flow,
+        socket: SctpChannel,
+        reader: Consumer[S, R],
+        writer: P => Array[Byte],
+        readBuffer: Int,
+        ioWorkers: Int) extends base.BaseSource with base.BaseResponsible with base.BaseSink with Askable {
+      type Payload = R
       type SupportedTypes = (Int, P) :: TypeNil
       type Response = R
+      
+      @volatile
+      private[this] var stop = false
       def start() {
-
+        val initializeInboundEndpoint = onEventHandler != null || 
+        (onRequestHandler != null && {require(writer != null, "Responsible must define how to serialize responses"); true})
+        if (initializeInboundEndpoint) {
+          Future {
+            while (!stop) {
+              val in = newReceviedMessage(syncConsumer.consume(readFunction))
+              if (onEventHandler != null) onEventHandler(in)
+              else onRequestHandler(in) onComplete {
+                case Success(response) =>
+                  val (stream, p) = response.payload.value.asInstanceOf[(Int, P)]
+                  socket.send(ByteBuffer.wrap(writer(p)), MessageInfo.createOutgoing(socket.association(), null, stream))
+                case Failure(err) => log.error(err, s"Error processing request $in")
+              }
+            }
+          } onFailure {case ex =>
+            log.error(ex, s"Stoping flow $flow because of error")
+            flow.dispose()
+          }
+        }
       }
       def dispose {
+        stop = true
         scala.util.Try(socket.close())
         ioProfile.dispose()
       }
