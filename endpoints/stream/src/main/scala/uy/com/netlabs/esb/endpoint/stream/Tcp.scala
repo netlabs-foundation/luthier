@@ -176,8 +176,9 @@ object Tcp {
         (onRequestHandler != null && {require(writer != null, "Responsible must define how to serialize responses"); true})
         if (initializeInboundEndpoint) {
           Future {
+            val readFunction = socket.read(_: ByteBuffer)
             while (!stop) {
-              val in = newReceviedMessage(syncConsumer.consume(socket.read))
+              val in = newReceviedMessage(syncConsumer.consume(readFunction))
               if (onEventHandler != null) onEventHandler(in)
               else onRequestHandler(in) onComplete {
                 case Success(response) => socket.write(ByteBuffer.wrap(writer(response.payload.value.asInstanceOf[P])))
