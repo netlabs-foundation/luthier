@@ -3,6 +3,7 @@ package endpoint
 package stream
 
 import Tcp._
+import java.nio.channels._
 
 object FastTcpTest extends App {
   val test = new Flows {
@@ -25,6 +26,16 @@ object FastTcpTest extends App {
             }
           }
         }
+      }
+    }.start
+    
+    val chnl = SocketChannel.open(new java.net.InetSocketAddress("google.com", 80))
+    chnl.finishConnect()
+    chnl.write(java.nio.ByteBuffer.wrap("GET\n\r".getBytes))
+    
+    new Flow("SimpleConnectTo")(Client(chnl, consumers.lines()) OneWay) {
+      logic {m => 
+      	println(s"Received: ${m.payload}")
       }
     }.start
   }

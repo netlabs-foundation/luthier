@@ -157,16 +157,42 @@ object Tcp {
     case class EF[S, P, R] private[Client] (socket: SocketChannel, reader: Consumer[S, R], writer: P => Array[Byte], readBuffer: Int, ioWorkers: Int) extends EndpointFactory[SocketClientEndpoint[S, P, R]] {
       def apply(f: Flow) = new SocketClientEndpoint[S, P, R](f, socket, reader, writer, readBuffer, ioWorkers)
     }
-    def apply[S, P, R](socket: SocketChannel, reader: Consumer[S, R], writer: P => Array[Byte] = null, readBuffer: Int, ioWorkers: Int = 2) = EF(socket, reader, writer, readBuffer, ioWorkers)
+    def apply[S, P, R](socket: SocketChannel, reader: Consumer[S, R], writer: P => Array[Byte] = null, readBuffer: Int = 1024 * 5, ioWorkers: Int = 2) = EF(socket, reader, writer, readBuffer, ioWorkers)
 
-    class SocketClientEndpoint[S, P, R](val flow: Flow, socket: SocketChannel, reader: Consumer[S, R], writer: P => Array[Byte], readBuffer: Int, ioWorkers: Int) extends base.BasePullEndpoint with base.BaseSink with Askable {
+    class SocketClientEndpoint[S, P, R](val flow: Flow,
+        socket: SocketChannel,
+        reader: Consumer[S, R],
+        writer: P => Array[Byte],
+        readBuffer: Int,
+        ioWorkers: Int) extends base.BaseSource with base.BaseResponsible with base.BasePullEndpoint with base.BaseSink with Askable {
       type Payload = R
       type SupportedTypes = P :: TypeNil
       type Response = R
+      
+      @volatile
+      private[this] var stop = false
       def start() {
-
+        val initializeInboundEndpoint = onEventHandler != null || 
+        (onRequestHandler != null && {require(writer != null, "Responsible must define how to serialize responses"); true})
+        if (initializeInboundEndpoint) {
+          Future {
+            while (!stop) {
+              val in = newReceviedMessage(syncConsumer.consume(socket.read))
+              if (onEventHandler != null) onEventHandler(in)
+              else onRequestHandler(in) onComplete {
+                case Success(response) => socket.write(ByteBuffer.wrap(writer(response.payload.value.asInstanceOf[P])))
+                case Failure(err) => log.error(err, s"Error processing request $in")
+              }
+            }
+          } onFailure {case ex =>
+            log.error(ex, s"Stoping flow $flow because of error")
+            flow.dispose()
+          }
+        }
       }
+      
       def dispose {
+        stop = true
         scala.util.Try(socket.close())
         ioProfile.dispose()
       }
