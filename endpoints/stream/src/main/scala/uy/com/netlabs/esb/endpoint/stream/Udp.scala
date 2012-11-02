@@ -44,8 +44,9 @@ object Udp {
         (onRequestHandler != null && {require(writer != null, "Responsible must define how to serialize responses"); true})
         if (initializeInboundEndpoint) {
           Future {
+            val readFunction = channel.read(_: ByteBuffer)
             while (!stop) {
-              val in = newReceviedMessage(syncConsumer.consume(channel.read))
+              val in = newReceviedMessage(syncConsumer.consume(readFunction))
               if (onEventHandler != null) onEventHandler(in)
               else onRequestHandler(in) onComplete {
                 case Success(response) => channel.write(ByteBuffer.wrap(writer(response.payload.value.asInstanceOf[P])))

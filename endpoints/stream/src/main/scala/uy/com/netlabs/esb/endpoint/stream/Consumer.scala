@@ -34,6 +34,7 @@ object Consumer {
     private var bufferedInput: Seq[Prod] = Seq.empty
     def consume(readOp: ByteBuffer => Int): Prod = {
       if (bufferedInput.nonEmpty) {
+        debug("Buffered input was nonEmtpy: " + bufferedInput)
         val res = bufferedInput.head
         bufferedInput = bufferedInput.tail
         res
@@ -41,13 +42,12 @@ object Consumer {
         def iterate(): Prod = {
           inBff.clear()
           val read = readOp(inBff)
+          if (read == -1) throw new EOFException
           inBff.flip
           val r = consumer.consume(Content(lastState, inBff))
           lastState = r.state
           r match {
-            case consumer.NeedMore(_) =>
-              if (read < 0) throw new EOFException()
-              else iterate()
+            case consumer.NeedMore(_) => iterate()
             case consumer.ByProduct(content, state) =>
               bufferedInput = content.tail
               content.head
