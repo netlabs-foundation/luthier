@@ -3,7 +3,7 @@ import sbt._, Keys._
 
 object CocoonBuild extends Build {
 
-  val _scalaVersion = "2.10.0-RC1"
+  val _scalaVersion = "2.10.0-RC2"
 
   val defSettings = Seq(
     version := "2.0.0-SNAPSHOT",
@@ -31,7 +31,7 @@ object CocoonBuild extends Build {
       "-implicits-show-all",
       "-expand-all-types" 
     ),
-    initialCommands += "import uy.com.netlabs.esb._",
+    initialCommands in console += "import uy.com.netlabs.esb._",
 
     resolvers += Resolver.sonatypeRepo("snapshots")
   ) ++ Dist.settings
