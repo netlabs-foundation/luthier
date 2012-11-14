@@ -111,15 +111,18 @@ object Tcp {
     { //do setup
       client.onDispose { _ => flow.dispose }
       client.multiplexer.readers +=
-        Consumer.Asynchronous(reader) { p =>
-          if (onEventHandler != null) onEventHandler(newReceviedMessage(p))
-          else {
-            val resp = onRequestHandler(newReceviedMessage(p))
-            resp.onComplete {
-              case Success(m) => client.multiplexer addPending ByteBuffer.wrap(serializer(m.payload.value.asInstanceOf[R]))
-              case Failure(err) => log.error(err, "Failed to respond to client")
-            }(flow.workerActorsExecutionContext)
-          }
+        Consumer.Asynchronous(reader) { t =>
+          if (t.isSuccess) {
+            val p = t.get
+            if (onEventHandler != null) onEventHandler(newReceviedMessage(p))
+            else {
+              val resp = onRequestHandler(newReceviedMessage(p))
+              resp.onComplete {
+                case Success(m) => client.multiplexer addPending ByteBuffer.wrap(serializer(m.payload.value.asInstanceOf[R]))
+                case Failure(err) => log.error(err, "Failed to respond to client")
+              }(flow.workerActorsExecutionContext)
+            }
+          } else log.error(t.failed.get, s"Failure reading from client $client")
         }
     }
 
@@ -160,38 +163,42 @@ object Tcp {
     def apply[S, P, R](socket: SocketChannel, reader: Consumer[S, R], writer: P => Array[Byte] = null, readBuffer: Int = 1024 * 5, ioWorkers: Int = 2) = EF(socket, reader, writer, readBuffer, ioWorkers)
 
     class SocketClientEndpoint[S, P, R](val flow: Flow,
-        socket: SocketChannel,
-        reader: Consumer[S, R],
-        writer: P => Array[Byte],
-        readBuffer: Int,
-        ioWorkers: Int) extends base.BaseSource with base.BaseResponsible with base.BasePullEndpoint with base.BaseSink with Askable {
+                                        socket: SocketChannel,
+                                        reader: Consumer[S, R],
+                                        writer: P => Array[Byte],
+                                        readBuffer: Int,
+                                        ioWorkers: Int) extends base.BaseSource with base.BaseResponsible with base.BasePullEndpoint with base.BaseSink with Askable {
       type Payload = R
       type SupportedTypes = P :: TypeNil
       type Response = R
-      
+
       @volatile
       private[this] var stop = false
       def start() {
-        val initializeInboundEndpoint = onEventHandler != null || 
-        (onRequestHandler != null && {require(writer != null, "Responsible must define how to serialize responses"); true})
+        val initializeInboundEndpoint = onEventHandler != null ||
+          (onRequestHandler != null && { require(writer != null, "Responsible must define how to serialize responses"); true })
         if (initializeInboundEndpoint) {
           Future {
             val readFunction = socket.read(_: ByteBuffer)
             while (!stop) {
-              val in = newReceviedMessage(syncConsumer.consume(readFunction))
-              if (onEventHandler != null) onEventHandler(in)
-              else onRequestHandler(in) onComplete {
-                case Success(response) => socket.write(ByteBuffer.wrap(writer(response.payload.value.asInstanceOf[P])))
-                case Failure(err) => log.error(err, s"Error processing request $in")
-              }
+              val read = syncConsumer.consume(readFunction)
+              if (read.isSuccess) {
+                val in = newReceviedMessage(read.get)
+                if (onEventHandler != null) onEventHandler(in)
+                else onRequestHandler(in) onComplete {
+                  case Success(response) => socket.write(ByteBuffer.wrap(writer(response.payload.value.asInstanceOf[P])))
+                  case Failure(err) => log.error(err, s"Error processing request $in")
+                }
+              } else log.error(read.failed.get, s"Failure reading from socket $socket")
             }
-          } onFailure {case ex =>
-            log.error(ex, s"Stoping flow $flow because of error")
-            flow.dispose()
+          } onFailure {
+            case ex =>
+              log.error(ex, s"Stoping flow $flow because of error")
+              flow.dispose()
           }
         }
       }
-      
+
       def dispose {
         stop = true
         scala.util.Try(socket.close())
@@ -200,7 +207,7 @@ object Tcp {
 
       private val syncConsumer = Consumer.Synchronous(reader, readBuffer)
       protected def retrieveMessage(mf: uy.com.netlabs.esb.MessageFactory): uy.com.netlabs.esb.Message[Payload] = {
-        mf(syncConsumer.consume(socket.read))
+        mf(syncConsumer.consume(socket.read).get)
       }
 
       val ioProfile = base.IoProfile.threadPool(ioWorkers)

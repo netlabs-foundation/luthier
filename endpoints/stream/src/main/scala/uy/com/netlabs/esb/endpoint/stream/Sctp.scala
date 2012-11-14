@@ -183,17 +183,20 @@ object Sctp {
     { //do setup
       client.onDispose { _ => flow.dispose }
       client.readers += streamId ->
-        Consumer.Asynchronous(reader) { p =>
-          if (onEventHandler != null) onEventHandler(newReceviedMessage(p))
-          else {
-            val resp = onRequestHandler(newReceviedMessage(p))
-            resp.onComplete {
-              case Success(m) =>
-                val (stream, r) = m.payload.value.asInstanceOf[(Int, R)]
-                client addPending stream -> ByteBuffer.wrap(serializer(r))
-              case Failure(err) => log.error(err, "Failed to respond to client")
-            }(flow.workerActorsExecutionContext)
-          }
+        Consumer.Asynchronous(reader) { t =>
+          if (t.isSuccess) {
+            val p = t.get
+            if (onEventHandler != null) onEventHandler(newReceviedMessage(p))
+            else {
+              val resp = onRequestHandler(newReceviedMessage(p))
+              resp.onComplete {
+                case Success(m) =>
+                  val (stream, r) = m.payload.value.asInstanceOf[(Int, R)]
+                  client addPending stream -> ByteBuffer.wrap(serializer(r))
+                case Failure(err) => log.error(err, "Failed to respond to client")
+              }(flow.workerActorsExecutionContext)
+            }
+          } else log.error(t.failed.get, s"Failure reading from client $client")
         }
     }
 
@@ -236,38 +239,42 @@ object Sctp {
     case class EF[S, P, R] private[Client] (socket: SctpChannel, reader: Consumer[S, R], writer: P => Array[Byte], readBuffer: Int, ioWorkers: Int) extends EndpointFactory[SctpClientEndpoint[S, P, R]] {
       def apply(f: Flow) = new SctpClientEndpoint[S, P, R](f, socket, reader, writer, readBuffer, ioWorkers)
     }
-    def apply[S, P, R](socket: SctpChannel, reader: Consumer[S, R], writer: P => Array[Byte] = null, readBuffer: Int = 1024*5, ioWorkers: Int = 2) = EF(socket, reader, writer, readBuffer, ioWorkers)
+    def apply[S, P, R](socket: SctpChannel, reader: Consumer[S, R], writer: P => Array[Byte] = null, readBuffer: Int = 1024 * 5, ioWorkers: Int = 2) = EF(socket, reader, writer, readBuffer, ioWorkers)
 
     class SctpClientEndpoint[S, P, R](val flow: Flow,
-        socket: SctpChannel,
-        reader: Consumer[S, R],
-        writer: P => Array[Byte],
-        readBuffer: Int,
-        ioWorkers: Int) extends base.BaseSource with base.BaseResponsible with base.BaseSink with Askable {
+                                      socket: SctpChannel,
+                                      reader: Consumer[S, R],
+                                      writer: P => Array[Byte],
+                                      readBuffer: Int,
+                                      ioWorkers: Int) extends base.BaseSource with base.BaseResponsible with base.BaseSink with Askable {
       type Payload = R
       type SupportedTypes = (Int, P) :: TypeNil
       type Response = R
-      
+
       @volatile
       private[this] var stop = false
       def start() {
-        val initializeInboundEndpoint = onEventHandler != null || 
-        (onRequestHandler != null && {require(writer != null, "Responsible must define how to serialize responses"); true})
+        val initializeInboundEndpoint = onEventHandler != null ||
+          (onRequestHandler != null && { require(writer != null, "Responsible must define how to serialize responses"); true })
         if (initializeInboundEndpoint) {
           Future {
             while (!stop) {
-              val in = newReceviedMessage(syncConsumer.consume(readFunction))
-              if (onEventHandler != null) onEventHandler(in)
-              else onRequestHandler(in) onComplete {
-                case Success(response) =>
-                  val (stream, p) = response.payload.value.asInstanceOf[(Int, P)]
-                  socket.send(ByteBuffer.wrap(writer(p)), MessageInfo.createOutgoing(socket.association(), null, stream))
-                case Failure(err) => log.error(err, s"Error processing request $in")
-              }
+              val read = syncConsumer.consume(readFunction)
+              if (read.isSuccess) {
+                val in = newReceviedMessage(read.get)
+                if (onEventHandler != null) onEventHandler(in)
+                else onRequestHandler(in) onComplete {
+                  case Success(response) =>
+                    val (stream, p) = response.payload.value.asInstanceOf[(Int, P)]
+                    socket.send(ByteBuffer.wrap(writer(p)), MessageInfo.createOutgoing(socket.association(), null, stream))
+                  case Failure(err) => log.error(err, s"Error processing request $in")
+                }
+              } else log.error(read.failed.get, s"Failure reading from socket $socket")
             }
-          } onFailure {case ex =>
-            log.error(ex, s"Stoping flow $flow because of error")
-            flow.dispose()
+          } onFailure {
+            case ex =>
+              log.error(ex, s"Stoping flow $flow because of error")
+              flow.dispose()
           }
         }
       }
@@ -292,7 +299,7 @@ object Sctp {
       def ask[MT: SupportedType](msg, timeOut): Future[Message[Response]] = Future {
         val stream = msg.payload.asInstanceOf[(Int, P)]._1
         pushMessage(msg)(null) //by pass the evidence..
-        msg map (_ => (syncConsumer.consume(readFunction)))
+        msg map (_ => syncConsumer.consume(readFunction).get)
       }(ioExecutionContext)
     }
 
