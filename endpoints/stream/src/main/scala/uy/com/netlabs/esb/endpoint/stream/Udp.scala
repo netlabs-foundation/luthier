@@ -28,38 +28,42 @@ object Udp {
     def apply[S, P, R](channel: DatagramChannel, reader: Consumer[S, R], writer: P => Array[Byte] = null, readBuffer: Int = 1024 * 5, ioWorkers: Int = 2) = EF(channel, reader, writer, readBuffer, ioWorkers)
 
     class SocketClientEndpoint[S, P, R](val flow: Flow,
-        channel: DatagramChannel,
-        reader: Consumer[S, R],
-        writer: P => Array[Byte],
-        readBuffer: Int,
-        ioWorkers: Int) extends base.BaseSource with base.BaseResponsible with base.BasePullEndpoint with base.BaseSink with Askable {
+                                        channel: DatagramChannel,
+                                        reader: Consumer[S, R],
+                                        writer: P => Array[Byte],
+                                        readBuffer: Int,
+                                        ioWorkers: Int) extends base.BaseSource with base.BaseResponsible with base.BasePullEndpoint with base.BaseSink with Askable {
       type Payload = R
       type SupportedTypes = P :: TypeNil
       type Response = R
-      
+
       @volatile
       private[this] var stop = false
       def start() {
-        val initializeInboundEndpoint = onEventHandler != null || 
-        (onRequestHandler != null && {require(writer != null, "Responsible must define how to serialize responses"); true})
+        val initializeInboundEndpoint = onEventHandler != null ||
+          (onRequestHandler != null && { require(writer != null, "Responsible must define how to serialize responses"); true })
         if (initializeInboundEndpoint) {
           Future {
             val readFunction = channel.read(_: ByteBuffer)
             while (!stop) {
-              val in = newReceviedMessage(syncConsumer.consume(readFunction))
-              if (onEventHandler != null) onEventHandler(in)
-              else onRequestHandler(in) onComplete {
-                case Success(response) => channel.write(ByteBuffer.wrap(writer(response.payload.value.asInstanceOf[P])))
-                case Failure(err) => log.error(err, s"Error processing request $in")
-              }
+              val read = syncConsumer.consume(readFunction)
+              if (read.isSuccess) {
+                val in = newReceviedMessage(read.get)
+                if (onEventHandler != null) onEventHandler(in)
+                else onRequestHandler(in) onComplete {
+                  case Success(response) => channel.write(ByteBuffer.wrap(writer(response.payload.value.asInstanceOf[P])))
+                  case Failure(err) => log.error(err, s"Error processing request $in")
+                }
+              } else log.error(read.failed.get, s"Failure reading from socket $channel")
             }
-          } onFailure {case ex =>
-            log.error(ex, s"Stoping flow $flow because of error")
-            flow.dispose()
+          } onFailure {
+            case ex =>
+              log.error(ex, s"Stoping flow $flow because of error")
+              flow.dispose()
           }
         }
       }
-      
+
       def dispose {
         stop = true
         scala.util.Try(channel.close())
@@ -68,7 +72,7 @@ object Udp {
 
       private val syncConsumer = Consumer.Synchronous(reader, readBuffer)
       protected def retrieveMessage(mf: uy.com.netlabs.esb.MessageFactory): uy.com.netlabs.esb.Message[Payload] = {
-        mf(syncConsumer.consume(channel.read))
+        mf(syncConsumer.consume(channel.read).get)
       }
 
       val ioProfile = base.IoProfile.threadPool(ioWorkers)

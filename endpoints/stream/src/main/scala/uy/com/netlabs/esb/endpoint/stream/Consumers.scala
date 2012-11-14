@@ -4,6 +4,7 @@ package stream
 
 import java.nio._, charset._
 import java.util.concurrent.LinkedBlockingQueue
+import scala.util._
 
 object consumers {
   def lines(newline: String = "\n", charset: String = "utf8") = new Consumer[StringBuilder, String] {
@@ -33,12 +34,12 @@ object consumers {
           }
         }
         iter(Vector.empty, state) match {
-          case v @ Vector(head) if head endsWith (newline) => ByProduct(v, new StringBuilder)
-          case v @ Vector(head) => NeedMore(new StringBuilder(head)) //this head contains the previous accumulated state, plus whatever chars I read now
-          case v => if (v.last endsWith newline) ByProduct(v, new StringBuilder)
-          else ByProduct(v.init, new StringBuilder(v.last))
+          case Vector(head) if head endsWith (newline) => ByProduct(Seq(Success(head)), new StringBuilder)
+          case Vector(head) => NeedMore(new StringBuilder(head)) //this head contains the previous accumulated state, plus whatever chars I read now
+          case v => if (v.last endsWith newline) ByProduct(v.init.view.map(s => Success(s)), new StringBuilder)
+          else ByProduct(v.init.view.map(s => Success(s)), new StringBuilder(v.last))
         }
-      case NoMoreInput(state) => ByProduct(Vector(state.toString), state)
+      case NoMoreInput(state) => ByProduct(Vector(Success(state.toString)), state)
     }
   }
 
@@ -48,7 +49,7 @@ object consumers {
       case Content(state, buffer) => //produce a chunk
         val chunk = new Array[Byte](buffer.remaining())
         buffer.get(chunk)
-        ByProduct(Vector(chunk), state)
+        ByProduct(Vector(Success(chunk)), state)
       case NoMoreInput(state) => NeedMore(state)
     }
   }
@@ -60,38 +61,60 @@ object consumers {
    * of io workers for the flow.
    */
   def stream[R](flow: Flow, reader: java.io.InputStream => R): Consumer[Unit, R] = new Consumer[Unit, R] {
-    val (pipe, streamer) = {
-      val out = new java.io.PipedOutputStream
-      val in = new java.io.PipedInputStream(out)
-      in -> java.nio.channels.Channels.newChannel(out)
+    /**
+     * Helper object that synchronizes the consumer thread with the feeder thread, letting
+     * the later one know when the former finished consuming the bytes fed.
+     */
+    object Feeder extends java.io.InputStream {
+      private val semaphore = new java.util.concurrent.Semaphore(0)
+      @volatile private var buffer: ByteBuffer = null
+
+      //when compiled with -optimize, everything is inlined, and the closure is eliminated
+      @inline final def usingBuffer(f: ByteBuffer => Int) = {
+        var b = buffer
+        if (b == null) {
+          semaphore.acquire()
+          b = buffer
+        }
+        val res = f(b)
+        if (buffer.remaining() == 0) {
+          buffer = null
+          semaphore.release()
+        }
+        res
+      }
+      def read() = usingBuffer(_.get())
+      override def read(arr) = read(arr, 0, arr.length)
+      override def read(arr, from, to) = usingBuffer { b =>
+        val read = math.min(to - from, b.remaining())
+        b.get(arr, from, read)
+        read
+      }
+      def feed(buffer: ByteBuffer) {
+        this.buffer = buffer
+        semaphore.release()
+        semaphore.acquire()
+      }
     }
     @volatile var noMoreContent = false
-    val queue = new LinkedBlockingQueue[R]
-    
+    @volatile var queue = Vector.empty[Try[R]]
+
     flow.blocking {
       while (!noMoreContent) {
-        queue put reader(pipe)
+        queue :+= Try(reader(Feeder))
       }
     }
     def initialState = ()
 
     def consume(input) = {
-      def tryToFetchElements(): ConsumerResult = {
-        var r: R = null.asInstanceOf[R]
-        val res = new collection.mutable.ArrayBuffer[R]
-        while ({r = queue.poll(); r != null}) res += r
-        //if there is nothing just now, give a reasonable amount of time to finish processing and try to fetch
-        if ({r = queue.poll(100, java.util.concurrent.TimeUnit.MILLISECONDS); r != null}) {
-          res += r
-        }
-        if (res.nonEmpty) ByProduct(res, input.state)
-        else NeedMore(input.state)
-      }
       input match {
-        case Content(state, buffer) => streamer.write(buffer)
+        case Content(state, buffer) => Feeder.feed(buffer)
         case NoMoreInput(state) => noMoreContent = true
       }
-      tryToFetchElements()
+      val res = queue
+      queue = Vector.empty
+      if (res.nonEmpty) ByProduct(res, input.state)
+      else NeedMore(input.state)
     }
   }
 }
