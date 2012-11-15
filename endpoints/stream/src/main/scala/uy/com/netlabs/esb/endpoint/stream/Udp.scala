@@ -12,7 +12,7 @@ import language._
 
 import typelist._
 
-object Udp {
+object Udp extends StreamEndpointSingleConnComponent {
   /**
    * Simple Udp client.
    * Given the nature of a single datagram channels, there is no need for selectors. An simple implementation
@@ -22,69 +22,30 @@ object Udp {
     import typelist._
     import scala.concurrent._
 
-    case class EF[S, P, R] private[Channel] (channel: DatagramChannel, reader: Consumer[S, R], writer: P => Array[Byte], readBuffer: Int, ioWorkers: Int) extends EndpointFactory[SocketClientEndpoint[S, P, R]] {
+    case class EF[S, P, R] private[Channel] (channel: DatagramChannel,
+                                             reader: Consumer[S, R],
+                                             writer: P => Array[Byte],
+                                             readBuffer: Int,
+                                             ioWorkers: Int) extends EndpointFactory[SocketClientEndpoint[S, P, R]] {
       def apply(f: Flow) = new SocketClientEndpoint[S, P, R](f, channel, reader, writer, readBuffer, ioWorkers)
     }
     def apply[S, P, R](channel: DatagramChannel, reader: Consumer[S, R], writer: P => Array[Byte] = null, readBuffer: Int = 1024 * 5, ioWorkers: Int = 2) = EF(channel, reader, writer, readBuffer, ioWorkers)
 
     class SocketClientEndpoint[S, P, R](val flow: Flow,
-                                        channel: DatagramChannel,
-                                        reader: Consumer[S, R],
-                                        writer: P => Array[Byte],
-                                        readBuffer: Int,
-                                        ioWorkers: Int) extends base.BaseSource with base.BaseResponsible with base.BasePullEndpoint with base.BaseSink with Askable {
-      type Payload = R
-      type SupportedTypes = P :: TypeNil
-      type Response = R
+                                        val conn: DatagramChannel,
+                                        val reader: Consumer[S, R],
+                                        val writer: P => Array[Byte],
+                                        val readBuffer: Int,
+                                        val ioWorkers: Int) extends ConnEndpoint[S, P, R, P :: TypeNil] with base.BasePullEndpoint {
 
-      @volatile
-      private[this] var stop = false
-      def start() {
-        val initializeInboundEndpoint = onEventHandler != null ||
-          (onRequestHandler != null && { require(writer != null, "Responsible must define how to serialize responses"); true })
-        if (initializeInboundEndpoint) {
-          Future {
-            val readFunction = channel.read(_: ByteBuffer)
-            while (!stop) {
-              val read = syncConsumer.consume(readFunction)
-              if (read.isSuccess) {
-                val in = newReceviedMessage(read.get)
-                if (onEventHandler != null) onEventHandler(in)
-                else onRequestHandler(in) onComplete {
-                  case Success(response) => channel.write(ByteBuffer.wrap(writer(response.payload.value.asInstanceOf[P])))
-                  case Failure(err) => log.error(err, s"Error processing request $in")
-                }
-              } else log.error(read.failed.get, s"Failure reading from socket $channel")
-            }
-          } onFailure {
-            case ex =>
-              log.error(ex, s"Stoping flow $flow because of error")
-              flow.dispose()
-          }
-        }
+      protected def processResponseFromRequestedMessage(m: Message[OneOf[_, SupportedResponseTypes]]) {
+        conn.write(ByteBuffer.wrap(writer(m.payload.value.asInstanceOf[P])))
       }
+      protected val readBytes: ByteBuffer => Int = conn.read(_: ByteBuffer)
 
-      def dispose {
-        stop = true
-        scala.util.Try(channel.close())
-        ioProfile.dispose()
-      }
-
-      private val syncConsumer = Consumer.Synchronous(reader, readBuffer)
       protected def retrieveMessage(mf: uy.com.netlabs.esb.MessageFactory): uy.com.netlabs.esb.Message[Payload] = {
-        mf(syncConsumer.consume(channel.read).get)
+        mf(syncConsumer.consume(conn.read).get)
       }
-
-      val ioProfile = base.IoProfile.threadPool(ioWorkers)
-      protected def pushMessage[MT: SupportedType](msg): Unit = {
-        channel.write(ByteBuffer.wrap(writer(msg.payload.asInstanceOf[P])))
-      }
-
-      def ask[MT: SupportedType](msg, timeOut): Future[Message[Response]] = Future {
-        pushMessage(msg)(null) //by pass the evidence..
-        retrieveMessage(msg)
-      }(ioExecutionContext)
     }
-
   }
 }

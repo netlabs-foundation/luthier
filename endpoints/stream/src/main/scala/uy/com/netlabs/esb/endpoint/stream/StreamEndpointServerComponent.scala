@@ -2,7 +2,7 @@ package uy.com.netlabs.esb
 package endpoint
 package stream
 
-import language._
+import language.{implicitConversions, higherKinds}
 
 import java.nio._
 import java.nio.channels._
@@ -12,7 +12,7 @@ import scala.concurrent._, duration._
 
 import typelist._
 
-private[stream] trait StreamEndpointComponent {
+protected trait StreamEndpointServerComponent {
 
   protected type ClientType <: Disposable
   protected type ClientConn <: SelectableChannel
@@ -37,7 +37,7 @@ private[stream] trait StreamEndpointComponent {
 
     lazy val selector = Selector.open()
 
-    @volatile private[StreamEndpointComponent] var currentClients = Set.empty[ClientType]
+    @volatile private[StreamEndpointServerComponent] var currentClients = Set.empty[ClientType]
     /**
      * This method should be called by the server with the new Client.
      */
@@ -78,7 +78,7 @@ private[stream] trait StreamEndpointComponent {
     val key: SelectionKey = conn.register(server.selector, SelectionKey.OP_READ)
     val clientTypeProof: this.type <:< ClientType
 
-    protected[StreamEndpointComponent] def disposeImpl() {
+    protected[StreamEndpointServerComponent] def disposeImpl() {
       server.currentClients -= clientTypeProof(this)
       key.cancel()
       try conn.close() catch { case _: Exception => }

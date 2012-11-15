@@ -13,7 +13,7 @@ import language._
 
 import typelist._
 
-object Sctp extends StreamEndpointComponent {
+object Sctp extends StreamEndpointServerComponent with StreamEndpointSingleConnComponent {
 
   protected type ClientType = SctpClient
   protected type ClientConn = SctpChannel
@@ -172,66 +172,21 @@ object Sctp extends StreamEndpointComponent {
     def apply[S, P, R](socket: SctpChannel, reader: Consumer[S, R], writer: P => Array[Byte] = null, readBuffer: Int = 1024 * 5, ioWorkers: Int = 2) = EF(socket, reader, writer, readBuffer, ioWorkers)
 
     class SctpClientEndpoint[S, P, R](val flow: Flow,
-                                      socket: SctpChannel,
-                                      reader: Consumer[S, R],
-                                      writer: P => Array[Byte],
-                                      readBuffer: Int,
-                                      ioWorkers: Int) extends base.BaseSource with base.BaseResponsible with base.BaseSink with Askable {
-      type Payload = R
-      type SupportedTypes = (Int, P) :: TypeNil
-      type Response = R
+                                      val conn: SctpChannel,
+                                      val reader: Consumer[S, R],
+                                      val writer: P => Array[Byte],
+                                      val readBuffer: Int,
+                                      val ioWorkers: Int) extends ConnEndpoint[S, P, R, (Int, P) :: TypeNil] {
 
-      @volatile
-      private[this] var stop = false
-      def start() {
-        val initializeInboundEndpoint = onEventHandler != null ||
-          (onRequestHandler != null && { require(writer != null, "Responsible must define how to serialize responses"); true })
-        if (initializeInboundEndpoint) {
-          Future {
-            while (!stop) {
-              val read = syncConsumer.consume(readFunction)
-              if (read.isSuccess) {
-                val in = newReceviedMessage(read.get)
-                if (onEventHandler != null) onEventHandler(in)
-                else onRequestHandler(in) onComplete {
-                  case Success(response) =>
-                    val (stream, p) = response.payload.value.asInstanceOf[(Int, P)]
-                    socket.send(ByteBuffer.wrap(writer(p)), MessageInfo.createOutgoing(socket.association(), null, stream))
-                  case Failure(err) => log.error(err, s"Error processing request $in")
-                }
-              } else log.error(read.failed.get, s"Failure reading from socket $socket")
-            }
-          } onFailure {
-            case ex =>
-              log.error(ex, s"Stoping flow $flow because of error")
-              flow.dispose()
-          }
-        }
+      protected def processResponseFromRequestedMessage(m: Message[OneOf[_, SupportedResponseTypes]]) {
+        val (stream, p) = m.payload.value.asInstanceOf[(Int, P)]
+        conn.send(ByteBuffer.wrap(writer(p)), MessageInfo.createOutgoing(conn.association(), null, stream))
       }
-      def dispose {
-        stop = true
-        scala.util.Try(socket.close())
-        ioProfile.dispose()
-      }
-
-      private val syncConsumer = Consumer.Synchronous(reader, readBuffer)
-
-      val ioProfile = base.IoProfile.threadPool(ioWorkers)
-      protected def pushMessage[MT: SupportedType](msg): Unit = {
-        val (stream, p) = msg.payload.asInstanceOf[(Int, P)]
-        socket.send(ByteBuffer.wrap(writer(p)), MessageInfo.createOutgoing(socket.association(), null, stream))
-      }
-
-      val readFunction = (buff: ByteBuffer) => {
-        val mi = socket.receive(buff, null, null)
+      val readBytes = (buff: ByteBuffer) => {
+        val mi = conn.receive(buff, null, null)
         mi.bytes()
       }
-      def ask[MT: SupportedType](msg, timeOut): Future[Message[Response]] = Future {
-        val stream = msg.payload.asInstanceOf[(Int, P)]._1
-        pushMessage(msg)(null) //by pass the evidence..
-        msg map (_ => syncConsumer.consume(readFunction).get)
-      }(ioExecutionContext)
-    }
 
+    }
   }
 }
