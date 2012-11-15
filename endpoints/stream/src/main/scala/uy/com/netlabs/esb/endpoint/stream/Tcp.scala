@@ -12,7 +12,12 @@ import language._
 
 import typelist._
 
-object Tcp {
+object Tcp extends StreamEndpointComponent {
+  
+  protected type ClientType = SocketClient
+  protected type ClientConn = SocketChannel
+  protected type ServerType = ServerSocketEndpoint
+  def newClient(server, conn, readBuffer) = new SocketClient(server, conn, readBuffer)
 
   object Server {
     case class EF private[Server] (addr: SocketAddress, readBuffer: Int) extends EndpointFactory[ServerSocketEndpoint] {
@@ -22,8 +27,7 @@ object Tcp {
     def apply(port: Int, readBuffer: Int) = EF(new InetSocketAddress(port), readBuffer)
   }
 
-  class ServerSocketEndpoint private[Tcp] (val flow: Flow, socketAddress: SocketAddress, readBuffer: Int) extends base.BaseSource {
-    type Payload = SocketClient
+  class ServerSocketEndpoint private[Tcp] (val flow: Flow, socketAddress: SocketAddress, val readBuffer: Int) extends ServerComponent {
     val serverChannel = {
       val res = ServerSocketChannel.open()
       res.configureBlocking(false)
@@ -31,59 +35,13 @@ object Tcp {
       res.setOption(StandardSocketOptions.SO_REUSEADDR, true: java.lang.Boolean)
       res
     }
-    def accept() = {
-      Option(serverChannel.accept()) map { s =>
-        s.configureBlocking(false)
-        new SocketClient(this, s, ByteBuffer.allocate(readBuffer))
-      }
-    }
-
-    lazy val selector = Selector.open()
-
-    @volatile private[Tcp] var currentClients = Set.empty[SocketClient]
-    /**
-     * This method should be called by the server with the new Client.
-     */
-    private def clientArrived(client: SocketClient) {
-      currentClients += client
-      messageArrived(newReceviedMessage(client))
-    }
-    private var selectingFuture: Future[Unit] = _
-    private var stopServer = false
-
-    def start() {
-      val selKey = serverChannel.register(selector, SelectionKey.OP_ACCEPT, new SelectionKeyReactor)
-      selKey.attachment().asInstanceOf[SelectionKeyReactor].acceptor = key => {
-        var it = accept()
-        while (it.isDefined) {
-          clientArrived(it.get)
-          it = accept()
-        }
-      }
-      selectingFuture = flow blocking new SelectionKeyReactorSelector {
-        val selector = ServerSocketEndpoint.this.selector
-        def mustStop = stopServer
-      }.selectionLoop
-    }
-    def dispose() {
-      stopServer = true
-      Try(selector.wakeup())
-      Try(Await.ready(selectingFuture, 5.seconds))
-      Try(serverChannel.close())
-      currentClients foreach (_.dispose())
-    }
+    def serverChannelAccept() = serverChannel.accept()
+    val serverTypeProof = implicitly[this.type <:< ServerType]
   }
 
-  private[Tcp] class SocketClient(val server: ServerSocketEndpoint, val channel: SocketChannel, val readBuffer: ByteBuffer) extends Disposable {
-    val key: SelectionKey = channel.register(server.selector, SelectionKey.OP_READ)
-    val multiplexer = new ChannelMultiplexer(key, server.selector, readBuffer, channel.read, channel.write, this, server.log)
-
-    protected[Tcp] def disposeImpl() {
-      server.currentClients -= this
-      key.cancel()
-      try channel.close() catch { case _: Exception => }
-      debug(s"$channel disposed")
-    }
+  private[Tcp] class SocketClient(val server: ServerSocketEndpoint, val conn: SocketChannel, val readBuffer: ByteBuffer) extends ClientComponent {
+    val multiplexer = new ChannelMultiplexer(key, server.selector, readBuffer, conn.read, conn.write, this, server.log)
+    val clientTypeProof =  implicitly[this.type <:< ClientType]
   }
 
   def SocketConn(addr: String, port: Int): SocketChannel = SocketConn(new InetSocketAddress(addr, port))
@@ -102,35 +60,11 @@ object Tcp {
    */
   class Handler[S, P, R] private[Tcp] (val client: SocketClient,
                                        val reader: Consumer[S, P],
-                                       val serializer: R => Array[Byte]) extends Source with Responsible with EndpointFactory[Handler[S, P, R]] {
-    type Payload = P
-    type SupportedResponseTypes = R :: TypeNil
-    implicit var flow: uy.com.netlabs.esb.Flow = _
-    private var state: S = null.asInstanceOf[S]
+//                                       val onWaitAction: ReadWaitAction[S, P],
+                                       val serializer: R => Array[Byte]) extends HandlerComponent[S, P, R, R :: TypeNil] {
+    def registerReader(reader) = client.multiplexer.readers += reader
+    def processResponseFromRequestedMessage(m) = client.multiplexer addPending ByteBuffer.wrap(serializer(m.payload.value.asInstanceOf[R])) 
 
-    { //do setup
-      client.onDispose { _ => flow.dispose }
-      client.multiplexer.readers +=
-        Consumer.Asynchronous(reader) { t =>
-          if (t.isSuccess) {
-            val p = t.get
-            if (onEventHandler != null) onEventHandler(newReceviedMessage(p))
-            else {
-              val resp = onRequestHandler(newReceviedMessage(p))
-              resp.onComplete {
-                case Success(m) => client.multiplexer addPending ByteBuffer.wrap(serializer(m.payload.value.asInstanceOf[R]))
-                case Failure(err) => log.error(err, "Failed to respond to client")
-              }(flow.workerActorsExecutionContext)
-            }
-          } else log.error(t.failed.get, s"Failure reading from client $client")
-        }
-    }
-
-    def start() {}
-    def dispose() {}
-    def apply(f) = { flow = f; this }
-
-    def canEqual(that) = that == this
   }
   def closeClient(client: Message[SocketClient]) {
     client.payload.dispose
@@ -138,13 +72,10 @@ object Tcp {
 
   object Handler {
     def apply[S, P, R](message: Message[SocketClient],
-                       reader: Consumer[S, P]): EndpointFactory[Source { type Payload = Handler[S, P, R]#Payload }] = new Handler(message.payload, reader, null)
+                       reader: Consumer[S, P]) = new Handler(message.payload, reader, null).OneWay
     def apply[S, P, R](message: Message[SocketClient],
                        reader: Consumer[S, P],
-                       serializer: R => Array[Byte]): EndpointFactory[Responsible {
-      type Payload = Handler[S, P, R]#Payload
-      type SupportedResponseTypes = Handler[S, P, R]#SupportedResponseTypes
-    }] = new Handler(message.payload, reader, serializer)
+                       serializer: R => Array[Byte]) = new Handler(message.payload, reader, serializer).RequestResponse
 
   }
 
