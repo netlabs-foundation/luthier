@@ -23,6 +23,7 @@ class FlowHandler(compiler: IMain, file: String) {
               if (theFlows != null) {
                 println(Console.MAGENTA + s"Stoping previous incarnation" + Console.RESET)
                 theFlows.registeredFlows foreach (_.dispose())
+                theFlows.appContext.actorSystem.shutdown()
                 println(Console.MAGENTA + s"Done" + Console.RESET)
               }
               load()
