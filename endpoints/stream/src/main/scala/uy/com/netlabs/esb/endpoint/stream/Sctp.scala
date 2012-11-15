@@ -13,7 +13,12 @@ import language._
 
 import typelist._
 
-object Sctp {
+object Sctp extends StreamEndpointComponent {
+
+  protected type ClientType = SctpClient
+  protected type ClientConn = SctpChannel
+  protected type ServerType = ServerChannelEndpoint
+  def newClient(server, conn, readBuffer) = new SctpClient(server, conn, readBuffer)
 
   object Server {
     case class EF private[Server] (addr: SocketAddress, readBuffer: Int) extends EndpointFactory[ServerChannelEndpoint] {
@@ -23,59 +28,19 @@ object Sctp {
     def apply(port: Int, readBuffer: Int) = EF(new InetSocketAddress(port), readBuffer)
   }
 
-  class ServerChannelEndpoint private[Sctp] (val flow: Flow, socketAddress: SocketAddress, readBuffer: Int) extends base.BaseSource {
-    type Payload = SctpClient
+  class ServerChannelEndpoint private[Sctp] (val flow: Flow, socketAddress: SocketAddress, val readBuffer: Int) extends ServerComponent {
     val serverChannel = {
       val res = SctpServerChannel.open()
       res.configureBlocking(false)
       res.bind(socketAddress)
       res
     }
-    def accept() = {
-      Option(serverChannel.accept()) map { s =>
-        s.configureBlocking(false)
-        new SctpClient(this, s, ByteBuffer.allocate(readBuffer))
-      }
-    }
-
-    lazy val selector = Selector.open()
-
-    @volatile private[Sctp] var currentClients = Set.empty[SctpClient]
-    /**
-     * This method should be called by the server with the new Client.
-     */
-    private def clientArrived(client: SctpClient) {
-      currentClients += client
-      messageArrived(newReceviedMessage(client))
-    }
-    private var selectingFuture: Future[Unit] = _
-    private var stopServer = false
-
-    def start() {
-      val selKey = serverChannel.register(selector, SelectionKey.OP_ACCEPT, new SelectionKeyReactor)
-      selKey.attachment().asInstanceOf[SelectionKeyReactor].acceptor = key => {
-        var it = accept()
-        while (it.isDefined) {
-          clientArrived(it.get)
-          it = accept()
-        }
-      }
-      selectingFuture = flow blocking new SelectionKeyReactorSelector {
-        val selector = ServerChannelEndpoint.this.selector
-        def mustStop = stopServer
-      }.selectionLoop
-    }
-    def dispose() {
-      stopServer = true
-      Try(selector.wakeup())
-      Try(Await.ready(selectingFuture, 5.seconds))
-      Try(serverChannel.close())
-      currentClients foreach (_.dispose())
-    }
+    def serverChannelAccept() = serverChannel.accept()
+    val serverTypeProof = implicitly[this.type <:< ServerType]
   }
 
-  private[Sctp] class SctpClient(val server: ServerChannelEndpoint, val channel: SctpChannel, val readBuffer: ByteBuffer) extends Disposable {
-    val key: SelectionKey = channel.register(server.selector, SelectionKey.OP_READ)
+  private[Sctp] class SctpClient(val server: ServerChannelEndpoint, val conn: SctpChannel, val readBuffer: ByteBuffer) extends ClientComponent {
+    val clientTypeProof = implicitly[this.type <:< ClientType]
     val selector = server.selector
 
     var readers = Map.empty[Int, ByteBuffer => Unit] //set of readers
@@ -97,7 +62,7 @@ object Sctp {
         if (key.isReadable()) {
           def iterate() {
             readBuffer.clear
-            val recievedMessageInfo = channel.receive(readBuffer, null, new NotificationHandler[Null] {
+            val recievedMessageInfo = conn.receive(readBuffer, null, new NotificationHandler[Null] {
               def handleNotification(notif, attachment) = notif match {
                 case a: AssociationChangeNotification => a.event match {
                   case AssociationChangeNotification.AssocChangeEvent.COMM_LOST |
@@ -130,9 +95,9 @@ object Sctp {
           debug("Start writing")
           while (canWrite && sendPending.nonEmpty) {
             val ((stream, buffer), t) = (sendPending.head, sendPending.tail)
-            val mi = cachedOutputStreams.getOrElse(stream, MessageInfo.createOutgoing(channel.association(), null, stream))
+            val mi = cachedOutputStreams.getOrElse(stream, MessageInfo.createOutgoing(conn.association(), null, stream))
             cachedOutputStreams += stream -> mi
-            val wrote = channel.send(buffer, mi)
+            val wrote = conn.send(buffer, mi)
             if (buffer.hasRemaining()) { //could not write all of the content
               canWrite = false
             } else {
@@ -148,13 +113,6 @@ object Sctp {
       }
     }
     key.attach(reactor)
-
-    protected[Sctp] def disposeImpl() {
-      server.currentClients -= this
-      key.cancel()
-      try channel.close() catch { case _: Exception => }
-      debug(s"$channel disposed from: " + new Exception().getStackTraceString)
-    }
   }
 
   def SocketConn(addr: String, port: Int): SocketChannel = SocketConn(new InetSocketAddress(addr, port))
@@ -174,37 +132,12 @@ object Sctp {
   class Handler[S, P, R] private[Sctp] (val client: SctpClient,
                                         val streamId: Int,
                                         val reader: Consumer[S, P],
-                                        val serializer: R => Array[Byte]) extends Source with Responsible with EndpointFactory[Handler[S, P, R]] {
-    type Payload = P
-    type SupportedResponseTypes = (Int, R) :: TypeNil
-    implicit var flow: uy.com.netlabs.esb.Flow = _
-    private var state: S = null.asInstanceOf[S]
-
-    { //do setup
-      client.onDispose { _ => flow.dispose }
-      client.readers += streamId ->
-        Consumer.Asynchronous(reader) { t =>
-          if (t.isSuccess) {
-            val p = t.get
-            if (onEventHandler != null) onEventHandler(newReceviedMessage(p))
-            else {
-              val resp = onRequestHandler(newReceviedMessage(p))
-              resp.onComplete {
-                case Success(m) =>
-                  val (stream, r) = m.payload.value.asInstanceOf[(Int, R)]
-                  client addPending stream -> ByteBuffer.wrap(serializer(r))
-                case Failure(err) => log.error(err, "Failed to respond to client")
-              }(flow.workerActorsExecutionContext)
-            }
-          } else log.error(t.failed.get, s"Failure reading from client $client")
-        }
+                                        val serializer: R => Array[Byte]) extends HandlerComponent[S, P, R, (Int, R) :: TypeNil] {
+    def registerReader(reader) = client.readers += streamId -> reader
+    def processResponseFromRequestedMessage(m) = {
+      val (stream, r) = m.payload.value.asInstanceOf[(Int, R)]
+      client addPending stream -> ByteBuffer.wrap(serializer(r))
     }
-
-    def start() {}
-    def dispose() {}
-    def apply(f) = { flow = f; this }
-
-    def canEqual(that) = that == this
   }
   def closeClient(client: Message[SctpClient]) {
     client.payload.dispose
@@ -213,14 +146,11 @@ object Sctp {
   object Handler {
     def apply[S, P, R](message: Message[SctpClient],
                        streamId: Int,
-                       reader: Consumer[S, P]): EndpointFactory[Source { type Payload = Handler[S, P, R]#Payload }] = new Handler(message.payload, streamId, reader, null)
+                       reader: Consumer[S, P]) = new Handler(message.payload, streamId, reader, null).OneWay
     def apply[S, P, R](message: Message[SctpClient],
                        streamId: Int,
                        reader: Consumer[S, P],
-                       serializer: R => Array[Byte]): EndpointFactory[Responsible {
-      type Payload = Handler[S, P, R]#Payload
-      type SupportedResponseTypes = Handler[S, P, R]#SupportedResponseTypes
-    }] = new Handler(message.payload, streamId, reader, serializer)
+                       serializer: R => Array[Byte]) = new Handler(message.payload, streamId, reader, serializer).RequestResponse
 
   }
 
