@@ -15,13 +15,25 @@ trait Endpoint {
 trait EndpointFactory[+E <: Endpoint] extends Equals {
   def apply(flow: Flow): E
 }
-
+object EndpointFactory {
+  implicit class SelectRequestResponse[R <: Responsible](val r: EndpointFactory[R]) {
+    type RR = Responsible {
+      type Payload = R#Payload
+      type SupportedResponseTypes = R#SupportedResponseTypes
+    }
+    def RequestResponse: EndpointFactory[RR] = r.asInstanceOf[EndpointFactory[RR]]
+  }
+  implicit class SelectOneWay[S <: Source](val s: EndpointFactory[S]) {
+    type SS = Source { type Payload = S#Payload }
+    def OneWay: EndpointFactory[SS] = s.asInstanceOf[EndpointFactory[SS]]
+  }
+}
 
 /* ****** Incoming endpoints ****** */
 
 trait InboundEndpoint extends Endpoint {
   type Payload <: Any
-  
+
   def newReceviedMessage[P](payload: P) = Message(payload)
 }
 
@@ -44,19 +56,17 @@ object InboundEndpoint {
 trait Source extends InboundEndpoint {
   private[this] var onEventHandler0: Message[Payload] => Unit = _
   protected def onEventHandler: Message[Payload] => Unit = onEventHandler0
-  def onEvent(thunk: Message[Payload] => Unit) {onEventHandler0 = thunk}
+  def onEvent(thunk: Message[Payload] => Unit) { onEventHandler0 = thunk }
 }
 
 trait Responsible extends InboundEndpoint {
   type SupportedResponseTypes <: TypeList
   private[this] var onRequestHandler0: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]] = _
   protected def onRequestHandler: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]] = onRequestHandler0
-  def onRequest(thunk: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]]) {onRequestHandler0 = thunk}
+  def onRequest(thunk: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]]) { onRequestHandler0 = thunk }
 }
 
-
 /* ****** Outgoing endpoints ****** */
-
 
 @scala.annotation.implicitNotFound("This transport does not support messages with payload ${A}. Supported types are ${TL}")
 trait TypeSupportedByTransport[TL <: TypeList, A]
@@ -65,7 +75,7 @@ object TypeSupportedByTransport extends TypeSelectorImplicits[TypeSupportedByTra
 
 trait OutboundEndpoint extends Endpoint {
   type SupportedTypes <: TypeList
-  type SupportedType[Payload] = TypeSupportedByTransport[SupportedTypes, Payload]  
+  type SupportedType[Payload] = TypeSupportedByTransport[SupportedTypes, Payload]
 }
 
 trait Sink extends OutboundEndpoint {
