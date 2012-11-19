@@ -10,7 +10,7 @@ object FastTcpTest extends App {
     val appContext = AppContext.quick("streams")
     new Flow("ss")(Server(1500, 1024)) {
       logic { client =>
-        new Flow("clientHandler-" + client.payload)(Handler(client, consumers.lines(), serializers.string)) {
+        new Flow("clientHandler-" + client.payload)(Handler(client, consumers.lines(), serializers.string, ReadWaitAction.ReadValueData(2000, "lazy client"))) {
           logic { m: Message[String] =>
             println("Client message: " + m.payload)
             m

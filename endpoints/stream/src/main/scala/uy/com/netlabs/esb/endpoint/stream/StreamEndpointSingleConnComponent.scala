@@ -20,6 +20,7 @@ protected trait StreamEndpointSingleConnComponent {
     val reader: Consumer[S, R]
     val readBuffer: Int
     val ioWorkers: Int
+//    val onReadWaitAction: ReadWaitAction[S, P]
     protected def processResponseFromRequestedMessage(m: Message[OneOf[_, SupportedResponseTypes]])
     /**
      * Since we don't know how to read data from the specific conn, implementors
@@ -33,8 +34,26 @@ protected trait StreamEndpointSingleConnComponent {
 
     @volatile
     private var stop = false
+    @volatile
+    private var lastScheduledOnWaitAction: akka.actor.Cancellable = _
     protected val syncConsumer = Consumer.Synchronous(reader, readBuffer)
     def start() {
+//      def updateOnWaitAction() {
+//        if (lastScheduledOnWaitAction != null) {
+//          lastScheduledOnWaitAction.cancel()
+//        }
+//        lastScheduledOnWaitAction = flow.scheduleOnce(onReadWaitAction.maxWaitTime.millis) {
+//          val res = onReadWaitAction(state, reader)
+//          state = res.state
+//          res match {
+//            case byprod: reader.ByProduct => byprod.content foreach consumerHandler(false)
+//            case _ =>
+//          }
+//          //There is only one onWaitAction executed per timeout, that's why we do not self schedule.
+//          lastScheduledOnWaitAction = null
+//        }
+//      }
+
       val initializeInboundEndpoint = onEventHandler != null || onRequestHandler != null
       if (initializeInboundEndpoint) {
         Future {

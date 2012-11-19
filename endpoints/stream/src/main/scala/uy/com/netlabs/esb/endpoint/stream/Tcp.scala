@@ -60,8 +60,8 @@ object Tcp extends StreamEndpointServerComponent with StreamEndpointSingleConnCo
    */
   class Handler[S, P, R] private[Tcp] (val client: SocketClient,
                                        val reader: Consumer[S, P],
-                                       //                                       val onWaitAction: ReadWaitAction[S, P],
-                                       val serializer: R => Array[Byte]) extends HandlerComponent[S, P, R, R :: TypeNil] {
+                                       val serializer: R => Array[Byte],
+                                       val onReadWaitAction: ReadWaitAction[S, P]) extends HandlerComponent[S, P, R, R :: TypeNil] {
     def registerReader(reader) = client.multiplexer.readers += reader
     def processResponseFromRequestedMessage(m) = client.multiplexer addPending ByteBuffer.wrap(serializer(m.payload.value.asInstanceOf[R]))
 
@@ -72,11 +72,12 @@ object Tcp extends StreamEndpointServerComponent with StreamEndpointSingleConnCo
 
   object Handler {
     def apply[S, P, R](message: Message[SocketClient],
-                       reader: Consumer[S, P]) = new Handler(message.payload, reader, null).OneWay
+                       reader: Consumer[S, P],
+                       onReadWaitAction: ReadWaitAction[S, P] = ReadWaitAction.DoNothing) = new Handler(message.payload, reader, null, onReadWaitAction).OneWay
     def apply[S, P, R](message: Message[SocketClient],
                        reader: Consumer[S, P],
-                       serializer: R => Array[Byte]) = new Handler(message.payload, reader, serializer).RequestResponse
-
+                       serializer: R => Array[Byte],
+                       onReadWaitAction: ReadWaitAction[S, P] = ReadWaitAction.DoNothing) = new Handler(message.payload, reader, serializer, onReadWaitAction).RequestResponse
   }
 
   /**
