@@ -132,7 +132,8 @@ object Sctp extends StreamEndpointServerComponent with StreamEndpointSingleConnC
   class Handler[S, P, R] private[Sctp] (val client: SctpClient,
                                         val streamId: Int,
                                         val reader: Consumer[S, P],
-                                        val serializer: R => Array[Byte]) extends HandlerComponent[S, P, R, (Int, R) :: TypeNil] {
+                                        val serializer: R => Array[Byte],
+                                       val onReadWaitAction: ReadWaitAction[S, P]) extends HandlerComponent[S, P, R, (Int, R) :: TypeNil] {
     def registerReader(reader) = client.readers += streamId -> reader
     def processResponseFromRequestedMessage(m) = {
       val (stream, r) = m.payload.value.asInstanceOf[(Int, R)]
@@ -146,11 +147,13 @@ object Sctp extends StreamEndpointServerComponent with StreamEndpointSingleConnC
   object Handler {
     def apply[S, P, R](message: Message[SctpClient],
                        streamId: Int,
-                       reader: Consumer[S, P]) = new Handler(message.payload, streamId, reader, null).OneWay
+                       reader: Consumer[S, P],
+                       onReadWaitAction: ReadWaitAction[S, P] = ReadWaitAction.DoNothing) = new Handler(message.payload, streamId, reader, null, onReadWaitAction).OneWay
     def apply[S, P, R](message: Message[SctpClient],
                        streamId: Int,
                        reader: Consumer[S, P],
-                       serializer: R => Array[Byte]) = new Handler(message.payload, streamId, reader, serializer).RequestResponse
+                       serializer: R => Array[Byte],
+                       onReadWaitAction: ReadWaitAction[S, P] = ReadWaitAction.DoNothing) = new Handler(message.payload, streamId, reader, serializer, onReadWaitAction).RequestResponse
 
   }
 

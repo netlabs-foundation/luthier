@@ -6,7 +6,7 @@ import scala.util._
  * Action to be taken when a specified amount of time elapses after a byte is read.
  * See companion object for available implementations.
  */
-trait ReadWaitAction[State, Prod] {
+trait ReadWaitAction[+State, +Prod] {
   def maxWaitTime: Long
   def apply[S >: State, P >: Prod](prevState: S, consumer: Consumer[S, P]): consumer.ConsumerResult
 }
