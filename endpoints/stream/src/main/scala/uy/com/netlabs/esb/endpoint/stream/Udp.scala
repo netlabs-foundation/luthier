@@ -25,16 +25,20 @@ object Udp extends StreamEndpointSingleConnComponent {
     case class EF[S, P, R] private[Channel] (channel: DatagramChannel,
                                              reader: Consumer[S, R],
                                              writer: P => Array[Byte],
+                                             onReadWaitAction: ReadWaitAction[S, R],
                                              readBuffer: Int,
                                              ioWorkers: Int) extends EndpointFactory[SocketClientEndpoint[S, P, R]] {
-      def apply(f: Flow) = new SocketClientEndpoint[S, P, R](f, channel, reader, writer, readBuffer, ioWorkers)
+      def apply(f: Flow) = new SocketClientEndpoint[S, P, R](f, channel, reader, writer, onReadWaitAction, readBuffer, ioWorkers)
     }
-    def apply[S, P, R](channel: DatagramChannel, reader: Consumer[S, R], writer: P => Array[Byte] = null, readBuffer: Int = 1024 * 5, ioWorkers: Int = 2) = EF(channel, reader, writer, readBuffer, ioWorkers)
+    def apply[S, P, R](channel: DatagramChannel, reader: Consumer[S, R], writer: P => Array[Byte] = null,
+                       onReadWaitAction: ReadWaitAction[S, R] = ReadWaitAction.DoNothing, readBuffer: Int = 1024 * 5, ioWorkers: Int = 2) = 
+                         EF(channel, reader, writer, onReadWaitAction, readBuffer, ioWorkers)
 
     class SocketClientEndpoint[S, P, R](val flow: Flow,
                                         val conn: DatagramChannel,
                                         val reader: Consumer[S, R],
                                         val writer: P => Array[Byte],
+                                        val onReadWaitAction: ReadWaitAction[S, R],
                                         val readBuffer: Int,
                                         val ioWorkers: Int) extends ConnEndpoint[S, P, R, P :: TypeNil] with base.BasePullEndpoint {
 
