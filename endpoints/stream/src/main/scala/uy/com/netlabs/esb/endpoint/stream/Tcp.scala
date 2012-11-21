@@ -60,8 +60,8 @@ object Tcp extends StreamEndpointServerComponent with StreamEndpointSingleConnCo
    */
   class Handler[S, P, R] private[Tcp] (val client: SocketClient,
                                        val reader: Consumer[S, P],
-                                       //                                       val onWaitAction: ReadWaitAction[S, P],
-                                       val serializer: R => Array[Byte]) extends HandlerComponent[S, P, R, R :: TypeNil] {
+                                       val serializer: R => Array[Byte],
+                                       val onReadWaitAction: ReadWaitAction[S, P]) extends HandlerComponent[S, P, R, R :: TypeNil] {
     def registerReader(reader) = client.multiplexer.readers += reader
     def processResponseFromRequestedMessage(m) = client.multiplexer addPending ByteBuffer.wrap(serializer(m.payload.value.asInstanceOf[R]))
 
@@ -72,11 +72,12 @@ object Tcp extends StreamEndpointServerComponent with StreamEndpointSingleConnCo
 
   object Handler {
     def apply[S, P, R](message: Message[SocketClient],
-                       reader: Consumer[S, P]) = new Handler(message.payload, reader, null).OneWay
+                       reader: Consumer[S, P],
+                       onReadWaitAction: ReadWaitAction[S, P] = ReadWaitAction.DoNothing) = new Handler(message.payload, reader, null, onReadWaitAction).OneWay
     def apply[S, P, R](message: Message[SocketClient],
                        reader: Consumer[S, P],
-                       serializer: R => Array[Byte]) = new Handler(message.payload, reader, serializer).RequestResponse
-
+                       serializer: R => Array[Byte],
+                       onReadWaitAction: ReadWaitAction[S, P] = ReadWaitAction.DoNothing) = new Handler(message.payload, reader, serializer, onReadWaitAction).RequestResponse
   }
 
   /**
@@ -88,15 +89,19 @@ object Tcp extends StreamEndpointServerComponent with StreamEndpointSingleConnCo
     import typelist._
     import scala.concurrent._
 
-    case class EF[S, P, R] private[Client] (socket: SocketChannel, reader: Consumer[S, R], writer: P => Array[Byte], readBuffer: Int, ioWorkers: Int) extends EndpointFactory[SocketClientEndpoint[S, P, R]] {
-      def apply(f: Flow) = new SocketClientEndpoint[S, P, R](f, socket, reader, writer, readBuffer, ioWorkers)
+    case class EF[S, P, R] private[Client] (socket: SocketChannel, reader: Consumer[S, R], writer: P => Array[Byte],
+        onReadWaitAction: ReadWaitAction[S, R], readBuffer: Int, ioWorkers: Int) extends EndpointFactory[SocketClientEndpoint[S, P, R]] {
+      def apply(f: Flow) = new SocketClientEndpoint[S, P, R](f, socket, reader, writer, onReadWaitAction, readBuffer, ioWorkers)
     }
-    def apply[S, P, R](socket: SocketChannel, reader: Consumer[S, R], writer: P => Array[Byte] = null, readBuffer: Int = 1024 * 5, ioWorkers: Int = 2) = EF(socket, reader, writer, readBuffer, ioWorkers)
+    def apply[S, P, R](socket: SocketChannel, reader: Consumer[S, R], writer: P => Array[Byte] = null,
+        onReadWaitAction: ReadWaitAction[S, R] = ReadWaitAction.DoNothing, readBuffer: Int = 1024 * 5, ioWorkers: Int = 2) = 
+          EF(socket, reader, writer, onReadWaitAction, readBuffer, ioWorkers)
 
     class SocketClientEndpoint[S, P, R](val flow: Flow,
                                         val conn: SocketChannel,
                                         val reader: Consumer[S, R],
                                         val writer: P => Array[Byte],
+                                        val onReadWaitAction: ReadWaitAction[S, R],
                                         val readBuffer: Int,
                                         val ioWorkers: Int) extends ConnEndpoint[S, P, R, P :: TypeNil] with base.BasePullEndpoint {
 

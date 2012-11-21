@@ -27,7 +27,7 @@ object Consumer {
    * Helper class that implements the state handling of a consumer.
    * It uses the consumer to iterate over the content, saving the
    * produced state in between, and feeding it in each call.
-   * 
+   *
    * Given that the consume method is designed to return one value,
    * if more was available when called, the rest of it is buffered until consumed.
    * If there is data buffered, no read operation is performed.
@@ -51,8 +51,11 @@ object Consumer {
           val read = readOp(inBff)
           if (read == -1) throw new EOFException
           inBff.flip
-          val r = consumer.consume(Content(lastState, inBff))
-          lastState = r.state
+          val r = synchronized {
+            val r = consumer.consume(Content(lastState, inBff))
+            lastState = r.state
+            r
+          }
           r match {
             case consumer.NeedMore(_) => iterate()
             case consumer.ByProduct(content, state) =>
@@ -63,13 +66,19 @@ object Consumer {
         iterate()
       }
     }
+    @inline
+    final def withLastState[R](f: State => (State, R)): R = synchronized {
+      val res = f(lastState)
+      lastState = res._1
+      res._2
+    }
   }
 
   /**
    * Produced a function that works as a reader using the given consumer.
    * Such function is intended to be stepped as content arrive from an
    * asyncrhonous channel. The `handler` param received will be called
-   * every time that output is ready.  
+   * every time that output is ready.
    */
   def Asynchronous[State, Prod](consumer: Consumer[State, Prod])(handler: Try[Prod] => Unit): ByteBuffer => Unit = {
     var state = consumer.initialState

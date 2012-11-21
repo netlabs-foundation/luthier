@@ -20,6 +20,7 @@ protected trait StreamEndpointSingleConnComponent {
     val reader: Consumer[S, R]
     val readBuffer: Int
     val ioWorkers: Int
+    val onReadWaitAction: ReadWaitAction[S, R]
     protected def processResponseFromRequestedMessage(m: Message[OneOf[_, SupportedResponseTypes]])
     /**
      * Since we don't know how to read data from the specific conn, implementors
@@ -33,21 +34,46 @@ protected trait StreamEndpointSingleConnComponent {
 
     @volatile
     private var stop = false
+    @volatile
+    private var lastScheduledOnWaitAction: akka.actor.Cancellable = _
     protected val syncConsumer = Consumer.Synchronous(reader, readBuffer)
     def start() {
+      def consumerHandler(updateWaitAction: Boolean): Try[R] => Unit = read => {
+        if (updateWaitAction) updateOnWaitAction() //received input asynchronously, so update the on wait action
+        if (read.isSuccess) {
+          val in = newReceviedMessage(read.get)
+          if (onEventHandler != null) onEventHandler(in)
+          else onRequestHandler(in) onComplete {
+            case Success(response) => processResponseFromRequestedMessage(response)
+            case Failure(err) => log.error(err, s"Error processing request $in")
+          }
+        } else log.error(read.failed.get, s"Failure reading from socket $conn")
+      }
+      def updateOnWaitAction() {
+        if (lastScheduledOnWaitAction != null) {
+          lastScheduledOnWaitAction.cancel()
+        }
+        lastScheduledOnWaitAction = flow.scheduleOnce(onReadWaitAction.maxWaitTime.millis) {
+          val res = syncConsumer.withLastState { prev =>
+            val r = onReadWaitAction(prev, reader)
+            r.state -> r
+          }
+          res match {
+            case byprod: reader.ByProduct => byprod.content foreach consumerHandler(false)
+            case _ =>
+          }
+          //There is only one onWaitAction executed per timeout, that's why we do not self schedule.
+          lastScheduledOnWaitAction = null
+        }
+      }
+
       val initializeInboundEndpoint = onEventHandler != null || onRequestHandler != null
       if (initializeInboundEndpoint) {
+        updateOnWaitAction()
         Future {
+          val handler = consumerHandler(true)
           while (!stop) {
-            val read = syncConsumer.consume(readBytes)
-            if (read.isSuccess) {
-              val in = newReceviedMessage(read.get)
-              if (onEventHandler != null) onEventHandler(in)
-              else onRequestHandler(in) onComplete {
-                case Success(response) => processResponseFromRequestedMessage(response)
-                case Failure(err) => log.error(err, s"Error processing request $in")
-              }
-            } else log.error(read.failed.get, s"Failure reading from socket $conn")
+            handler(syncConsumer.consume(readBytes))
           }
         } onFailure {
           case ex =>
@@ -58,6 +84,7 @@ protected trait StreamEndpointSingleConnComponent {
     }
     def dispose {
       stop = true
+      if (lastScheduledOnWaitAction != null) lastScheduledOnWaitAction.cancel()
       scala.util.Try(conn.close())
       ioProfile.dispose()
     }

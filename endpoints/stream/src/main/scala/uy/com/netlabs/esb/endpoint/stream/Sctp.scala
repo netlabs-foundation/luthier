@@ -132,7 +132,8 @@ object Sctp extends StreamEndpointServerComponent with StreamEndpointSingleConnC
   class Handler[S, P, R] private[Sctp] (val client: SctpClient,
                                         val streamId: Int,
                                         val reader: Consumer[S, P],
-                                        val serializer: R => Array[Byte]) extends HandlerComponent[S, P, R, (Int, R) :: TypeNil] {
+                                        val serializer: R => Array[Byte],
+                                       val onReadWaitAction: ReadWaitAction[S, P]) extends HandlerComponent[S, P, R, (Int, R) :: TypeNil] {
     def registerReader(reader) = client.readers += streamId -> reader
     def processResponseFromRequestedMessage(m) = {
       val (stream, r) = m.payload.value.asInstanceOf[(Int, R)]
@@ -146,11 +147,13 @@ object Sctp extends StreamEndpointServerComponent with StreamEndpointSingleConnC
   object Handler {
     def apply[S, P, R](message: Message[SctpClient],
                        streamId: Int,
-                       reader: Consumer[S, P]) = new Handler(message.payload, streamId, reader, null).OneWay
+                       reader: Consumer[S, P],
+                       onReadWaitAction: ReadWaitAction[S, P] = ReadWaitAction.DoNothing) = new Handler(message.payload, streamId, reader, null, onReadWaitAction).OneWay
     def apply[S, P, R](message: Message[SctpClient],
                        streamId: Int,
                        reader: Consumer[S, P],
-                       serializer: R => Array[Byte]) = new Handler(message.payload, streamId, reader, serializer).RequestResponse
+                       serializer: R => Array[Byte],
+                       onReadWaitAction: ReadWaitAction[S, P] = ReadWaitAction.DoNothing) = new Handler(message.payload, streamId, reader, serializer, onReadWaitAction).RequestResponse
 
   }
 
@@ -166,15 +169,19 @@ object Sctp extends StreamEndpointServerComponent with StreamEndpointSingleConnC
     import typelist._
     import scala.concurrent._
 
-    case class EF[S, P, R] private[Client] (socket: SctpChannel, reader: Consumer[S, R], writer: P => Array[Byte], readBuffer: Int, ioWorkers: Int) extends EndpointFactory[SctpClientEndpoint[S, P, R]] {
-      def apply(f: Flow) = new SctpClientEndpoint[S, P, R](f, socket, reader, writer, readBuffer, ioWorkers)
+    case class EF[S, P, R] private[Client] (socket: SctpChannel, reader: Consumer[S, R], writer: P => Array[Byte],
+        onReadWaitAction: ReadWaitAction[S, R], readBuffer: Int, ioWorkers: Int) extends EndpointFactory[SctpClientEndpoint[S, P, R]] {
+      def apply(f: Flow) = new SctpClientEndpoint[S, P, R](f, socket, reader, writer, onReadWaitAction, readBuffer, ioWorkers)
     }
-    def apply[S, P, R](socket: SctpChannel, reader: Consumer[S, R], writer: P => Array[Byte] = null, readBuffer: Int = 1024 * 5, ioWorkers: Int = 2) = EF(socket, reader, writer, readBuffer, ioWorkers)
+    def apply[S, P, R](socket: SctpChannel, reader: Consumer[S, R], writer: P => Array[Byte] = null,
+        onReadWaitAction: ReadWaitAction[S, R] = ReadWaitAction.DoNothing, readBuffer: Int = 1024 * 5, ioWorkers: Int = 2) = 
+          EF(socket, reader, writer, onReadWaitAction, readBuffer, ioWorkers)
 
     class SctpClientEndpoint[S, P, R](val flow: Flow,
                                       val conn: SctpChannel,
                                       val reader: Consumer[S, R],
                                       val writer: P => Array[Byte],
+                                      val onReadWaitAction: ReadWaitAction[S, R],
                                       val readBuffer: Int,
                                       val ioWorkers: Int) extends ConnEndpoint[S, P, R, (Int, P) :: TypeNil] {
 
