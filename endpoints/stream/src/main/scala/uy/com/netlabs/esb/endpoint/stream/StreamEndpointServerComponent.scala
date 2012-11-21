@@ -2,7 +2,7 @@ package uy.com.netlabs.esb
 package endpoint
 package stream
 
-import language.{implicitConversions, higherKinds}
+import language.{ implicitConversions, higherKinds }
 
 import java.nio._
 import java.nio.channels._
@@ -90,35 +90,55 @@ protected trait StreamEndpointServerComponent {
     //abstracts
     val client: ClientType
     val reader: Consumer[S, P]
+    val onReadWaitAction: ReadWaitAction[S, P]
     def registerReader(reader: ByteBuffer => Unit): Unit
     def processResponseFromRequestedMessage(m: Message[OneOf[_, SupportedResponseTypes]])
 
-    type Payload = P    
+    type Payload = P
     type SupportedResponseTypes = SRT
     implicit var flow: uy.com.netlabs.esb.Flow = _
     private var state: S = null.asInstanceOf[S]
+    @volatile private var lastScheduledOnWaitAction: akka.actor.Cancellable = _
 
+    private def consumerHandler(updateWaitAction: Boolean): Try[P] => Unit = t => {
+      if (updateWaitAction) updateOnWaitAction() //received input asynchronously, so update the on wait action
+      if (t.isSuccess) {
+        val p = t.get
+        if (onEventHandler != null) onEventHandler(newReceviedMessage(p))
+        else {
+          val resp = onRequestHandler(newReceviedMessage(p))
+          resp.onComplete {
+            case Success(m) => processResponseFromRequestedMessage(m)
+            case Failure(err) => log.error(err, "Failed to respond to client")
+          }(flow.workerActorsExecutionContext)
+        }
+      } else log.error(t.failed.get, s"Failure reading from client $client")
+    }
     { //do setup
       client.onDispose { _ => flow.dispose }
       registerReader(
-        Consumer.Asynchronous(reader) { t =>
-          if (t.isSuccess) {
-            val p = t.get
-            if (onEventHandler != null) onEventHandler(newReceviedMessage(p))
-            else {
-              val resp = onRequestHandler(newReceviedMessage(p))
-              resp.onComplete {
-                case Success(m) => processResponseFromRequestedMessage(m)
-                case Failure(err) => log.error(err, "Failed to respond to client")
-              }(flow.workerActorsExecutionContext)
-            }
-          } else log.error(t.failed.get, s"Failure reading from client $client")
-        }
+        Consumer.Asynchronous(reader)(consumerHandler(true))
       )
     }
 
-    def start() {}
-    def dispose() {}
+    private def updateOnWaitAction() {
+      if (lastScheduledOnWaitAction != null) {
+        lastScheduledOnWaitAction.cancel()
+      }
+      lastScheduledOnWaitAction = flow.scheduleOnce(onReadWaitAction.maxWaitTime.millis) {
+        val res = onReadWaitAction(state, reader)
+        state = res.state
+        res match {
+          case byprod: reader.ByProduct => byprod.content foreach consumerHandler(false)
+          case _ =>
+        }
+        //There is only one onWaitAction executed per timeout, that's why we do not self schedule.
+        lastScheduledOnWaitAction = null
+      }
+    }
+
+    def start() {updateOnWaitAction()}
+    def dispose() {if (lastScheduledOnWaitAction != null) lastScheduledOnWaitAction.cancel()}
     def apply(f) = { flow = f; this }
 
     def canEqual(that) = that == this
