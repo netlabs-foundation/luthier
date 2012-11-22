@@ -25,6 +25,7 @@ trait Message[+Payload] {
   def correlationSequence: Int
   def correlationSequence_=(seq: Int)
 
+  @inline
   def mapTo[R] = this.asInstanceOf[Message[R]]
   def map[R](f: Payload => R) = Message(f(payload), header.inbound, header.outbound, replyTo, correlationId, correlationGroupSize, correlationSequence)
 }

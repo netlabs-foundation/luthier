@@ -21,8 +21,7 @@ trait FlowRun[FlowType <: Flow] extends MessageFactory {
    * A run context to put anything you like.
    */
   val context: Map[Any, Any] = scala.collection.concurrent.TrieMap.empty
-
-
+  
   private[this] var doneReactions = Set.empty[() => Unit]
   def afterFlowRun(code: => Unit) {
     doneReactions += (() => code)
