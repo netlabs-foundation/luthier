@@ -2,6 +2,7 @@ package uy.com.netlabs.esb
 package endpoint
 package stream
 
+import language._
 import Tcp._
 import java.nio.channels._
 
