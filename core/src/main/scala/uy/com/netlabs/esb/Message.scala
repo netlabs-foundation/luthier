@@ -50,8 +50,8 @@ trait MessageProxy[Payload] extends Message[Payload] {
 /**
  * A root message is the message that started a flow.
  */
-trait RootMessage[Payload] extends Message[Payload] {
-  def flowRun: FlowRun[Payload]
+trait RootMessage[FlowType <: Flow] extends Message[FlowType#InboundEndpointTpe#Payload] {
+  def flowRun: FlowRun[FlowType]
 }
 
 object Message {

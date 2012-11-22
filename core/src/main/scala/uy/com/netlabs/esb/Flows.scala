@@ -53,7 +53,7 @@ trait Flows extends FlowsImplicits0 {
   abstract class Flow[E <: InboundEndpoint, ResponseType](val name: String)(endpoint: EndpointFactory[E])(implicit val exchangePattern: ExchangePattern[E, ResponseType]) extends GFlow {
     registeredFlows += this
     type InboundEndpointTpe = E
-    type Logic = RootMessage[E#Payload] => ResponseType
+    type Logic = RootMessage[this.type] => ResponseType
     val appContext = Flows.this.appContext
     val log = akka.event.Logging(appContext.actorSystem, this)
     val flowsContext = Flows.this //backreference

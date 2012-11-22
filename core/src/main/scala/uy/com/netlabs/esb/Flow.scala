@@ -1,7 +1,7 @@
 package uy.com.netlabs.esb
 
 import scala.language.implicitConversions
-import language.experimental._
+import language.{experimental, existentials}, experimental._
 import akka.actor.{ Actor, Props, Cancellable }
 import akka.routing.RoundRobinRouter
 import akka.event.LoggingAdapter
@@ -37,26 +37,36 @@ trait Flow extends Disposable {
     this
   }
 
-  type Logic <: RootMessage[InboundEndpointTpe#Payload] => _
+  type Logic <: RootMessage[this.type] => _
   private[this] var logic: Logic = _
   def logic(l: Logic) {
     logic = l
   }
 
   def runFlow(rootMessage: Message[InboundEndpointTpe#Payload]): Future[_] = {
-    doWork(logic(new RootMessage[InboundEndpointTpe#Payload] with MessageProxy[InboundEndpointTpe#Payload] {
-      val peer = rootMessage
-      val self = this
-      val flowRun = new FlowRun[InboundEndpointTpe#Payload] {
-        lazy val rootMessage = self
-        val flow = Flow.this
+    val enclosingFlow: this.type = this
+    doWork {
+      val msg = new RootMessage[enclosingFlow.type] with MessageProxy[InboundEndpointTpe#Payload] {
+        val peer = rootMessage
+        val self = this
+        val flowRun = new FlowRun[enclosingFlow.type] {
+          lazy val rootMessage = self
+          val flow = enclosingFlow
+        }
       }
-    }))
+      val res = logic(msg)
+      res match {
+        case res: Future[_] => //result from a Responsible
+          res.onComplete(_ => msg.flowRun.flowRunCompleted())(workerActorsExecutionContext)
+        case _ => msg.flowRun.flowRunCompleted()
+      }
+      res
+    }
   }
 
-  implicit def self: this.type = this
-  implicit def messageInLogicImplicit: RootMessage[InboundEndpointTpe#Payload] = macro Flow.findNearestMessageMacro[InboundEndpointTpe#Payload]
-  implicit def flowRun(implicit rootMessage: RootMessage[InboundEndpointTpe#Payload]) = rootMessage.flowRun
+  implicit val self: this.type = this
+  implicit def messageInLogicImplicit: RootMessage[this.type] = macro Flow.findNearestMessageMacro[this.type]
+  implicit def flowRun(implicit rootMessage: RootMessage[this.type]) = rootMessage.flowRun
   implicit def endpointFactory2Endpoint[T <: Endpoint](ef: EndpointFactory[T]): T = {
     instantiatedEndpoints.get(ef) match {
       case Some(endpoint) => endpoint.asInstanceOf[T]
@@ -134,7 +144,7 @@ object Flow {
   }
 
   import scala.reflect.macros.{ Context, Universe }
-  def findNearestMessageMacro[Payload](c: Context): c.Expr[RootMessage[Payload]] = {
+  def findNearestMessageMacro[F <: Flow](c: Context): c.Expr[RootMessage[F]] = {
     import c.universe._
     val collected = c.enclosingClass.collect {
       case a @ Apply(Ident(i), List(Function(List(param @ ValDef(modifiers, paramName, _, _)), _))) if i.encoded == "logic" &&
