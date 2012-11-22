@@ -13,7 +13,7 @@ import language._
 
 import typelist._
 
-object Sctp extends StreamEndpointServerComponent with StreamEndpointSingleConnComponent {
+object Sctp extends StreamEndpointServerComponent {
 
   protected type ClientType = SctpClient
   protected type ClientConn = SctpChannel
@@ -178,19 +178,22 @@ object Sctp extends StreamEndpointServerComponent with StreamEndpointSingleConnC
           EF(socket, reader, writer, onReadWaitAction, readBuffer, ioWorkers)
 
     class SctpClientEndpoint[S, P, R](val flow: Flow,
-                                      val conn: SctpChannel,
+                                      val channel: SctpChannel,
                                       val reader: Consumer[S, R],
                                       val writer: P => Array[Byte],
                                       val onReadWaitAction: ReadWaitAction[S, R],
                                       val readBuffer: Int,
-                                      val ioWorkers: Int) extends ConnEndpoint[S, P, R, (Int, P) :: TypeNil] {
-
-      protected def processResponseFromRequestedMessage(m: Message[OneOf[_, SupportedResponseTypes]]) {
-        val (stream, p) = m.payload.value.asInstanceOf[(Int, P)]
-        conn.send(ByteBuffer.wrap(writer(p)), MessageInfo.createOutgoing(conn.association(), null, stream))
+                                      val ioWorkers: Int) extends IO.IOChannelEndpoint {
+      type ConsumerState = S
+      type ConsumerProd = R
+      type OutPayload = (Int, P)
+      def send(message) {
+        val (stream, p) = message.payload.asInstanceOf[(Int, P)]
+        channel.send(ByteBuffer.wrap(writer(p)), MessageInfo.createOutgoing(channel.association(), null, stream))
       }
+
       val readBytes = (buff: ByteBuffer) => {
-        val mi = conn.receive(buff, null, null)
+        val mi = channel.receive(buff, null, null)
         mi.bytes()
       }
 

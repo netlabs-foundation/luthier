@@ -25,6 +25,7 @@ trait Message[+Payload] {
   def correlationSequence: Int
   def correlationSequence_=(seq: Int)
 
+  @inline
   def mapTo[R] = this.asInstanceOf[Message[R]]
   def map[R](f: Payload => R) = Message(f(payload), header.inbound, header.outbound, replyTo, correlationId, correlationGroupSize, correlationSequence)
 }
@@ -50,8 +51,8 @@ trait MessageProxy[Payload] extends Message[Payload] {
 /**
  * A root message is the message that started a flow.
  */
-trait RootMessage[Payload] extends Message[Payload] {
-  def flowRun: FlowRun[Payload]
+trait RootMessage[FlowType <: Flow] extends Message[FlowType#InboundEndpointTpe#Payload] {
+  def flowRun: FlowRun[FlowType]
 }
 
 object Message {

@@ -12,7 +12,7 @@ import language._
 
 import typelist._
 
-object Udp extends StreamEndpointSingleConnComponent {
+object Udp {
   /**
    * Simple Udp client.
    * Given the nature of a single datagram channels, there is no need for selectors. An simple implementation
@@ -35,20 +35,23 @@ object Udp extends StreamEndpointSingleConnComponent {
                          EF(channel, reader, writer, onReadWaitAction, readBuffer, ioWorkers)
 
     class SocketClientEndpoint[S, P, R](val flow: Flow,
-                                        val conn: DatagramChannel,
+                                        val channel: DatagramChannel,
                                         val reader: Consumer[S, R],
                                         val writer: P => Array[Byte],
                                         val onReadWaitAction: ReadWaitAction[S, R],
                                         val readBuffer: Int,
-                                        val ioWorkers: Int) extends ConnEndpoint[S, P, R, P :: TypeNil] with base.BasePullEndpoint {
+                                        val ioWorkers: Int) extends IO.IOChannelEndpoint with base.BasePullEndpoint {
 
-      protected def processResponseFromRequestedMessage(m: Message[OneOf[_, SupportedResponseTypes]]) {
-        conn.write(ByteBuffer.wrap(writer(m.payload.value.asInstanceOf[P])))
+      type ConsumerState = S
+      type ConsumerProd = R
+      type OutPayload = P
+      def send(message) {
+        channel.write(ByteBuffer.wrap(writer(message.payload)))
       }
-      protected val readBytes: ByteBuffer => Int = conn.read(_: ByteBuffer)
+      protected val readBytes: ByteBuffer => Int = channel.read(_: ByteBuffer)
 
       protected def retrieveMessage(mf: uy.com.netlabs.esb.MessageFactory): uy.com.netlabs.esb.Message[Payload] = {
-        mf(syncConsumer.consume(conn.read).get)
+        mf(syncConsumer.consume(channel.read).get)
       }
     }
   }
