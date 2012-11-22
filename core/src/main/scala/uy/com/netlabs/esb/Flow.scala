@@ -37,7 +37,8 @@ trait Flow extends Disposable {
     this
   }
 
-  type Logic <: RootMessage[this.type] => _
+  type Logic <: RootMessage[this.type] => LogicResult
+  type LogicResult
   private[this] var logic: Logic = _
   def logic(l: Logic) {
     logic = l

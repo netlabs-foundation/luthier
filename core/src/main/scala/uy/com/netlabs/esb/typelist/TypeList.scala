@@ -60,6 +60,7 @@ object TypeSelectorImplicits {
   }
 }
 
+@annotation.implicitNotFound("${E} is not contained in ${TL}")
 trait Contained[TL <: TypeList, E]
 object Contained extends TypeSelectorImplicits[Contained]
 

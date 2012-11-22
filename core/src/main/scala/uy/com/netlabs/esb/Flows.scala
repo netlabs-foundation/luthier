@@ -54,6 +54,7 @@ trait Flows extends FlowsImplicits0 {
     registeredFlows += this
     type InboundEndpointTpe = E
     type Logic = RootMessage[this.type] => ResponseType
+    type LogicResult = ResponseType
     val appContext = Flows.this.appContext
     val log = akka.event.Logging(appContext.actorSystem, this)
     val flowsContext = Flows.this //backreference
