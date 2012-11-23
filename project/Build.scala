@@ -45,6 +45,7 @@ object CocoonBuild extends Build {
     httpEndpoint,
     cxfEndpoint,
     streamEndpoint,
+    syslogEndpoint,
     wsutil
   ).settings(defSettings:_*)
   lazy val core = Project(id = "luthier-core", base = file("core")).settings(defSettings:_*)
@@ -56,8 +57,9 @@ object CocoonBuild extends Build {
   lazy val httpEndpoint = Project(id = "httpEndpoint", base = file("endpoints/http")).dependsOn(coreAsDep, logicalEndpoints).settings(defSettings:_*)
   lazy val cxfEndpoint = Project(id = "cxfEndpoint", base = file ("endpoints/cxf")).dependsOn(coreAsDep, logicalEndpoints).settings(defSettings:_*)
   lazy val streamEndpoint = Project(id = "streamEndpoint", base = file ("endpoints/stream")).dependsOn(coreAsDep, logicalEndpoints).settings(defSettings:_*)
+  lazy val syslogEndpoint = Project(id = "syslogEndpoint", base = file ("endpoints/syslog")).dependsOn(coreAsDep, logicalEndpoints).settings(defSettings:_*)
   lazy val wsutil = Project(id = "wsutil", base = file("wsutil")).settings(defSettings:_*)
 
   lazy val luthierRunner = Project(id = "luthier-runner", base = file("luthier-runner")).settings(defSettings:_*).
-    dependsOn(core, logicalEndpoints, fileEndpoint, jmsEndpoint, jdbcEndpoint, httpEndpoint, cxfEndpoint, streamEndpoint)
+    dependsOn(core, logicalEndpoints, fileEndpoint, jmsEndpoint, jdbcEndpoint, httpEndpoint, cxfEndpoint, streamEndpoint, syslogEndpoint)
 }
