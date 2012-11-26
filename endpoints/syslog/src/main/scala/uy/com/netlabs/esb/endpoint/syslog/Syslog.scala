@@ -22,13 +22,14 @@ object Syslog {
 
     var syslogInstance: SyslogIF = _
     lazy val ioProfile = base.IoProfile.threadPool(ioWorkers)
+    val appName = flow.appContext.name
 
     def pushMessage[Payload: SupportedType](m) = {
       m.payload match {
-        case msg: String                        => syslogInstance.info(msg)
-        case (level: Int, msg: String)          => syslogInstance.log(level, msg)
-        case msg: SyslogMessageIF               => syslogInstance.info(msg)
-        case (level: Int, msg: SyslogMessageIF) => syslogInstance.log(level, msg)
+        case msg: String                        => syslogInstance.info(s"$appName: $msg")
+        case (level: Int, msg: String)          => syslogInstance.log(level, s"$appName: $msg")
+        case msg: SyslogMessageIF               => syslogInstance.info(s"$appName: ${msg.createMessage()}")
+        case (level: Int, msg: SyslogMessageIF) => syslogInstance.log(level, s"$appName: ${msg.createMessage()}")
       }
     }
 
