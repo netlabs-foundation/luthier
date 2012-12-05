@@ -19,19 +19,18 @@ protected trait StreamEndpointServerComponent {
   protected type ServerType <: ServerComponent
   protected def newClient(server: ServerType, conn: ClientConn, readBuffer: ByteBuffer): ClientType
 
-  protected trait ServerComponent extends base.BaseSource {
+  protected trait ServerComponent extends base.BaseSource { self: ServerType =>
     type Payload = ClientType
 
     val flow: Flow
     val readBuffer: Int
-    val serverTypeProof: this.type <:< ServerType
     val serverChannel: SelectableChannel with InterruptibleChannel
     def serverChannelAccept(): ClientConn
 
     def accept() = {
       Option(serverChannelAccept()) map { s =>
         s.configureBlocking(false)
-        newClient(serverTypeProof(this), s, ByteBuffer.allocate(readBuffer))
+        newClient(this, s, ByteBuffer.allocate(readBuffer))
       }
     }
 
@@ -71,15 +70,14 @@ protected trait StreamEndpointServerComponent {
     }
   }
 
-  protected trait ClientComponent extends Disposable {
+  protected trait ClientComponent extends Disposable { self: ClientType =>
     val server: ServerType
     val conn: ClientConn
     val readBuffer: ByteBuffer
     val key: SelectionKey = conn.register(server.selector, SelectionKey.OP_READ)
-    val clientTypeProof: this.type <:< ClientType
 
     protected[StreamEndpointServerComponent] def disposeImpl() {
-      server.currentClients -= clientTypeProof(this)
+      server.currentClients -= this
       key.cancel()
       try conn.close() catch { case _: Exception => }
       debug(s"$conn disposed")

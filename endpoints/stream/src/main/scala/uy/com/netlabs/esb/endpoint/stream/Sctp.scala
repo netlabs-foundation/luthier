@@ -36,11 +36,9 @@ object Sctp extends StreamEndpointServerComponent {
       res
     }
     def serverChannelAccept() = serverChannel.accept()
-    val serverTypeProof = implicitly[this.type <:< ServerType]
   }
 
   private[Sctp] class SctpClient(val server: ServerChannelEndpoint, val conn: SctpChannel, val readBuffer: ByteBuffer) extends ClientComponent {
-    val clientTypeProof = implicitly[this.type <:< ClientType]
     val selector = server.selector
 
     var readers = Map.empty[Int, ByteBuffer => Unit] //set of readers

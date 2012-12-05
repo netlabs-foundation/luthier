@@ -36,12 +36,10 @@ object Tcp extends StreamEndpointServerComponent {
       res
     }
     def serverChannelAccept() = serverChannel.accept()
-    val serverTypeProof = implicitly[this.type <:< ServerType]
   }
 
   private[Tcp] class SocketClient(val server: ServerSocketEndpoint, val conn: SocketChannel, val readBuffer: ByteBuffer) extends ClientComponent {
     val multiplexer = new ChannelMultiplexer(key, server.selector, readBuffer, conn.read, conn.write, this, server.log)
-    val clientTypeProof = implicitly[this.type <:< ClientType]
   }
 
   def SocketConn(addr: String, port: Int): SocketChannel = SocketConn(new InetSocketAddress(addr, port))
