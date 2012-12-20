@@ -140,5 +140,8 @@ protected trait StreamEndpointServerComponent {
     def apply(f) = { flow = f; this }
 
     def canEqual(that) = that == this
+    
+    def RR: EndpointFactory[Responsible {type SupportedResponseTypes = SRT; type Payload = P}] = this
+    def OW: EndpointFactory[Source {type Payload = P}] = this 
   }
 }

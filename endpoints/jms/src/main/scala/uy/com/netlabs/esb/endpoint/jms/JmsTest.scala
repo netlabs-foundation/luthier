@@ -31,13 +31,13 @@ object JmsTest extends App {
 
     class Lala()
     
-    new Flow("say hello")(askMeQueue RequestResponse) {
+    new Flow("say hello")(askMeQueue)(ExchangePattern.RequestResponse) {
       logic { req =>
         req.map("Hello " + _)
       }
     }
 
-    new Flow("logQuestion")(Jms.queue("logQuestion", jmsConnection) OneWay) {
+    new Flow("logQuestion")(Jms.queue("logQuestion", jmsConnection))(ExchangePattern.OneWay) {
       logic { req =>
         askMeQueue.ask(req.mapTo[String]) onSuccess {case r => Jms.topic("result", jmsConnection).push(r.mapTo[String])}
       }

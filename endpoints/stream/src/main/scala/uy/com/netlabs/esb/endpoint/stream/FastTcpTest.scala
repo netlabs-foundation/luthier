@@ -34,7 +34,7 @@ object FastTcpTest extends App {
     chnl.finishConnect()
     chnl.write(java.nio.ByteBuffer.wrap("GET\n\r".getBytes))
     
-    new Flow("SimpleConnectTo")(Client(chnl, consumers.lines()) OneWay) {
+    new Flow("SimpleConnectTo")(Client(chnl, consumers.lines()))(ExchangePattern.OneWay) {
       logic {m => 
       	println(s"Received: ${m.payload}")
       }

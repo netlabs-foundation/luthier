@@ -12,6 +12,8 @@ import java.nio.file._
 object Main {
 
   def main(args: Array[String]) {
+    val (flows, restOfArgs) = args.span(_.endsWith(".flow"))
+    
     val settings = new Settings
     settings.YmethodInfer.value = true
     settings.usejavacp.value = true
@@ -20,21 +22,19 @@ object Main {
 //    settings.Yinferdebug.value = true
     settings.classpath.value = classpath()
     
+    
     val compiler = new IMain(settings)
     val initialized = Promise[Unit]()
-    compiler.initialize(initialized.success(()))
-    val (flows, restOfArgs) = args.span(_.endsWith(".flow"))
+    compiler.initialize {
+      //insert restOfArgs into compiler
+      require(compiler.bind("args", "Array[String]", restOfArgs) == IR.Success, "Could not bind args")
 
-    //await compiler initialization
-    if (!initialized.isCompleted) println("Waiting for compiler to finish initializing")
-    Await.result(initialized.future, Duration.Inf)
-    //insert restOfArgs into compiler
-    require(compiler.bind("args", "Array[String]", restOfArgs) == IR.Success, "Could not bind args")
-
-    //declare basic imports
-    require(compiler.addImports("uy.com.netlabs.esb._",
+      //declare basic imports
+      if (compiler.addImports("uy.com.netlabs.esb._",
       "uy.com.netlabs.esb.typelist._",
-      "scala.language._") == IR.Success, "Could not add default imports")
+      "scala.language._") != IR.Success) initialized.failure(new IllegalStateException("Could not add default imports"))
+      else initialized.success(()) 
+    }
 
     val runner = new AppContext {
       val name = "Runner"
@@ -43,10 +43,16 @@ object Main {
     val runnerFlows = new Flows {
       val appContext = runner
     }
+    
+    lazy val lazyCompiler = {
+      if (!initialized.isCompleted) println("Waiting for compiler to finish initializing")
+      Await.result(initialized.future, Duration.Inf)
+      compiler
+    }
       
     //instantiate the flows:
     for (f <- flows) {
-      val h = new FlowHandler(compiler, f)
+      val h = new FlowHandler(lazyCompiler, f)
       h.load() //attempt to initialize it synchronously
       h.startWatching(runnerFlows)
     }

@@ -35,12 +35,12 @@ trait Flows extends FlowsImplicits0 {
     private[Flows] def setup(t: T, f: Flow[T, ResponseType]): Unit
   }
   object ExchangePattern {
-    implicit def OneWayCommunicationPattern[In <: Source] = new ExchangePattern[In, Unit] {
+    implicit def OneWay[In <: Source] = new ExchangePattern[In, Unit] {
       private[Flows] def setup(endpoint, flow) {
         endpoint.onEvent(flow.runFlow(_))
       } 
     }
-    implicit def RequestResponseCommunicationPattern[In <: Responsible] = new ExchangePattern[In, Future[Message[OneOf[_, In#SupportedResponseTypes]]]] {
+    implicit def RequestResponse[In <: Responsible] = new ExchangePattern[In, Future[Message[OneOf[_, In#SupportedResponseTypes]]]] {
       private[Flows] def setup(endpoint, flow) {
         endpoint.onRequest{m =>
           val res = flow.runFlow(m).mapTo[Future[Message[OneOf[_, endpoint.SupportedResponseTypes]]]] //the result of running the flow is the one this is being mappedTo, but is encapsulated in the florRun future, hence, flatten it

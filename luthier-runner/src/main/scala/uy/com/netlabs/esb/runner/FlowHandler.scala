@@ -7,7 +7,8 @@ import scala.util._
 import scala.collection.JavaConversions._
 import scala.concurrent.duration._
 
-class FlowHandler(compiler: IMain, file: String) {
+class FlowHandler(compiler: => IMain, file: String) {
+  private lazy val compilerLazy = compiler
   val filePath = Paths.get(file)
   @volatile var lastUpdate: Long = 0
   @volatile var theFlows: Flows = _
@@ -36,6 +37,7 @@ class FlowHandler(compiler: IMain, file: String) {
   }
   def load() {
     if (Files.exists(filePath)) {
+      findPrecompiledVersion()
       lastUpdate = System.currentTimeMillis()
       try {
         val content = Files.readAllLines(filePath, java.nio.charset.Charset.forName("utf8")).toSeq
@@ -53,8 +55,8 @@ class FlowHandler(compiler: IMain, file: String) {
         ${content.mkString("\n")}
       }
       """
-        require(compiler.interpret(script) == IR.Success, "Failed compiling flow " + file)
-        val flows = compiler.lastRequest.getEvalTyped[Flows].getOrElse(throw new IllegalStateException("Could not load flow " + file))
+        require(compilerLazy.interpret(script) == IR.Success, "Failed compiling flow " + file)
+        val flows = compilerLazy.lastRequest.getEvalTyped[Flows].getOrElse(throw new IllegalStateException("Could not load flow " + file))
         println("Starting App: " + flows.appContext.name)
         val appStartTime = System.nanoTime()
         flows.registeredFlows foreach { f =>
@@ -69,5 +71,11 @@ class FlowHandler(compiler: IMain, file: String) {
     } else {
       println(Console.RED + s" Flow $file does not exists")
     }
+  }
+  def findPrecompiledVersion() {
+    val compilerVersionPath = filePath.getParent.resolve("." + filePath.getFileName() + ".jar")
+    if (Files exists compilerVersionPath) {
+      
+    } else None
   }
 }

@@ -146,12 +146,12 @@ object Sctp extends StreamEndpointServerComponent {
     def apply[S, P, R](message: Message[SctpClient],
                        streamId: Int,
                        reader: Consumer[S, P],
-                       onReadWaitAction: ReadWaitAction[S, P] = ReadWaitAction.DoNothing) = new Handler(message.payload, streamId, reader, null, onReadWaitAction).OneWay
+                       onReadWaitAction: ReadWaitAction[S, P] = ReadWaitAction.DoNothing) = new Handler(message.payload, streamId, reader, null, onReadWaitAction).OW
     def apply[S, P, R](message: Message[SctpClient],
                        streamId: Int,
                        reader: Consumer[S, P],
                        serializer: R => Array[Byte],
-                       onReadWaitAction: ReadWaitAction[S, P] = ReadWaitAction.DoNothing) = new Handler(message.payload, streamId, reader, serializer, onReadWaitAction).RequestResponse
+                       onReadWaitAction: ReadWaitAction[S, P] = ReadWaitAction.DoNothing) = new Handler(message.payload, streamId, reader, serializer, onReadWaitAction).RR
 
   }
 
