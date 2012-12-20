@@ -15,19 +15,6 @@ trait Endpoint {
 trait EndpointFactory[+E <: Endpoint] extends Equals {
   def apply(flow: Flow): E
 }
-object EndpointFactory {
-  implicit class SelectRequestResponse[R <: Responsible](val r: EndpointFactory[R]) {
-    type RR = Responsible {
-      type Payload = R#Payload
-      type SupportedResponseTypes = R#SupportedResponseTypes
-    }
-    def RequestResponse: EndpointFactory[RR] = r.asInstanceOf[EndpointFactory[RR]]
-  }
-  implicit class SelectOneWay[S <: Source](val s: EndpointFactory[S]) {
-    type SS = Source { type Payload = S#Payload }
-    def OneWay: EndpointFactory[SS] = s.asInstanceOf[EndpointFactory[SS]]
-  }
-}
 
 /* ****** Incoming endpoints ****** */
 

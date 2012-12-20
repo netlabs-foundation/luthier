@@ -16,7 +16,7 @@ val jmsConnection = {
 
 val dirToWatch = Paths.get(args(0))
 
-new Flow("DirShare")(Jms.queue("dirshare", jmsConnection) RequestResponse) {
+new Flow("DirShare")(Jms.queue("dirshare", jmsConnection))(ExchangePattern.RequestResponse) {
   logic {m =>
     lazy val s = Files.newDirectoryStream(dirToWatch)
     val someFile = try {s.toList.headOption} finally {if (s != null) s.close()}

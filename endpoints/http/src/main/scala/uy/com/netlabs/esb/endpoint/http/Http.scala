@@ -30,7 +30,7 @@ object Http {
     private def wrapRequest(r: (Request, FunctionHandler[R])) = {
       r._1.build() -> new AsyncCompletionHandler[(R, HeaderBaggage)] {
         def onCompleted(response) = r._2.onCompleted(response) -> response.getCookies
-        //proxy all methods -- must call all supers because this AsyncCompletionHandler is horribly statefull
+        //proxy all methods -- must call all supers because this AsyncCompletionHandler is horribly stateful
         override def onBodyPartReceived(content) = {
           super.onBodyPartReceived(content)
           r._2.onBodyPartReceived(content)
