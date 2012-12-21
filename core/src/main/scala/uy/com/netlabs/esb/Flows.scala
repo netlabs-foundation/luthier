@@ -25,9 +25,6 @@ trait Flows extends FlowsImplicits0 {
     def genString(f) = f.appContext.name + ":" + f.name
   }
 
-//  implicit def SelectRequestResponse[R <: Responsible](r: EndpointFactory[R]) = new Flows.SelectRequestResponse(r)
-//  implicit def SelectOneWay[S <: Source](s: EndpointFactory[S]) = new Flows.SelectOneWay(s)
-
   @volatile var registeredFlows = Set.empty[GFlow]
 
   @scala.annotation.implicitNotFound("There is no ExchangePattern for ${T}.")
@@ -62,7 +59,7 @@ trait Flows extends FlowsImplicits0 {
     exchangePattern.setup(rootEndpoint, this)
   }
   
-  def inFlow[R](code: (Flow[_, Unit], Message[Unit]) => R): Future[R]= {
+  def inFlow[R](code: (Flow[_, Unit], RootMessage[Flow[_, Unit]]) => R): Future[R]= {
     val result = scala.concurrent.Promise[R]()
     val flowName = ("anon@" + new Exception().getStackTrace()(2)).replace("$", "_").replaceAll("[()<>]", ";")
     val flow = new Flow(flowName)(new endpoint.base.DummySource) {
@@ -78,19 +75,7 @@ trait Flows extends FlowsImplicits0 {
   }
 
 }
-object Flows {
-//  class SelectRequestResponse[R <: Responsible](val r: EndpointFactory[R]) {
-//    type RR = Responsible { 
-//      type Payload = R#Payload
-//      type SupportedResponseTypes = R#SupportedResponseTypes
-//    }
-//    def RequestResponse: EndpointFactory[RR] = r.asInstanceOf[EndpointFactory[RR]]
-//  }
-//  class SelectOneWay[S <: Source](val s: EndpointFactory[S]) {
-//    type SS = Source { type Payload = S#Payload }
-//    def OneWay: EndpointFactory[SS] = s.asInstanceOf[EndpointFactory[SS]]
-//  }
-  
+object Flows {  
   
   def genericInvalidResponseImpl[V, TL <: TypeList](c: Context)(value: c.Expr[V])(implicit valueEv: c.WeakTypeTag[V], tlEv: c.WeakTypeTag[TL]): c.Expr[Future[Message[OneOf[_, TL]]]] = {
     val expectedTypes = TypeList.describe(tlEv)
