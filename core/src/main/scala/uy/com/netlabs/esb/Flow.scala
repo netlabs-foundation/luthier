@@ -8,7 +8,52 @@ import akka.event.LoggingAdapter
 import scala.concurrent.{ ExecutionContext, Promise, Future, duration }, duration._
 import scala.util._
 
-trait Flow extends Disposable {
+/**
+ * The base definition of everything a flow needs to works. A flow is associated to an AppContext, from which
+ * it takes its worker, it takes a root InboundEndpoint, which defines its input type, as well as its return
+ * to a logic call. When the InboundEndpoint is a Source endpoint, the flow is one way-only, when it is a
+ * Responsible, it is a request-response flow.
+ * 
+ * RootMessages are those which instantiate a run of the flow. They are fully typed with the Flow type and
+ * they encapsulate the FlowRun.
+ * 
+ * The FlowRun represents the current run of the flow. This value is available for every run of the logic
+ * and its useful for its context properties.  
+ * 
+ * The type `InboundEndpointTpe` captures the type of the base InboundEndpoint. This type is usually not used,
+ * unless you are defining special primitives that should only work during the run for certain flows. For example:
+ * 
+ * {{{
+ *   //For some theoretical endpoint for instant messaging, this methods allows to list
+ *   //the connected users.
+ * 
+ *   class SomeInstantMessagingEndpoint {
+ *     val conn = ...
+ *     ...
+ *     def listUsers() = conn.listUsers() 
+ *   }
+ * 
+ *   /**
+ *    * General purpose listUsers, it will find the implicit FlowRun, obtain the endpoint, and call it's listUsers.
+ *    * Note how we defined two parameter lists, and the first one is empty, this is so that the method can be called
+ *    * like listUsers(). Otherwise, if users accidentally write listUsers() the compiler will complain that no FlowRun
+ *    * is being passed.
+ *    **/
+ *   def listUsers[F <: Flow {type InboundEndpoint = SomeInstantMessagingEndpoint}]()(implicit run: FlowRun[F]) = {
+ *      run.flow.listUsers()
+ *   }
+ * 
+ *   ...
+ * 
+ *   //Now, when defining the flow, we can call it like
+ *   new Flow(new SomeInstantMessagingEndpoint(...)) {
+ *     logic {in =>
+ *       listUsers()
+ *     }
+ *   }
+ * }}}
+ */
+trait Flow extends FlowPatterns with Disposable {
   type InboundEndpointTpe <: InboundEndpoint
   
   def name: String

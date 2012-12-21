@@ -7,7 +7,7 @@ import scala.collection.mutable._
  * Value implicitly available during a run.
  * Useful to store run temporal information as well as a message factory.
  */
-trait FlowRun[FlowType <: Flow] extends MessageFactory {
+trait FlowRun[+FlowType <: Flow] extends MessageFactory {
   
   /**
    * Message that started the run, i.e.: the message declared in logic
