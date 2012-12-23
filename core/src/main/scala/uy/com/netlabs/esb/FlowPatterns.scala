@@ -16,18 +16,23 @@ trait FlowPatterns {
    * @param description Description of the operation, so that it is logged appropriately
    * @param logRetriesWithLevel Level to log failures. Default is `akka.event.Logging.InfoLevel`
    * @param op Action returning a Future. Typically, a call to an endpoint.
+   * @param isFailure Determines whether the result of the future is a failure or not.
+   * @param fc Implicit FlowRun that forces this method to be called from within a flow.
    */
   def retryAttempts[T](maxAttempts: Int,
                        description: String,
-                       logRetriesWithLevel: akka.event.Logging.LogLevel = akka.event.Logging.InfoLevel)(op: => Future[T])(isFailure: Try[T] => Boolean)(implicit fc: FlowRun[_ <: Flow]): Future[T] = {
+                       logRetriesWithLevel: akka.event.Logging.LogLevel = akka.event.Logging.InfoLevel)(
+                         op: => Future[T])(
+                           isFailure: Try[T] => Boolean)(implicit fc: FlowRun[_ <: Flow]): Future[T] = {
     import fc.flow.workerActorsExecutionContext
     val promise = Promise[T]()
     op onComplete { t =>
-      if (isFailure(t) && maxAttempts > 1) {
-        if (fc.flow.log.isEnabled(logRetriesWithLevel)) fc.flow.log.log(logRetriesWithLevel, s"Attempt for $description failed. Remaining $maxAttempts attempts. Retrying...")
+      val failed = isFailure(t) 
+      if (failed && maxAttempts > 1) {
+        if (fc.flow.log.isEnabled(logRetriesWithLevel)) fc.flow.log.log(logRetriesWithLevel, s"""Attempt for "$description" failed. Remaining $maxAttempts attempts. Retrying...""")
         promise.completeWith(retryAttempts(maxAttempts - 1, description, logRetriesWithLevel)(op)(isFailure))
       } else {
-        if (fc.flow.log.isEnabled(logRetriesWithLevel)) fc.flow.log.log(logRetriesWithLevel, s"Attempt for $description failed all attempts.")
+        if (failed && fc.flow.log.isEnabled(logRetriesWithLevel)) fc.flow.log.log(logRetriesWithLevel, s"""Attempt for "$description" failed all attempts.""")
         promise.complete(t)
       }
     }
@@ -45,19 +50,22 @@ trait FlowPatterns {
   def retryBackoff[T](initalBackoff: Long, backoffExponent: Long, maxBackoff: Long, description: String,
                       logRetriesWithLevel: akka.event.Logging.LogLevel = akka.event.Logging.InfoLevel)(op: => Future[T])(isFailure: Try[T] => Boolean)(implicit fc: FlowRun[_ <: Flow]): Future[T] = {
     import fc.flow.workerActorsExecutionContext
-    def backoff(acc: Long): Future[T] = {
+    def backoff(wait: Long, acc: Long): Future[T] = {
       val promise = Promise[T]()
       op onComplete { t =>
-        if (isFailure(t) && acc < maxBackoff) {
-          val backoffTime = acc * backoffExponent
-          if (fc.flow.log.isEnabled(logRetriesWithLevel)) fc.flow.log.log(logRetriesWithLevel, s"Attempt for $description failed. Backing of for $backoffTime ms before retry")
-          fc.flow.scheduleOnce(backoffTime.millis) {
-            promise.completeWith(backoff(backoffTime))
+        val failed = isFailure(t)
+        if (failed && acc < maxBackoff) {
+          if (fc.flow.log.isEnabled(logRetriesWithLevel)) fc.flow.log.log(logRetriesWithLevel, s"""Attempt for "$description" failed. Backing of for $wait ms before retry""")
+          fc.flow.scheduleOnce(wait.millis) {
+            promise.completeWith(backoff(wait * backoffExponent, acc + wait))
           }
-        } else promise.complete(t)
+        } else {
+          if (failed && fc.flow.log.isEnabled(logRetriesWithLevel)) fc.flow.log.log(logRetriesWithLevel, s"""Accumulated backoff($acc) ≥ maxBackoff($maxBackoff). "$description" failed.""")
+          promise.complete(t) 
+        }
       }
       promise.future
     }
-    backoff(0)
+    backoff(initalBackoff, 0)
   }
 }
