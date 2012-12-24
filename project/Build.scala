@@ -28,8 +28,8 @@ object CocoonBuild extends Build {
       //"-Xlog-implicits"
     ),
     scalacOptions in Compile in doc ++= Seq(
-      "-implicits-show-all",
-      "-expand-all-types" 
+      "-implicits-show-all"
+      //"-expand-all-types" 
     ),
     initialCommands in console += "import uy.com.netlabs.esb._",
 
