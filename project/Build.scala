@@ -13,7 +13,8 @@ object CocoonBuild extends Build {
     fork in test := true,
     exportJars := true,
     resolvers ++= Seq(
-      "Local maven repo" at "file://" + Path.userHome + "/.m2/repository/"
+      "Local maven repo" at "file://" + Path.userHome + "/.m2/repository/",
+      Resolver.sonatypeRepo("snapshots"), Resolver.sonatypeRepo("releases")
     ),
     libraryDependencies ++= Seq(
       "org.scala-lang" % "scala-reflect" % _scalaVersion,
@@ -31,9 +32,7 @@ object CocoonBuild extends Build {
       "-implicits-show-all"
       //"-expand-all-types" 
     ),
-    initialCommands in console += "import uy.com.netlabs.esb._",
-
-    resolvers += Resolver.sonatypeRepo("snapshots")
+    initialCommands in console += "import uy.com.netlabs.esb._"
   ) ++ Dist.settings
 
   lazy val root = Project(id = "Luthier", base = file(".")).aggregate(
