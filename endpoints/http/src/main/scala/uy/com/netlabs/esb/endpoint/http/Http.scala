@@ -95,7 +95,7 @@ object Http {
     }
   }
 
-  private case class EF[R](req: Option[(Request, FunctionHandler[R])], ioThreads: Int = 1) extends EndpointFactory[HttpDispatchEndpoint[R]] {
+  private case class EF[R](req: Option[(Request, FunctionHandler[R])], ioThreads: Int) extends EndpointFactory[HttpDispatchEndpoint[R]] {
     def apply(f: Flow) = new HttpDispatchEndpoint(f, req, ioThreads)
   }
   def apply[R](req: (Request, FunctionHandler[R]), ioThreads: Int = 1): EndpointFactory[PullEndpoint { type Payload = R }] = EF(Some(req), ioThreads)
@@ -109,20 +109,29 @@ object Http {
 
     object Handler extends Plan {
       def intent = {
-        case req => onRequestHandler(newReceviedMessage(req)).map(m => m.payload.value match {
-          case s: String               => ResponseString(s)
-          case rf: ResponseFunction[_] => rf
-        })(flow.workerActorsExecutionContext)
+        case req =>
+          println("Request " + Path(req) + " arrived!")
+          onRequestHandler(newReceviedMessage(req)).onComplete {
+            case Success(m) => m.payload.value match {
+              case s: String               => req.respond(ResponseString(s))
+              case rf: ResponseFunction[HttpServletResponse @unchecked] => req.respond(rf)
+            }
+            case Failure(ex) => req.respond(InternalServerError ~> ResponseString(ex.toString))
+          }(flow.workerActorsExecutionContext)
       }
     }
 
     val flow = f
     lazy val server = unfiltered.jetty.Http.local(port).filter(Handler)
     def start() {
-      server.run()
+      server.start()
     }
     def dispose() {
       server.stop()
     }
   }
+  case class HttpUnfilteredEF private[Http] (port: Int) extends EndpointFactory[HttpUnfilteredEndpoint] {
+    def apply(f: Flow) = new HttpUnfilteredEndpoint(f, port)
+  }
+  def server(port: Int): EndpointFactory[Responsible { type Payload = HttpUnfilteredEndpoint#Payload; type SupportedResponseTypes = HttpUnfilteredEndpoint#SupportedResponseTypes }] = HttpUnfilteredEF(port)
 }
