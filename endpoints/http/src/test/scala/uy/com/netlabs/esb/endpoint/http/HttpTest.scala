@@ -14,7 +14,7 @@ import org.scalatest._
 import dispatch.{ Promise => _, _ }
 
 class HttpTest extends BaseFlowsTest {
-  describe("An Http Endpoint") {
+  describe("An Http client Endpoint") {
     it("Should be able to perform HTTP request and transform its result") {
       new Flows {
         val appContext = testApp
@@ -43,12 +43,38 @@ class HttpTest extends BaseFlowsTest {
           Await.result(Http[org.jsoup.nodes.Document]().ask(m.map(_ => req)) map { m =>
             println("Cookies: ")
             println(m.header.inbound.get("Cookies"))
-            
+
             if (m.payload.select("a[href]").size != 0) None
             else Some("payload with 0 links?")
           }, 5.seconds)
         }
         assert(Await.result(res, 6.seconds))
+      }
+    }
+  }
+
+  describe("An Http server Endpoint") {
+    it("Should accept request and respond to them") {
+      new Flows {
+        val appContext = testApp
+        val serverFlow = new Flow("http-server")(Http.server(3987)) {
+          import unfiltered.request._
+          logic { m =>
+            m.payload match {
+              case GET(Path(p)) => m map (_ => p)
+            }
+          }
+        }
+        serverFlow.start
+        val reqResponse = inFlow { (flow, m) =>
+          import flow._
+          val res = Await.result(Http(url("http://localhost:3987/some/path") -> new OkFunctionHandler(as.String)).pull()(m), 3.seconds).payload
+          println("Res gotten " + res)
+          res
+        }
+        val result = Await.result(reqResponse, 3.seconds)
+        serverFlow.dispose
+        assert(result === "/some/path")
       }
     }
   }
