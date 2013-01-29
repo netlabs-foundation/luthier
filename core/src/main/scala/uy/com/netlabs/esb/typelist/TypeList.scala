@@ -15,16 +15,24 @@ object TypeList {
   def describe[TL <: TypeList](tl: TypeTags#WeakTypeTag[TL]): List[String] = {
     val internalUniverse = tl.mirror.universe.asInstanceOf[scala.reflect.internal.SymbolTable]
     import internalUniverse._
+    val consSymbol = weakTypeTag[::[_,_]].tpe.typeSymbol
     def disect(tpe: Type): List[String] = {
-      tpe.asInstanceOf[Type] match {
-        case TypeRef(prefix, sym, args) if sym.fullName == typeListFullName => args.flatMap(disect)
+      tpe match {
+//        case TypeRef(prefix, sym, args) if sym.fullName == typeListFullName => println("going through a"); args.flatMap(disect)
+        case TypeRef(prefix, sym, args) if sym.baseClasses.contains(consSymbol) => /*println("going through b"); */
+          if (args.nonEmpty) args flatMap disect
+          else disect(sym.typeSignature)
         case typeNil if typeNil.toString == typeNilFullName => Nil
         case TypeRef(RefinedType(parents, decls), sym, args) =>
           sym match {
             case alias: AliasTypeSymbol => disect(deAlias(alias.typeSignature))
-            case other => /*no idea so...*/List(sym.toString)
+            case other => /*println(s"No idea so: $other - ${other.getClass}"); *//*no idea so...*/List(sym.toString)
           }
-        case other => List(other.toString)
+        case other => 
+          /*other match {
+            case TypeRef(p, s, a) => println(s"TypeRef($p, $s, $a) -  symbolFullName: ${s.fullName}")
+          }
+          println(s"Other? $other - ${other.getClass}"); */List(other.toString)
       }
     }
     disect(tl.tpe.asInstanceOf[Type])
