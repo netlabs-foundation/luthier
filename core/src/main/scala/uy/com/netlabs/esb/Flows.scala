@@ -59,6 +59,34 @@ trait Flows extends FlowsImplicits0 {
     exchangePattern.setup(rootEndpoint, this)
   }
   
+  /**
+   * Convenient method to execute a code in a flow run context.
+   * A special flow will be constructed for the passed code, it will run it immediately, and the be disposed.
+   * This construct is useful when you must perform request using endpoints, instead of defining general purpose flows.
+   * 
+   * '''Notes:''' Al methods that need an implicit MessageFactory, will need to be passed one explicitly (use the message)
+   * unless you declare an implicit flowRun like this:
+   * 
+   * {{{<pre>
+   *   inFlow {(flow, dummyMsg) =>
+   *     implicit val flowRun = dummyMsg.flowRun
+   *     //your code here 
+   *   }
+   * </pre>}}}
+   * Also, to instantiate endpoints like you do in normal Flows, you need the implicit conversions declared in the flow
+   * so its wise to imports its members. Summing up, to properly use this method, you should use it with this preamble:
+   * {{{<pre>
+   *   inFlow {(flow, dummyMsg) =>
+   *     import flow._
+   *     implicit val flowRun = dummyMsg.flowRun
+   *     //your code here
+   *   }
+   * </pre>}}}
+   * 
+   * @param code The code to be run in the flow. Its a function wich will be passed the flow instance, as well as the dummy
+   *             root message.
+   * @return The last expression in the code wrapped in a Future.
+   */
   def inFlow[R](code: (Flow[_, Unit], RootMessage[Flow[_, Unit]]) => R): Future[R]= {
     val result = scala.concurrent.Promise[R]()
     val flowName = ("anon@" + new Exception().getStackTrace()(2)).replace("$", "_").replaceAll("[()<>]", ";")
