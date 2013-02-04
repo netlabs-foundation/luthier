@@ -32,7 +32,8 @@ object CocoonBuild extends Build {
       "-implicits-show-all"
       //"-expand-all-types" 
     ),
-    initialCommands in console += "import uy.com.netlabs.esb._"
+    initialCommands in console += "import uy.com.netlabs.esb._",
+    publishTo := Some(Resolver.file("file",  new File(Path.userHome.absolutePath+"/.m2/repository")))
   ) ++ Dist.settings
 
   lazy val root = Project(id = "Luthier", base = file(".")).aggregate(
