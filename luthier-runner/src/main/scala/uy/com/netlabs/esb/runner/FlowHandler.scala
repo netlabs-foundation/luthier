@@ -7,37 +7,43 @@ import scala.util._
 import scala.collection.JavaConversions._
 import scala.concurrent.duration._
 
+import org.slf4j._
+
 class FlowHandler(compiler: => IMain, file: String) {
+  import FlowHandler._
   private lazy val compilerLazy = compiler
   val filePath = Paths.get(file)
   @volatile var lastUpdate: Long = 0
   @volatile var theFlows: Flows = _
+
+  var watcherFlow: Option[Flow] = None
   def startWatching(runnerFlows: Flows) {
     import runnerFlows._
-    new runnerFlows.Flow("Watch " + file.replace('/', '_'))(endpoint.logical.Metronome(100.millis)) {
-      logic {m =>
+    watcherFlow = Some(new runnerFlows.Flow("Watch " + file.replace('/', '_'))(endpoint.logical.Metronome(100.millis)) {
+      logic { m =>
         try {
           if (Files.exists(filePath)) {
             val attrs = Files.readAttributes(filePath, classOf[attribute.BasicFileAttributes])
             if (attrs.lastModifiedTime().toMillis() > lastUpdate) {
-              println(Console.MAGENTA + s"Reloading flow $file" + Console.RESET)
+              logger.info(Console.MAGENTA + s"Reloading flow $file" + Console.RESET)
               if (theFlows != null) {
-                println(Console.MAGENTA + s"Stoping previous incarnation" + Console.RESET)
+                logger.info(Console.MAGENTA + s"Stoping previous incarnation" + Console.RESET)
                 theFlows.registeredFlows foreach (_.dispose())
                 theFlows.appContext.actorSystem.shutdown()
-                println(Console.MAGENTA + s"Done" + Console.RESET)
+                logger.info(Console.MAGENTA + s"Done" + Console.RESET)
               }
               load()
             }
           }
-        } catch { case ex => println("Error while loading flow " + file); ex.printStackTrace() }
+        } catch { case ex => logger.warn("Error while loading flow " + file, ex) }
       }
-    }.start()
-    println("Started watching file " + file)
+    })
+    watcherFlow.get.start()
+    logger.info("Started watching file " + file)
   }
   def load() {
     if (Files.exists(filePath)) {
-      findPrecompiledVersion()
+      //      findPrecompiledVersion()
       lastUpdate = System.currentTimeMillis()
       try {
         val content = Files.readAllLines(filePath, java.nio.charset.Charset.forName("utf8")).toSeq
@@ -57,25 +63,28 @@ class FlowHandler(compiler: => IMain, file: String) {
       """
         require(compilerLazy.interpret(script) == IR.Success, "Failed compiling flow " + file)
         val flows = compilerLazy.lastRequest.getEvalTyped[Flows].getOrElse(throw new IllegalStateException("Could not load flow " + file))
-        println("Starting App: " + flows.appContext.name)
+        logger.info("Starting App: " + flows.appContext.name)
         val appStartTime = System.nanoTime()
         flows.registeredFlows foreach { f =>
           print(s"  Starting flow: ${f.name}...")
           f.start()
-          println(" started")
+          logger.info(" started")
         }
         val totalTime = System.nanoTime() - appStartTime
-        println(Console.GREEN + f"  App fully initialized. Total time: ${totalTime / 1000000000d}%.3f" + Console.RESET)
+        logger.info(Console.GREEN + f"  App fully initialized. Total time: ${totalTime / 1000000000d}%.3f" + Console.RESET)
         theFlows = flows
-      } catch { case ex: Exception => println(s"Error loading $file: $ex") }
+      } catch { case ex: Exception => logger.warn(s"Error loading $file: $ex", ex) }
     } else {
-      println(Console.RED + s" Flow $file does not exists")
+      logger.warn(Console.RED + s" Flow $file does not exists")
     }
   }
-  def findPrecompiledVersion() {
-    val compilerVersionPath = filePath.getParent.resolve("." + filePath.getFileName() + ".jar")
-    if (Files exists compilerVersionPath) {
-      
-    } else None
-  }
+  //  def findPrecompiledVersion() {
+  //    val compilerVersionPath = filePath.getParent.resolve("." + filePath.getFileName() + ".jar")
+  //    if (Files exists compilerVersionPath) {
+  //      
+  //    } else None
+  //  }
+}
+object FlowHandler {
+  private[FlowHandler] val logger = LoggerFactory.getLogger(classOf[FlowHandler])
 }
