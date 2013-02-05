@@ -14,22 +14,25 @@ class FlowHandler(compiler: => IMain, file: String) {
   private lazy val compilerLazy = compiler
   val filePath = Paths.get(file)
   @volatile var lastUpdate: Long = 0
-  @volatile var theFlows: Flows = _
+  @volatile private[this] var _theFlows: Flows = _
+  
+  def theFlows = Option(_theFlows)
 
-  var watcherFlow: Option[Flow] = None
+  private[this] var _watcherFlow: Option[Flow] = None
+  def watcherFlow = _watcherFlow
   def startWatching(runnerFlows: Flows) {
     import runnerFlows._
-    watcherFlow = Some(new runnerFlows.Flow("Watch " + file.replace('/', '_'))(endpoint.logical.Metronome(100.millis)) {
+    _watcherFlow = Some(new runnerFlows.Flow("Watch " + file.replace('/', '_'))(endpoint.logical.Metronome(100.millis)) {
       logic { m =>
         try {
           if (Files.exists(filePath)) {
             val attrs = Files.readAttributes(filePath, classOf[attribute.BasicFileAttributes])
             if (attrs.lastModifiedTime().toMillis() > lastUpdate) {
               logger.info(Console.MAGENTA + s"Reloading flow $file" + Console.RESET)
-              if (theFlows != null) {
+              if (_theFlows != null) {
                 logger.info(Console.MAGENTA + s"Stoping previous incarnation" + Console.RESET)
-                theFlows.registeredFlows foreach (_.dispose())
-                theFlows.appContext.actorSystem.shutdown()
+                _theFlows.registeredFlows foreach (_.dispose())
+                _theFlows.appContext.actorSystem.shutdown()
                 logger.info(Console.MAGENTA + s"Done" + Console.RESET)
               }
               load()
@@ -38,7 +41,7 @@ class FlowHandler(compiler: => IMain, file: String) {
         } catch { case ex => logger.warn("Error while loading flow " + file, ex) }
       }
     })
-    watcherFlow.get.start()
+    _watcherFlow.get.start()
     logger.info("Started watching file " + file)
   }
   def load() {
@@ -72,7 +75,7 @@ class FlowHandler(compiler: => IMain, file: String) {
         }
         val totalTime = System.nanoTime() - appStartTime
         logger.info(Console.GREEN + f"  App fully initialized. Total time: ${totalTime / 1000000000d}%.3f" + Console.RESET)
-        theFlows = flows
+        _theFlows = flows
       } catch { case ex: Exception => logger.warn(s"Error loading $file: $ex", ex) }
     } else {
       logger.warn(Console.RED + s" Flow $file does not exists")

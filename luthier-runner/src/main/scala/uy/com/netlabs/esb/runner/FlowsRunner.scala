@@ -14,8 +14,8 @@ class FlowsRunner(val appContext: AppContext,
                   compilerSettings: Settings) {
   import FlowsRunner._
 
-  private val compiler = new IMain(compilerSettings)
-  private val initialized = Promise[Unit]()
+  private[this] val compiler = new IMain(compilerSettings)
+  private[this] val initialized = Promise[Unit]()
   compiler.initialize {
     //declare basic imports
     if (compiler.addImports("uy.com.netlabs.esb._",
@@ -29,7 +29,7 @@ class FlowsRunner(val appContext: AppContext,
   }
 
   // a compiler that will wait until its fully instantiated, just the first time.
-  private lazy val lazyCompiler = {
+  private[this] lazy val lazyCompiler = {
     if (!initialized.isCompleted) logger.info("Waiting for compiler to finish initializing")
     Await.result(initialized.future, Duration.Inf)
     compiler
@@ -40,6 +40,18 @@ class FlowsRunner(val appContext: AppContext,
     val rootLocation = Paths.get("")
   }, FlowsRunner.defaultCompilerSettings)
   def this() = this("Runner")
+
+  /**
+   * Binds the given object into the compiler instance, so its accessible as a global variable from the
+   * flows
+   */
+  def bindObject(name: String, classDecl: String, obj: Any) {
+    lazyCompiler.bind(name, classDecl, obj) match {
+      case IR.Error => throw new IllegalStateException("Could not bind " + name)
+      case IR.Incomplete => throw new IllegalStateException("Definition incomplete for variable " +name)
+      case _ =>
+    }
+  }
 
   @varargs def load(flows: Path*) = flows.map { path =>
     val h = new FlowHandler(lazyCompiler, path.toAbsolutePath().toString)
@@ -61,7 +73,7 @@ object FlowsRunner {
     settings
   }
 
-  private def classpath() = {
+  private[this] def classpath() = {
     import java.net.URLClassLoader
     def cp(cl: URLClassLoader) = {
       cl.getURLs().map(u => new java.io.File(u.toURI()))
@@ -84,10 +96,10 @@ object FlowsRunner {
     val mainAttrs = manifest.getMainAttributes()
     val cpInManifest = mainAttrs.getValue(java.util.jar.Attributes.Name.CLASS_PATH)
 
-    val urlsFromManifest = cpInManifest.split(" ").map(j => j.split("/").foldLeft(basePathForLibs)((d, p) => d.resolve(p)))
+    val urlsFromManifest = cpInManifest.split(" ").map(j => j.split("/").foldLeft(basePathForLibs)((d, p) => d.resolve(p))).map(_.toFile).filter(_.exists)
     val allUrls = urlsFromClasspath ++ urlsFromManifest
 
-    logger.debug("Using classpath:" + allUrls.map(_.toString).mkString("\n"))
+    logger.info("FlowsRunner using classpath:\n\t" + allUrls.map(_.toString).mkString("\n\t"))
     allUrls.map(_.toString).mkString(":")
   }
 }
