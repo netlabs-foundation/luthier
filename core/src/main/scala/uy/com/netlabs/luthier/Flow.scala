@@ -89,7 +89,8 @@ trait Flow extends FlowPatterns with Disposable {
     logic = l
   }
 
-  def runFlow(rootMessage: Message[InboundEndpointTpe#Payload]): Future[_] = {
+  def runFlow(payload: InboundEndpointTpe#Payload): Future[LogicResult] = runFlow(Message(payload))
+  def runFlow(rootMessage: Message[InboundEndpointTpe#Payload]): Future[LogicResult] = {
     val enclosingFlow: this.type = this
     doWork {
       val msg = new RootMessage[enclosingFlow.type] with MessageProxy[InboundEndpointTpe#Payload] {
