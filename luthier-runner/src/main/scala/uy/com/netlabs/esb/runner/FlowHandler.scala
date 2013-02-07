@@ -15,7 +15,7 @@ class FlowHandler(compiler: => IMain, file: String) {
   val filePath = Paths.get(file)
   @volatile var lastUpdate: Long = 0
   @volatile private[this] var _theFlows: Flows = _
-  
+
   def theFlows = Option(_theFlows)
 
   private[this] var _watcherFlow: Option[Flow] = None
@@ -54,7 +54,11 @@ class FlowHandler(compiler: => IMain, file: String) {
           val r = file.stripSuffix(".flow").replace('/', '-')
           if (r.charAt(0) == '-') r.drop(1) else r
         }
-        val script = s"""val app = new AppContext {
+        val script = s"""
+      import uy.com.netlabs.esb._
+      import uy.com.netlabs.esb.typelist._
+      import scala.language._
+      val app = new AppContext {
         val name = "${appName}"
         val rootLocation = java.nio.file.Paths.get("$file")
       }

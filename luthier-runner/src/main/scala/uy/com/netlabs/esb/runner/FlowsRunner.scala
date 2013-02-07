@@ -11,17 +11,18 @@ import org.slf4j._
 import scala.annotation.varargs
 
 class FlowsRunner(val appContext: AppContext,
-                  compilerSettings: Settings) {
+                  compilerSettings: Settings, classLoader: ClassLoader) {
   import FlowsRunner._
 
   private[this] val compiler = new IMain(compilerSettings)
   private[this] val initialized = Promise[Unit]()
   compiler.initialize {
     //declare basic imports
-    if (compiler.addImports("uy.com.netlabs.esb._",
-      "uy.com.netlabs.esb.typelist._",
-      "scala.language._") != IR.Success) initialized.failure(new IllegalStateException("Could not add default imports"))
-    else initialized.success(())
+    initialized.success(())
+    //    if (compiler.addImports("uy.com.netlabs.esb._",
+    //      "uy.com.netlabs.esb.typelist._",
+    //      "scala.language._") != IR.Success) initialized.failure(new IllegalStateException("Could not add default imports"))
+    //    else initialized.success(())
   }
 
   val runnerFlows = new Flows {
@@ -35,11 +36,11 @@ class FlowsRunner(val appContext: AppContext,
     compiler
   }
 
-  def this(appContextName: String) = this(new AppContext {
+  def this(appContextName: String, classLoader: ClassLoader) = this(new AppContext {
     val name = appContextName
     val rootLocation = Paths.get("")
-  }, FlowsRunner.defaultCompilerSettings)
-  def this() = this("Runner")
+  }, FlowsRunner.defaultCompilerSettings(classLoader), classLoader)
+  def this(classLoader: ClassLoader) = this("Runner", classLoader)
 
   /**
    * Binds the given object into the compiler instance, so its accessible as a global variable from the
@@ -47,9 +48,9 @@ class FlowsRunner(val appContext: AppContext,
    */
   def bindObject(name: String, classDecl: String, obj: Any) {
     lazyCompiler.bind(name, classDecl, obj) match {
-      case IR.Error => throw new IllegalStateException("Could not bind " + name)
-      case IR.Incomplete => throw new IllegalStateException("Definition incomplete for variable " +name)
-      case _ =>
+      case IR.Error      => throw new IllegalStateException("Could not bind " + name)
+      case IR.Incomplete => throw new IllegalStateException("Definition incomplete for variable " + name)
+      case _             =>
     }
   }
 
@@ -62,23 +63,27 @@ class FlowsRunner(val appContext: AppContext,
 }
 object FlowsRunner {
   private[FlowsRunner] val logger = LoggerFactory.getLogger(classOf[FlowsRunner])
-  val defaultCompilerSettings = {
+  def defaultCompilerSettings(parentClassLoader: ClassLoader) = {
     val settings = new Settings
+
     settings.YmethodInfer.value = true
-    settings.usejavacp.value = true
-    //    settings.debug.value = true
-    //    settings.log.value = List("typer")
-    //    settings.Yinferdebug.value = true
-    settings.classpath.value = classpath()
+    settings.optimise.value = true
+    //    settings.usejavacp.value = true
+    settings.Yinferdebug.value = true
+    settings.Xprint.value = List("typer")
+    settings.debug.value = true
+    settings.log.value = List("typer")
+    settings.Ytyperdebug.value = true
+    settings.classpath.value = classpath(parentClassLoader).mkString(java.io.File.pathSeparator)
     settings
   }
 
-  private[this] def classpath() = {
+  private[this] def classpath(parentClassLoader: ClassLoader) = {
     import java.net.URLClassLoader
     def cp(cl: URLClassLoader) = {
       cl.getURLs().map(u => new java.io.File(u.toURI()))
     }
-    val urlsFromClasspath = Seq(getClass.getClassLoader(), ClassLoader.getSystemClassLoader()).flatMap {
+    val urlsFromClasspath = Seq(getClass.getClassLoader(), parentClassLoader, ClassLoader.getSystemClassLoader()).flatMap {
       case cl: URLClassLoader => cp(cl)
       case other              => logger.warn("Weird classloader: " + other + ": " + other.getClass); Set.empty
     }.distinct
@@ -100,6 +105,6 @@ object FlowsRunner {
     val allUrls = urlsFromClasspath ++ urlsFromManifest
 
     logger.info("FlowsRunner using classpath:\n\t" + allUrls.map(_.toString).mkString("\n\t"))
-    allUrls.map(_.toString).mkString(":")
+    allUrls
   }
 }
