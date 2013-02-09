@@ -21,7 +21,7 @@ object WsFastTest extends App {
 
   new Flows {
     def appContext = app
-    val s = Sei[WSEndpoint]("http://localhost:8080/something")
+    val s = Sei[WSEndpoint]("http://localhost:8080", "/something")
     new Flow("someName")(Ws(s)(_.callmeDude _)) {
       logic { m =>
       println(s"I should call ${m.payload._1} before ${new java.util.Date(m.payload._2)}")

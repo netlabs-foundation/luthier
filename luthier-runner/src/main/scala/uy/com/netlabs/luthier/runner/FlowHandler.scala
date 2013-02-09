@@ -73,9 +73,7 @@ class FlowHandler(compiler: => IMain, file: String) {
         logger.info("Starting App: " + flows.appContext.name)
         val appStartTime = System.nanoTime()
         flows.registeredFlows foreach { f =>
-          print(s"  Starting flow: ${f.name}...")
           f.start()
-          logger.info(" started")
         }
         val totalTime = System.nanoTime() - appStartTime
         logger.info(Console.GREEN + f"  App fully initialized. Total time: ${totalTime / 1000000000d}%.3f" + Console.RESET)

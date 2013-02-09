@@ -1,7 +1,7 @@
 { //cxf dependencies
-val cxfVersion = "2.6.2"
+val cxfVersion = "2.7.3"
 libraryDependencies ++= Seq(
-  "org.apache.cxf" % "cxf" % cxfVersion,
+  //"org.apache.cxf" % "cxf" % cxfVersion,
   "org.apache.cxf" % "cxf-api" % cxfVersion,
   "org.apache.cxf" % "cxf-rt-frontend-jaxws" % cxfVersion,
   "org.apache.cxf" % "cxf-rt-transports-http" % cxfVersion,

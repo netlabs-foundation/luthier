@@ -8,7 +8,7 @@ trait AppContext {
   def name: String
   def rootLocation: Path
 
-  lazy val actorSystem: ActorSystem = ActorSystem(name.replace(' ', '-'))
+  lazy val actorSystem: ActorSystem = ActorSystem(name.replace(' ', '-').replace('.', '-'))
 }
 
 object AppContext {
