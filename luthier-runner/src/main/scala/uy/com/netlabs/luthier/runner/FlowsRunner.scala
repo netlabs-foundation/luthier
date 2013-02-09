@@ -55,7 +55,7 @@ class FlowsRunner(val appContext: AppContext,
   }
 
   @varargs def load(flows: Path*) = flows.map { path =>
-    val h = new FlowHandler(lazyCompiler, path.toAbsolutePath().toString)
+    val h = new FlowHandler(lazyCompiler, appContext.actorSystem.log, path.toAbsolutePath().toString)
     h.load() //attempt to initialize it synchronously
     h.startWatching(runnerFlows)
     h

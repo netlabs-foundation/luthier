@@ -1,0 +1,11 @@
+import endpoint.stream._
+import java.nio._, channels._
+import java.net._
+
+val chnl = SocketChannel.open()
+chnl.connect(new InetSocketAddress("localhost", 20000))
+new Flow("ChunksToFile")(Tcp.Client(chnl, consumers.chunks) OneWay) {
+  logic {m =>
+    print(new String(m.payload))
+  }
+}

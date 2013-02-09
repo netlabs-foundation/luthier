@@ -1,0 +1,35 @@
+import uy.com.netlabs.luthier._
+import uy.com.netlabs.luthier.typelist._
+import scala.language._
+
+class WsTest(val appContext: AppContext) extends Flows {
+  import endpoint.cxf.codefirst._
+  import javax.jws._
+  @WebService
+  trait WSEndpoint {
+      def sum(a: Double, b: Double): Double
+      def echo(s: String): Unit
+      def testCmd(cmd: String): String
+  }
+  
+  val sei = Sei[WSEndpoint](s"http://localhost:8080", "/basicws")
+  new Flow("sum")(Ws(sei)(_.sum _)) {
+    logic {m =>
+      m.map(t => t._1 + t._2)
+    }
+  }
+  new Flow("echo")(Ws(sei)(_.echo _)) {
+    logic {m =>
+      log.info("Echoing: " + m.payload)
+      m.map(_ => ())
+    }
+  }
+  
+  //Flow that executes a process and return its result
+  import scala.sys.process._
+  new Flow("testCmd")(Ws(sei)(_.testCmd _)) {
+    logic {m =>
+     endpoint.Process.string(Seq("sh", "-c", m.payload)).pull
+    }
+  }
+}

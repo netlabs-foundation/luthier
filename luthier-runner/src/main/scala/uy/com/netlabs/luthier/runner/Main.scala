@@ -12,7 +12,7 @@ import java.nio.file._
 object Main {
 
   def main(args: Array[String]) {
-    val (flows, restOfArgs) = args.span(_.endsWith(".flow"))
+    val (flows, restOfArgs) = args.span(_.matches(".*\\.(flow|fflow)"))
     
     val settings = new Settings
     settings.YmethodInfer.value = true
@@ -52,7 +52,7 @@ object Main {
       
     //instantiate the flows:
     for (f <- flows) {
-      val h = new FlowHandler(lazyCompiler, f)
+      val h = new FlowHandler(lazyCompiler, runner.actorSystem.log, f)
       h.load() //attempt to initialize it synchronously
       h.startWatching(runnerFlows)
     }
