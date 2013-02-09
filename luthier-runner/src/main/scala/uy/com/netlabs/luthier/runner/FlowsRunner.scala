@@ -67,26 +67,27 @@ object FlowsRunner {
     val settings = new Settings
 
     settings.YmethodInfer.value = true
-//    settings.optimise.value = true
-    //    settings.usejavacp.value = true
-//    settings.Yinferdebug.value = true
-//    settings.Xprint.value = List("typer")
-//    settings.debug.value = true
-//    settings.log.value = List("typer")
-//    settings.Ytyperdebug.value = true
-    settings.classpath.value = classpath(parentClassLoader).mkString(java.io.File.pathSeparator)
+    //    settings.optimise.value = true
+//    settings.usejavacp.value = true
+    //    settings.Yinferdebug.value = true
+    //    settings.Xprint.value = List("typer")
+    //    settings.debug.value = true
+    //    settings.log.value = List("typer")
+    //    settings.Ytyperdebug.value = true
+    val cp = classpath(parentClassLoader)
+    println("Using classpath:\n\t" + cp.mkString("\n\t"))
+    settings.classpath.value = cp.mkString(java.io.File.pathSeparator)
     settings
   }
 
   private[this] def classpath(parentClassLoader: ClassLoader) = {
     import java.net.URLClassLoader
-    def cp(cl: URLClassLoader) = {
-      cl.getURLs().map(u => new java.io.File(u.toURI()))
+    def cp(cl: ClassLoader): Seq[java.io.File] = cl match {
+      case null => Seq.empty
+      case cl: URLClassLoader => cl.getURLs().map(u => new java.io.File(u.toURI())) ++ cp(cl.getParent)
+      case other => cp(other.getParent())
     }
-    val urlsFromClasspath = Seq(getClass.getClassLoader(), parentClassLoader, ClassLoader.getSystemClassLoader()).flatMap {
-      case cl: URLClassLoader => cp(cl)
-      case other              => logger.warn("Weird classloader: " + other + ": " + other.getClass); Set.empty
-    }.distinct
+    val urlsFromClasspath = Seq(getClass.getClassLoader(), parentClassLoader, ClassLoader.getSystemClassLoader()).flatMap(cp).distinct
 
     val baseDir = Paths.get(".")
     val (basePathForLibs, baseUrl) = getClass.getResource(getClass.getSimpleName + ".class") match {

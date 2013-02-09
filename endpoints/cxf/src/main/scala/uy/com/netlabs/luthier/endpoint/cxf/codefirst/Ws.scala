@@ -23,12 +23,11 @@ object Ws {
 
     implicit val flow = f
 
-    private var server: Server = _
     def start() {
-      server = sei.srvFactory.create
+      sei.start()
     }
     def dispose() {
-      server.destroy()
+      sei.stop()
       ioProfile.dispose()
     }
 

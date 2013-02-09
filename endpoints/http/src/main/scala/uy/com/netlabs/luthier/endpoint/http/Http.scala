@@ -13,7 +13,8 @@ import dispatch.{ Promise => _, _ }
 import unfiltered.filter.async.Plan
 import unfiltered.request._
 import unfiltered.response._
-import javax.servlet.http.{ HttpServletRequest, HttpServletResponse }
+
+import javax.servlet._, http._
 
 object Http {
 
@@ -103,17 +104,43 @@ object Http {
 
   //Unfiltered part
 
-  class HttpUnfilteredEndpoint private[Http] (f: Flow, port: Int) extends Responsible {
+  private[Http] trait ServerRepr {
+    def start(name: String, filter: Filter)
+    def stop()
+  }
+  private[Http] case class ServletServerRepr(servletContext: ServletContext) extends ServerRepr {
+    def start(name, filter) {
+      val enka = servletContext.addFilter(name, filter)
+      enka.setAsyncSupported(true)
+      enka.addMappingForServletNames(java.util.EnumSet.allOf(classOf[DispatcherType]), false, "*")
+      enka.addMappingForUrlPatterns(java.util.EnumSet.allOf(classOf[DispatcherType]), false, "*")
+      println(Console.RED + "Enka data" + Console.RESET)
+      enka.getServletNameMappings() foreach (s => println(s"Mapping for filter $name: $s"))
+      enka.getUrlPatternMappings() foreach (s => println(s"Mapping for filter $name: $s"))
+    }
+    def stop() {} //cannot stop :(
+  }
+  private[Http] case class JettyServerRepr(port: Int) extends ServerRepr {
+    var server: unfiltered.jetty.Http = _
+    def start(name, filter) {
+      server = unfiltered.jetty.Http.local(port).filter(filter)
+      server.start()
+    }
+    def stop() {
+      server.stop()
+    }
+  }
+
+  class HttpUnfilteredEndpoint private[Http] (f: Flow, repr: ServerRepr) extends Responsible {
     type Payload = HttpRequest[HttpServletRequest]
     type SupportedResponseTypes = String :: ResponseFunction[HttpServletResponse] :: TypeNil
 
     object Handler extends Plan {
       def intent = {
         case req =>
-          println("Request " + Path(req) + " arrived!")
           onRequestHandler(newReceviedMessage(req)).onComplete {
             case Success(m) => m.payload.value match {
-              case s: String               => req.respond(ResponseString(s))
+              case s: String => req.respond(ResponseString(s))
               case rf: ResponseFunction[HttpServletResponse @unchecked] => req.respond(rf)
             }
             case Failure(ex) => req.respond(InternalServerError ~> ResponseString(ex.toString))
@@ -122,16 +149,16 @@ object Http {
     }
 
     val flow = f
-    lazy val server = unfiltered.jetty.Http.local(port).filter(Handler)
     def start() {
-      server.start()
+      repr.start(flow.name, Handler)
     }
     def dispose() {
-      server.stop()
+      repr.stop()
     }
   }
-  case class HttpUnfilteredEF private[Http] (port: Int) extends EndpointFactory[HttpUnfilteredEndpoint] {
-    def apply(f: Flow) = new HttpUnfilteredEndpoint(f, port)
+  case class HttpUnfilteredEF private[Http] (repr: ServerRepr) extends EndpointFactory[HttpUnfilteredEndpoint] {
+    def apply(f: Flow) = new HttpUnfilteredEndpoint(f, repr)
   }
-  def server(port: Int): EndpointFactory[Responsible { type Payload = HttpUnfilteredEndpoint#Payload; type SupportedResponseTypes = HttpUnfilteredEndpoint#SupportedResponseTypes }] = HttpUnfilteredEF(port)
+  def server(port: Int) = HttpUnfilteredEF(JettyServerRepr(port))
+  def server(servletContext: ServletContext) = HttpUnfilteredEF(ServletServerRepr(servletContext))
 }
