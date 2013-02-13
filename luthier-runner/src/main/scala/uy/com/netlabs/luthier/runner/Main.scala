@@ -27,7 +27,7 @@ object Main {
     val initialized = Promise[Unit]()
     compiler.initialize {
       //insert restOfArgs into compiler
-      require(compiler.bind("args", "Array[String]", restOfArgs) == IR.Success, "Could not bind args")
+      require(compiler.bind("args", "Seq[String]", restOfArgs.to[Seq]) == IR.Success, "Could not bind args")
 
       //declare basic imports
       if (compiler.addImports("uy.com.netlabs.luthier._",
