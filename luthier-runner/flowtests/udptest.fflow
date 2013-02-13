@@ -2,7 +2,7 @@ import uy.com.netlabs.luthier._
 import uy.com.netlabs.luthier.typelist._
 import scala.language._
 
-class WsTest(val appContext: AppContext) extends Flows {
+class WsTest(val appContext: AppContext, args: Seq[String]) extends Flows {
   import endpoint.cxf.codefirst._
   import javax.jws._
   @WebService

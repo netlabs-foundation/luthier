@@ -48,8 +48,8 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
       println("LOADING " + filePath)
       filePath match {
         case _ if filePath.toString endsWith ".fflow" => loadFullFlow(filePath)
-        case _ if filePath.toString endsWith ".flow" => loadFlow(filePath)
-        case _ => logger.warning(s"Unsupported file $filePath")
+        case _ if filePath.toString endsWith ".flow"  => loadFlow(filePath)
+        case _                                        => logger.warning(s"Unsupported file $filePath")
       }
 
     } else {
@@ -100,14 +100,37 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
         case symbols =>
           val flowsSymbol = compilerLazy.global.typeOf[Flows].typeSymbol
           val appContextType = compilerLazy.global.typeOf[AppContext]
-          //find the symbols that extends Flows and that have a constructor that takes an AppContext
-          val possibleFlows = for {
+          //find the symbols that extends Flows and that have a constructor that takes an AppContext as first argument, then try to find matches
+          //for the remaining types.
+          //I'll type the variable possibleFlows myself, because its kinda creepy.
+          val processedFlows: Seq[String Either (compilerLazy.global.ClassSymbol, Seq[compilerLazy.global.Symbol])] = for {
             sy <- symbols if sy.isClass && !sy.isAbstractClass
             cs = sy.asClass if cs.typeSignature.baseType(flowsSymbol) != compilerLazy.global.NoType
-            pc = cs.primaryConstructor.asMethod if pc.isPublic
-            List(List(singleArgSymbol)) = pc.paramss //must be a single param list with one symbol
-            if singleArgSymbol.typeSignature <:< appContextType // the one param is an appContext, we hit the gold
-          } yield cs
+            constructors = cs.typeSignature.declaration(compilerLazy.global.nme.CONSTRUCTOR).asTerm.alternatives if constructors.size == 1
+            pc = constructors.head.asMethod if pc.isPublic
+            List(appContextParam :: params) = pc.paramss //must be a single param list
+            if appContextParam.typeSignature <:< appContextType // the first param is an appContext, we hit the gold
+          } yield {
+            val matchedParams = params map (p => p -> compilerLazy.typeOfTerm(p.name.toTermName.toString))
+            //FIXME: for some reason, the typeSignature for the parameter obtain from the compiler is losing its typeArgs, leaving a Seq[String] as a Seq
+            //this impedes me from using <:< in the comparation between expected type, and obtained type for the argument. For now, I'm using baseType instead.
+            val unmatchedParams = matchedParams.filter(p => p._2 == compilerLazy.global.NoType || p._2.baseType(p._1) == compilerLazy.global.NoType)
+            if (unmatchedParams.isEmpty) Right(cs -> matchedParams.map(_._1))
+            else {
+              def describe(s: compilerLazy.global.Symbol) = s"${s.nameString}: ${s.typeSignature}"
+              val unmatchedParamsDescr = unmatchedParams map {
+                case (param, compilerLazy.global.NoType) => describe(param)
+                case (param, fromCompiler) => describe(param) +
+                  s"  (Note that a variable ${param.nameString} was found, but it is not applicable because its type $fromCompiler is not assignable from expected type ${param.typeSignature})"
+              }
+              Left(s"$cs correctly extends Flows, but its primary constructor cannot be called.\n" +
+                s"It is defined as:\n  ${pc.paramss.map(_.map(describe).mkString("(", ", ", ")")).mkString("")}\n" +
+                s"and I don't know how to provide\n  ${unmatchedParamsDescr.mkString("\n  ")}")
+            }
+          }
+          val (failedFlows, possibleFlows) = processedFlows.partition(_.isLeft)
+
+          failedFlows foreach { case Left(msg) => logger.warning(msg) }
 
           //instantiate the selected flows.
           val appName = {
@@ -118,11 +141,14 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
             val name = appName
             val rootLocation = filePath
           }
-          val runtimeMirror = scala.reflect.runtime.universe.runtimeMirror(compilerLazy.classLoader)
-          val flowss = possibleFlows map { flowsSymbol =>
-            val c = compilerLazy.getInterpreterClassLoader.loadClass(flowsSymbol.javaClassName).getConstructor(classOf[AppContext])
-            logger.debug(s"Constructor $c")
-            c.newInstance(appContext).asInstanceOf[Flows]
+          val flowss = possibleFlows map {
+            case Right((flowsSymbol, argumentsSymbols)) =>
+              def loadClass(c: String) = compilerLazy.getInterpreterClassLoader.loadClass(c)
+              val argumentClasses = classOf[AppContext] +: argumentsSymbols.map(s => loadClass(s.typeSignature.typeSymbol.javaClassName)) toArray;
+              val c = loadClass(flowsSymbol.javaClassName).getConstructor(argumentClasses: _*)
+              logger.debug(s"Constructor $c")
+              val arguments = argumentsSymbols map (s => compilerLazy.requestForName(s.asTerm.name).flatMap(_.getEval).getOrElse(throw new IllegalStateException(s"Could not obtain value $s from the compiler!")))
+              c.newInstance((appContext +: arguments).toArray[Object]: _*).asInstanceOf[Flows]
           }
 
           logger.info("Starting App: " + appContext.name)
@@ -134,8 +160,8 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
           _theFlows = flowss.lastOption.orNull
       }
     } catch {
-      case e: java.lang.reflect.InvocationTargetException => logger.error(e.getTargetException(), s"Failed to instance one of the flows defined in $file") 
-      case ex: Exception => logger.error( ex, s"Error loading $file")
+      case e: java.lang.reflect.InvocationTargetException => logger.error(e.getTargetException(), s"Failed to instance one of the flows defined in $file")
+      case ex: Exception                                  => logger.error(ex, s"Error loading $file")
     }
   }
   //  def findPrecompiledVersion() {
