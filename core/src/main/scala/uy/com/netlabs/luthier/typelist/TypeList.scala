@@ -82,6 +82,7 @@ object Contained extends TypeSelectorImplicits[Contained]
 
 class OneOf[+E, TL <: TypeList](val value: E)(implicit contained: Contained[TL, E]) {
   override def toString = "OneOf(" + value + ")"
+  def valueAs[T](implicit contained: Contained[TL, T]) = value.asInstanceOf[T]
 }
 object OneOf {
   implicit def anyToOneOf[E, TL <: TypeList](e: E)(implicit contained: Contained[TL, E]) = new OneOf[E, TL](e)
