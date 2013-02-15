@@ -74,7 +74,7 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
       }
       val flow = new Flows {
         val appContext = app
-        
+
         ${content.mkString("\n")}
       }
       """
@@ -112,9 +112,8 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
             if appContextParam.typeSignature <:< appContextType // the first param is an appContext, we hit the gold
           } yield {
             val matchedParams = params map (p => p -> compilerLazy.typeOfTerm(p.name.toTermName.toString))
-            //FIXME: for some reason, the typeSignature for the parameter obtain from the compiler is losing its typeArgs, leaving a Seq[String] as a Seq
-            //this impedes me from using <:< in the comparation between expected type, and obtained type for the argument. For now, I'm using baseType instead.
-            val unmatchedParams = matchedParams.filter(p => p._2 == compilerLazy.global.NoType || p._2.baseType(p._1) == compilerLazy.global.NoType)
+            
+            val unmatchedParams = matchedParams.filter(p => p._2 == compilerLazy.global.NoType || !p._2.<:<(p._1.typeSignature))
             if (unmatchedParams.isEmpty) Right(cs -> matchedParams.map(_._1))
             else {
               def describe(s: compilerLazy.global.Symbol) = s"${s.nameString}: ${s.typeSignature}"
@@ -167,7 +166,7 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
   //  def findPrecompiledVersion() {
   //    val compilerVersionPath = filePath.getParent.resolve("." + filePath.getFileName() + ".jar")
   //    if (Files exists compilerVersionPath) {
-  //      
+  //
   //    } else None
   //  }
 }
