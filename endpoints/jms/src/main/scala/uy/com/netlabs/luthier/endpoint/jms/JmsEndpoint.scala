@@ -2,8 +2,9 @@ package uy.com.netlabs.luthier
 package endpoint.jms
 
 import typelist._
-import javax.jms.{ Connection, Queue, MessageListener, Session, Message => jmsMessage, TextMessage, ObjectMessage, BytesMessage }
-import scala.concurrent.{ ExecutionContext, Future }
+import javax.jms.{ ConnectionFactory, Connection, Queue, MessageListener, Session,
+                  Message => jmsMessage, TextMessage, ObjectMessage, BytesMessage }
+import scala.concurrent.{ ExecutionContext, Future, Promise }
 import scala.concurrent.duration._
 import scala.util.{ Try, Success, Failure }
 import language._
@@ -12,6 +13,7 @@ private[jms] trait BaseJmsEndpoint extends endpoint.base.BaseSource with endpoin
   val flow: Flow
   def createDestination(session: Session): javax.jms.Destination
   val connection: Connection
+//  val connectionFactory: ConnectionFactory
   val messageSelector: String
   val ioThreads: Int
 
@@ -36,13 +38,13 @@ private[jms] trait BaseJmsEndpoint extends endpoint.base.BaseSource with endpoin
   protected def configureSourceOnStart(session: Session, destination: javax.jms.Destination) {
     if (onEventHandler != null) {
       session.createConsumer(destination).setMessageListener(new MessageListener {
-        def onMessage(m: jmsMessage) {
-          Try(messageArrived(jmsMessageToEsbMessage(newReceviedMessage, m))) match {
-            case Failure(ex) => log.error(ex, "Failed deliverying event")
-            case _           =>
+          def onMessage(m: jmsMessage) {
+            Try(messageArrived(jmsMessageToEsbMessage(newReceviedMessage, m))) match {
+              case Failure(ex) => log.error(ex, "Failed deliverying event")
+              case _           =>
+            }
           }
-        }
-      })
+        })
     }
   }
 
@@ -102,9 +104,9 @@ class JmsQueueEndpoint(val flow: Flow,
                        val connection: Connection,
                        val messageSelector: String,
                        val ioThreads: Int)
-    extends BaseJmsEndpoint
-    with endpoint.base.BaseResponsible
-    with Askable {
+extends BaseJmsEndpoint
+   with endpoint.base.BaseResponsible
+   with Askable {
 
   def createDestination(session: Session): javax.jms.Destination = session.createQueue(queue)
 
@@ -114,13 +116,13 @@ class JmsQueueEndpoint(val flow: Flow,
     configureSourceOnStart(session, destination)
     if (onRequestHandler != null) {
       session.createConsumer(destination).setMessageListener(new MessageListener {
-        def onMessage(m: jmsMessage) {
-          Try(requestArrived(jmsMessageToEsbMessage(newReceviedMessage, m), sendMessage(_, m.getJMSReplyTo))) match {
-            case Failure(ex) => log.error(ex, "Failed delivering request")
-            case _           =>
+          def onMessage(m: jmsMessage) {
+            Try(requestArrived(jmsMessageToEsbMessage(newReceviedMessage, m), sendMessage(_, m.getJMSReplyTo))) match {
+              case Failure(ex) => log.error(ex, "Failed delivering request")
+              case _           =>
+            }
           }
-        }
-      })
+        })
     }
     connection.start()
   }
@@ -132,12 +134,17 @@ class JmsQueueEndpoint(val flow: Flow,
     val m = msg: jmsMessage
     m.setJMSReplyTo(tempQueue)
     //The next future executes in the ioExecutionContext
-    Future(producer.send(m)) map { _ =>
+    Future(producer.send(m)) flatMap { _ =>
       producer.close()
+      val jmsResponse = Promise[Message[Any]]()
       val consumer = session.createConsumer(tempQueue)
-      val res = consumer.receive(timeOut.toMillis)
-      consumer.close()
-      jmsMessageToEsbMessage(p => msg.map(_ => p), res)
+      consumer setMessageListener new MessageListener {
+        def onMessage(m) {
+          consumer.close()
+          jmsResponse success jmsMessageToEsbMessage(p => msg.map(_ => p), m)
+        }
+      }
+      jmsResponse.future
     }
   }
 
@@ -157,7 +164,7 @@ class JmsTopicEndpoint(val flow: Flow,
                        val connection: Connection,
                        val messageSelector: String,
                        val ioThreads: Int)
-    extends BaseJmsEndpoint {
+extends BaseJmsEndpoint {
 
   def createDestination(session: Session): javax.jms.Destination = session.createTopic(topic)
 
