@@ -52,11 +52,11 @@ private[jms] trait BaseJmsEndpoint extends endpoint.base.BaseSource with endpoin
         false
     }
   }
-  
+
   object ExceptionHandler extends ExceptionListener {
     def onException(jmsException) {
       jmsException.getCause match {
-        case io: java.io.IOException => 
+        case io: java.io.IOException =>
           log.warning("IOException found on JMS connection...")
           try connection.close() catch {case _: Exception =>}
           instantiatedSessions = Vector.empty //no instantiatedSessions
@@ -66,7 +66,7 @@ private[jms] trait BaseJmsEndpoint extends endpoint.base.BaseSource with endpoin
     }
   }
   connection setExceptionListener ExceptionHandler
-  
+
   /* Supported types on writing */
   type SupportedTypes = String :: Array[Byte] :: java.io.Serializable :: TypeNil
   type SupportedResponseTypes = SupportedTypes
@@ -99,14 +99,13 @@ private[jms] trait BaseJmsEndpoint extends endpoint.base.BaseSource with endpoin
   protected final def handlingSessionClosed[R](op: => R): R = {
     try op
     catch {
-      case ex: IllegalStateException => 
+      case ex: IllegalStateException =>
         if (attemptConnection()) op //if reconnection was successfully now, then retry the op
         else throw ex
     }
   }
-  
+
   protected def pushMessage[Payload: SupportedType](msg: Message[Payload]) {
-    println("TD_ID: " + threadLocalSession)
     implicit val session = threadLocalSession.get()
     handlingSessionClosed {
       val producer = session.createProducer(createDestination(session))
