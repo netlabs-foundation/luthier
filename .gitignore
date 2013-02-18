@@ -2,4 +2,5 @@
 .project
 .cache
 .settings
+.classpath_nb
 target
