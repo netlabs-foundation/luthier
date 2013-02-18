@@ -48,7 +48,9 @@ object CocoonBuild extends Build {
     syslogEndpoint,
     xmppEndpoint,
     ircEndpoint,
-    wsutil
+    wsutil,
+    luthierRunner,
+    veditor
   ).settings(defSettings:_*)
   lazy val core = Project(id = "luthier-core", base = file("core")).settings(defSettings:_*)
   val coreAsDep = core % "compile->compile;test->test"
@@ -66,4 +68,6 @@ object CocoonBuild extends Build {
 
   lazy val luthierRunner = Project(id = "luthier-runner", base = file("luthier-runner")).settings(defSettings:_*).
     dependsOn(core, logicalEndpoints, fileEndpoint, jmsEndpoint, jdbcEndpoint, httpEndpoint, cxfEndpoint, streamEndpoint, syslogEndpoint, xmppEndpoint, ircEndpoint)
+
+  lazy val veditor = Project(id = "luthier-visual-editor", base = file("veditor")).settings(defSettings:_*).dependsOn(core, luthierRunner)
 }
