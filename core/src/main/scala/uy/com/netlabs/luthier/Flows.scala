@@ -35,7 +35,7 @@ trait Flows extends FlowsImplicits0 {
     implicit def OneWay[In <: Source] = new ExchangePattern[In, Unit] {
       private[Flows] def setup(endpoint, flow) {
         endpoint.onEvent(flow.runFlow(_))
-      } 
+      }
     }
     implicit def RequestResponse[In <: Responsible] = new ExchangePattern[In, Future[Message[OneOf[_, In#SupportedResponseTypes]]]] {
       private[Flows] def setup(endpoint, flow) {
@@ -58,19 +58,20 @@ trait Flows extends FlowsImplicits0 {
     val rootEndpoint = endpoint(this)
     exchangePattern.setup(rootEndpoint, this)
   }
-  
+
+  private[this] val anonFlowsIncId = new java.util.concurrent.atomic.AtomicLong()
   /**
    * Convenient method to execute a code in a flow run context.
    * A special flow will be constructed for the passed code, it will run it immediately, and the be disposed.
    * This construct is useful when you must perform request using endpoints, instead of defining general purpose flows.
-   * 
+   *
    * '''Notes:''' Al methods that need an implicit MessageFactory, will need to be passed one explicitly (use the message)
    * unless you declare an implicit flowRun like this:
-   * 
+   *
    * {{{<pre>
    *   inFlow {(flow, dummyMsg) =>
    *     implicit val flowRun = dummyMsg.flowRun
-   *     //your code here 
+   *     //your code here
    *   }
    * </pre>}}}
    * Also, to instantiate endpoints like you do in normal Flows, you need the implicit conversions declared in the flow
@@ -82,16 +83,16 @@ trait Flows extends FlowsImplicits0 {
    *     //your code here
    *   }
    * </pre>}}}
-   * 
+   *
    * @param code The code to be run in the flow. Its a function wich will be passed the flow instance, as well as the dummy
    *             root message.
    * @return The last expression in the code wrapped in a Future.
    */
   def inFlow[R](code: (Flow[_, Unit], RootMessage[Flow[_, Unit]]) => R): Future[R]= {
     val result = scala.concurrent.Promise[R]()
-    val flowName = ("anon@" + new Exception().getStackTrace()(2)).replace("$", "_").replaceAll("[()<>]", ";")
+    val flowName = ("anon" + anonFlowsIncId.incrementAndGet + "@" + new Exception().getStackTrace()(2)).replace("$", "_").replaceAll("[()<>]", ";")
     val flow = new Flow(flowName)(new endpoint.base.DummySource) {
-      logic {m => 
+      logic {m =>
         try result.success(code(this, m))
         catch {case ex: Exception => result.failure(ex)}
       }
@@ -103,12 +104,12 @@ trait Flows extends FlowsImplicits0 {
   }
 
 }
-object Flows {  
-  
+object Flows {
+
   def genericInvalidResponseImpl[V, TL <: TypeList](c: Context)(value: c.Expr[V])(implicit valueEv: c.WeakTypeTag[V], tlEv: c.WeakTypeTag[TL]): c.Expr[Future[Message[OneOf[_, TL]]]] = {
     val expectedTypes = TypeList.describe(tlEv)
-    c.abort(c.enclosingPosition, "\nInvalid response found: " + valueEv.tpe + ".\n" + 
-         "Expected a Message[T] or a Future[Message[T]] where T could be any of [" + expectedTypes.mkString("\n    ", "\n    ", "\n]"))
+    c.abort(c.enclosingPosition, "\nInvalid response found: " + valueEv.tpe + ".\n" +
+            "Expected a Message[T] or a Future[Message[T]] where T could be any of [" + expectedTypes.mkString("\n    ", "\n    ", "\n]"))
   }
 }
 
