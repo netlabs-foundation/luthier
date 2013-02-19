@@ -47,7 +47,7 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
       lastUpdate = System.currentTimeMillis()
       println("LOADING " + filePath)
       filePath match {
-        case _ if filePath.toString endsWith ".fflow" => loadFullFlow(filePath)
+        case _ if (filePath.toString endsWith ".fflow") || (filePath.toString endsWith ".scala") => loadFullFlow(filePath)
         case _ if filePath.toString endsWith ".flow"  => loadFlow(filePath)
         case _                                        => logger.warning(s"Unsupported file $filePath")
       }
@@ -112,7 +112,7 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
             if appContextParam.typeSignature <:< appContextType // the first param is an appContext, we hit the gold
           } yield {
             val matchedParams = params map (p => p -> compilerLazy.typeOfTerm(p.name.toTermName.toString))
-            
+
             val unmatchedParams = matchedParams.filter(p => p._2 == compilerLazy.global.NoType || !p._2.<:<(p._1.typeSignature))
             if (unmatchedParams.isEmpty) Right(cs -> matchedParams.map(_._1))
             else {
@@ -133,7 +133,7 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
 
           //instantiate the selected flows.
           val appName = {
-            val r = file.stripSuffix(".flow").replace('/', '-')
+            val r = file.stripSuffix(".fflow").stripSuffix(".scala").replace('/', '-')
             if (r.charAt(0) == '-') r.drop(1) else r
           }
           val appContext = new AppContext {
