@@ -28,11 +28,11 @@ object JmsTest extends App {
       res
     }
     val appContext = myApp
-    
+
     val askMeQueue = Jms.queue("askMe", jmsConnectionFactory)
 
     class Lala()
-    
+
     new Flow("say hello")(askMeQueue)(ExchangePattern.RequestResponse) {
       logic { req =>
         req.map("Hello " + _)
@@ -47,9 +47,9 @@ object JmsTest extends App {
     new Flow("listenResult")(Jms.topic("result", jmsConnectionFactory)) {
       logic {req => println("Result to some request: " + req.payload)}
     }
-    
+
     new Flow("ping")(endpoint.logical.Metronome("ping", 1 seconds)) {
-      logic {m => 
+      logic {m =>
         println("...pinging")
         Jms.queue("logQuestion", jmsConnectionFactory).push(m) onComplete (t => println("Ping result " + t))
       }
