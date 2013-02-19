@@ -12,7 +12,7 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
   private lazy val compilerLazy = compiler
   val filePath = Paths.get(file)
   @volatile var lastUpdate: Long = 0
-  @volatile private[this] var _theFlows: Flows = _
+  @volatile private[this] var _theFlows: Seq[Flows] = _
 
   def theFlows = Option(_theFlows)
 
@@ -21,24 +21,24 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
   def startWatching(runnerFlows: Flows) {
     import runnerFlows._
     _watcherFlow = Some(new runnerFlows.Flow("Watch " + file.replace('/', '_'))(endpoint.logical.Metronome(100.millis)) {
-      logic { m =>
-        try {
-          if (Files.exists(filePath)) {
-            val attrs = Files.readAttributes(filePath, classOf[attribute.BasicFileAttributes])
-            if (attrs.lastModifiedTime().toMillis() > lastUpdate) {
-              logger.info(Console.MAGENTA + s"Reloading flow $file" + Console.RESET)
-              if (_theFlows != null) {
-                logger.info(Console.MAGENTA + s"Stoping previous incarnation" + Console.RESET)
-                _theFlows.registeredFlows foreach (_.dispose())
-                _theFlows.appContext.actorSystem.shutdown()
-                logger.info(Console.MAGENTA + s"Done" + Console.RESET)
+        logic { m =>
+          try {
+            if (Files.exists(filePath)) {
+              val attrs = Files.readAttributes(filePath, classOf[attribute.BasicFileAttributes])
+              if (attrs.lastModifiedTime().toMillis() > lastUpdate) {
+                logger.info(Console.MAGENTA + s"Reloading flow $file" + Console.RESET)
+                if (_theFlows != null) {
+                  logger.info(Console.MAGENTA + s"Stoping previous incarnation" + Console.RESET)
+                  _theFlows foreach (_.registeredFlows foreach (_.dispose()))
+                  _theFlows.head.appContext.actorSystem.shutdown() //they share appcontext, so stopping the head is enough
+                  logger.info(Console.MAGENTA + s"Done" + Console.RESET)
+                }
+                load()
               }
-              load()
             }
-          }
-        } catch { case ex => logger.warning("Error while loading flow " + file, ex) }
-      }
-    })
+          } catch { case ex => logger.warning("Error while loading flow " + file, ex) }
+        }
+      })
     _watcherFlow.get.start()
     logger.info("Started watching file " + file)
   }
@@ -87,7 +87,7 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
       }
       val totalTime = System.nanoTime() - appStartTime
       logger.info(Console.GREEN + f"  App fully initialized. Total time: ${totalTime / 1000000000d}%.3f" + Console.RESET)
-      _theFlows = flows
+      _theFlows = Seq(flows)
     } catch { case ex: Exception => logger.error(ex, s"Error loading $file") }
   }
   def loadFullFlow(filePath: Path) {
@@ -123,8 +123,8 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
                   s"  (Note that a variable ${param.nameString} was found, but it is not applicable because its type $fromCompiler is not assignable from expected type ${param.typeSignature})"
               }
               Left(s"$cs correctly extends Flows, but its primary constructor cannot be called.\n" +
-                s"It is defined as:\n  ${pc.paramss.map(_.map(describe).mkString("(", ", ", ")")).mkString("")}\n" +
-                s"and I don't know how to provide\n  ${unmatchedParamsDescr.mkString("\n  ")}")
+                   s"It is defined as:\n  ${pc.paramss.map(_.map(describe).mkString("(", ", ", ")")).mkString("")}\n" +
+                   s"and I don't know how to provide\n  ${unmatchedParamsDescr.mkString("\n  ")}")
             }
           }
           val (failedFlows, possibleFlows) = processedFlows.partition(_.isLeft)
@@ -156,7 +156,7 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
           val totalTime = System.nanoTime() - appStartTime
           logger.info(Console.GREEN + f"  App fully initialized. Total time: ${totalTime / 1000000000d}%.3f" + Console.RESET)
 
-          _theFlows = flowss.lastOption.orNull
+          _theFlows = flowss
       }
     } catch {
       case e: java.lang.reflect.InvocationTargetException => logger.error(e.getTargetException(), s"Failed to instance one of the flows defined in $file")
@@ -169,4 +169,7 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
   //
   //    } else None
   //  }
+  def flowRef(flowName: String): Option[Flow] = {
+    theFlows flatMap (_.flatMap(_.registeredFlows.find(_.name == flowName)).headOption)
+  }
 }
