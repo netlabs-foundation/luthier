@@ -92,6 +92,7 @@ trait Flows extends FlowsImplicits0 {
     val result = scala.concurrent.Promise[R]()
     val flowName = ("anon" + anonFlowsIncId.incrementAndGet + "@" + new Exception().getStackTrace()(2)).replace("$", "_").replaceAll("[()<>]", ";")
     val flow = new Flow(flowName)(new endpoint.base.DummySource) {
+      logLifecycle = false
       logic {m =>
         try result.success(code(this, m))
         catch {case ex: Exception => result.failure(ex)}
