@@ -13,7 +13,7 @@ object Main {
 
   def main(args: Array[String]) {
     val (flows, restOfArgs) = args.span(_.matches(".*\\.(flow|fflow)"))
-    
+
     val settings = new Settings
     settings.YmethodInfer.value = true
     settings.usejavacp.value = true
@@ -21,8 +21,8 @@ object Main {
 //    settings.log.value = List("typer")
 //    settings.Yinferdebug.value = true
     settings.classpath.value = classpath()
-    
-    
+
+
     val compiler = new IMain(settings)
     val initialized = Promise[Unit]()
     compiler.initialize {
@@ -33,32 +33,32 @@ object Main {
       if (compiler.addImports("uy.com.netlabs.luthier._",
       "uy.com.netlabs.luthier.typelist._",
       "scala.language._") != IR.Success) initialized.failure(new IllegalStateException("Could not add default imports"))
-      else initialized.success(()) 
+      else initialized.success(())
     }
 
     val runner = new AppContext {
       val name = "Runner"
-      val rootLocation = Paths.get("")  
+      val rootLocation = Paths.get("")
     }
     val runnerFlows = new Flows {
       val appContext = runner
     }
-    
+
     lazy val lazyCompiler = {
       if (!initialized.isCompleted) println("Waiting for compiler to finish initializing")
       Await.result(initialized.future, Duration.Inf)
       compiler
     }
-      
+
     //instantiate the flows:
     for (f <- flows) {
       val h = new FlowHandler(lazyCompiler, runner.actorSystem.log, f)
-      h.load() //attempt to initialize it synchronously
+      h.load()() //attempt to initialize it synchronously
       h.startWatching(runnerFlows)
     }
     println("all apps initialized")
   }
-  
+
   def classpath() = {
     import java.net.URLClassLoader
     def cp(cl: URLClassLoader) = {
@@ -68,11 +68,11 @@ object Main {
       case cl: URLClassLoader => cp(cl)
       case other => println("Weird classloader: " + other + ": " + other.getClass); Set.empty
     }.distinct
-    
+
     val baseDir = Paths.get(".")
     val (basePathForLibs, baseUrl) = getClass.getResource(getClass.getSimpleName + ".class") match {
       case null => throw new IllegalStateException("Could not deduct where I'm running from!")
-      case u => 
+      case u =>
         val p = u.toString
         val pathToJar = p.substring(0, p.lastIndexOf('!'))
         Paths.get(pathToJar.stripPrefix("jar:file:")).getParent -> pathToJar
@@ -84,7 +84,7 @@ object Main {
 
     val urlsFromManifest = cpInManifest.split(" ").map(j => j.split("/").foldLeft(basePathForLibs)((d, p) => d.resolve(p)))
     val allUrls = urlsFromClasspath ++ urlsFromManifest
-    
+
     println("Using classpath:")
     allUrls foreach println
     allUrls.map(_.toString).mkString(":")
