@@ -26,7 +26,7 @@ trait Message[+Payload] {
   def correlationSequence_=(seq: Int)
 
   @inline
-  def mapTo[R] = this.asInstanceOf[Message[R]]
+  def as[R] = this.asInstanceOf[Message[R]]
   def map[R](f: Payload => R) = Message(f(payload), header.inbound, header.outbound, replyTo, correlationId, correlationGroupSize, correlationSequence)
 }
 trait MessageProxy[Payload] extends Message[Payload] {
@@ -59,7 +59,7 @@ object Message {
   trait header {
     val inbound: collection.concurrent.Map[String, Any]
     val outbound: collection.concurrent.Map[String, Any]
-    
+
     //swap the inbound headers with the outbound headers
     def swap() {
       val prevIn = inbound.clone()

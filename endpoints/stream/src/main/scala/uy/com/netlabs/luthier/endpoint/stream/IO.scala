@@ -88,7 +88,7 @@ object IO {
 
     def send(message: Message[OutPayload])
     protected def pushMessage[MT: SupportedType](msg): Unit = {
-      send(msg.mapTo[OutPayload]) //bypass creation of a contained, since the SupportedType implicit gives us that guarantee already
+      send(msg.as[OutPayload]) //bypass creation of a contained, since the SupportedType implicit gives us that guarantee already
     }
 
     def dispose {
@@ -104,7 +104,7 @@ object IO {
     override protected def handleReadMessage(m: Message[Payload]) {
       if (onEventHandler != null) onEventHandler(m)
       else onRequestHandler(m) onComplete {
-        case Success(response) => send(response.map(_.value).mapTo)
+        case Success(response) => send(response.map(_.value).as)
         case Failure(err) => log.error(err, s"Error processing request $m")
       }
     }
