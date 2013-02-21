@@ -53,7 +53,7 @@ might declare more than one parameter list, which might be good for grouping par
 see later). In our case, separating the name from the endpoint declaration is visually appealing.
 
 Then comes the structure of the flow. In this example, we first state that the amount of workers for this flow must be
-ten (which means that ther might be at most, ten concurrent runs of it), and the we declare the logic that must be
+ten (which means that ther might be at most, ten concurrent runs of it), and then we declare the logic that must be
 executed when a message arrives. At this point, in the body of the flow we might have declared our own personal
 variables that could be accessed from each flow run, though care must be taken because of the concurrent nature of the
 runs.
