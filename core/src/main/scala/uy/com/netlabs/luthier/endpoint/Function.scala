@@ -14,11 +14,11 @@ object Function {
 
     val ioProfile = base.IoProfile.threadPool(ioThreads)
     protected def retrieveMessage(mf): Message[Payload] = mf(function())
-    
+
     def ask[Payload: SupportedType](msg, timeOut): Future[Message[Response]] = {
-      Future(msg.mapTo[Function0[R]] map (_()))
+      Future(msg.as[Function0[R]] map (_()))
     }
-    
+
     def start() {
     }
     def dispose() {
