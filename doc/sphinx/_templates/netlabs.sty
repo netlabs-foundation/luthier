@@ -1,0 +1,30 @@
+% vim: sw=2 tw=80
+\newcommand{\nlfooter}{
+\hspace*{\fill} \\
+\hspace*{\fill} \\
+Copyright \copyright{} \the\year{} NetLabs SRL - \url{http://www.netlabs.com.uy}
+}
+\authoraddress{NetLabs SRL \\
+Av. Brasil 3130/701 \\
+11300, Montevideo \\
++598 2 7077687 \\
+\url{http://www.netlabs.com.uy}
+}
+
+\fancypagestyle{normal}{
+  \fancyhf{}
+  \fancyfoot[LE,RO]{{\py@HeaderFamily\thepage}}
+  \fancyfoot[LO]{{\py@HeaderFamily\nouppercase{\rightmark}}}
+  \fancyfoot[RE]{{\py@HeaderFamily\nouppercase{\leftmark}}}
+  %\fancyfoot[CE,CO]{{\nlfooter{}}}
+  \fancyhead[LE,RO]{{\py@HeaderFamily \@title, \py@release}}
+  \renewcommand{\headrulewidth}{0.4pt}
+  \renewcommand{\footrulewidth}{0.4pt}
+}
+\fancypagestyle{plain}{
+  \fancyhf{}
+  \fancyfoot[LE,RO]{{\py@HeaderFamily\thepage}}
+  %\fancyfoot[CE,CO]{{\nlfooter{}}}
+  \renewcommand{\headrulewidth}{0pt}
+  \renewcommand{\footrulewidth}{0.4pt}
+}
