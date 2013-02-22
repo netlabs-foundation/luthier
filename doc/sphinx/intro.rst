@@ -259,6 +259,78 @@ logic
 We use this method to provide the *logic* that our flow executes every time that it receives an incoming message.
 We already describe the structure of this method, so if you skip it, please read the `logic method description`_.
 
+The logic block must comply with the defintion of the Flow. That is, when you declare a flow, and you give it a root
+endpoint, that endpoint actually tells the flow three things: the payload type of the incoming messages, whether or not
+it is request-response or one-way, and, in case it is request-response, the valid response types. Many source endpoints
+declare a very generic payload type, or the most generic one being `Any` (which as its name states, it can be anything).
+In such cases there are several tools you can use to work with the specific payload.
+The first tool is the the `as` operator of messages. Suppose you are working with JMS, and you know that through that
+queue that you are using, you are only sending messages of a specific type, since JMS supports several divergent types,
+the endpoint would declare an Any payload, in order to say, this message is of this type (which is known as casting)
+you do:
+
+.. code-block:: scala
+
+  logic {inMessage: Message[Any] =>
+    val myMessage: Message[MyType] = inMessage.as[MyType]
+  }
+
+Your second tool, is type match. Suppose now that through another queue, you receive message of several different
+types, you can do a type match to handle each specific case as follow:
+
+.. code-block:: scala
+
+  logic {inMessage: Message[Any] =>
+    inMessage.payload match {
+      case typeA: TypeA =>
+        ...
+        inMessage.map(...)
+      case typeB: TypeB => inMessage.map(...)
+      case other => inMessage.map(_ => "Unkown message: " + other)
+    }
+  }
+
+The match statement acts like a switch, only one of the case definitions will be run. The last expression of the
+executed branch of the switch, is the return value for the logic (in case this is a request-response flow).
+Note how in the last `case` statement we do not declare the type of other, this acts as a wildcard, so we can handle
+unexpected cases.
+
+Another important aspect of the logic is the return value when you are defining request-response flows.
+Remember that when you define a flow with a responsible endpoint, the later specifies what is allowable as a response.
+Depending on the the endpoint, there might be several possible respose types. Its responsability of the documentation
+of such endpoint to state what is it that it accepts, but when you provide a type that doesn't validate, you will
+receive a compilation error like:
+
+::
+
+  Invalid response found: String.
+  Expected a Message[T] or a Future[Message[T]] where T could be any of [
+      String
+      Array[Byte]
+      java.io.Serializable
+  ]
+          "someMessage"
+
+In that example, we forgot to return `"someMessage"` inside a message object via mapping on the root message, hence
+the compiler complaints.
+There is another important piece of information in that compilation error. Note that you are allowed to return either a
+Message of an accepted type, or a Future of a Message of the expected type. If you read the section of endpoints already,
+you know that most of them return a Future of a value as a consecuence of using them, that Future encapsulates their
+possible response (in case of an askable endpoint) or failure. There are other tools that also wrap their result in a
+future, because of their asynchronous nature (see for example `blockingWorkers and the blocking method`_). This means
+that you can return either a message of the expected type, because you already have it, or a future that will eventually
+contain a valid type. This is a really useful composition tool, because writing forwarer flows becomes trivial, like this
+one:
+
+.. code-block:: scala
+
+  //Forward a webservice call in case that we can't handle it
+  new Flow("ws-handler")(Ws) {
+    logic {wsResponse: Message[WsResponse] =>
+      log.info("Poll result: " + wsResponse.payload)
+    }
+  }
+
 name
 ****
 
@@ -302,7 +374,7 @@ in the section that goes between the flow declaration and its logic, like:
 
 This means that the flow will be run at most 10 times concurrently.
 
-Its important to highlight by now, that the workers of the flow are the ones executing the instructions in the logic
+Its important to highlight, that the workers of the flow are the ones executing the instructions in the logic
 block, **and nothing more**. That means that when the logic of your flow does a request on an askable endpoint for
 example, it will **not** block the flow workers during that request. Instead, when the transport effectively's got the
 result (whether it is the response or an exception), it will ask the flow to resume the execution it suspended.
@@ -317,7 +389,7 @@ Sometimes in the logic of a flow, you need to do a blocking call, be it because 
 or because Luthier didn't provide an endpoint for that, and you don't want to write one. In such cases, it might be
 easier to just block (for example, opening an reading on a socket). Since not blocking the workers actors is crucial,
 we provide a bunch of workers per flow for this exclusive purpose. `blockingWorkers` define the amount of workers, which
-defaults to 10, and the method blocking is used to submit them a task. A future object will be returned encapsulating
+defaults to 10, and the method blocking is used to submit a task for them. A future object will be returned encapsulating
 the asynchronous result. Usage is like:
 
 .. code-block:: scala
