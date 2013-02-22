@@ -52,18 +52,33 @@ about the usage of parenthesis at this point, but it is enough to know that in s
 might declare more than one parameter list, which might be good for grouping parameters (and some other usages will
 see later). In our case, separating the name from the endpoint declaration is visually appealing.
 
-Then comes the structure of the flow. In this example, we first state that the amount of workers for this flow must be
-ten (which means that ther might be at most, ten concurrent runs of it), and then we declare the logic that must be
-executed when a message arrives. At this point, in the body of the flow we might have declared our own personal
-variables that could be accessed from each flow run, though care must be taken because of the concurrent nature of the
-runs.
+Then comes the structure of the flow. Between the logic and the flow declaration, you can modify some variables of
+the flow, for example, the amount of workers. In this section of the flow declaration, you could also declare your
+own variables that could be accessed from each flow run, though care must be taken because of the concurrent nature
+of the runs.
 
-The method logic takes a single parameter (if you have been following the lambda project of java 8, you should already
-infer what it takes), which is a function that takes a Message. So we declare said function between curly braces, and
-the arrow separates the arguments the function take from its body.
+the logic part of the flow, defines what it does with each message it receives. You define it like:
+
+.. code-block:: scala
+
+  logic {<rootMessageName>[: <RootMessageType] =>
+    <flowLogic>
+  }
+
+<rootMessageName> is a name you give to the message that originates the flow run, and that you can refer to trhoughout
+the flow logic. You can also specify its type, for clarity, but it is optional, since the flow already knows the
+type of the messages that originates flow runs from the endpoint you used to create it.
+
 In the body of our logic, we are declaring a value (val, which is an immutable variable) that contains the result of
-transforming the root message, and then we write a statement with it. In scala, the last expression of functions is what
-they return, so here our logic is returning `response`.
+transforming the root message, and then we write a statement with it. The last expression of the logic block
+is what the flow should return (in case it is a request-response flow), so here our logic is returning `response`.
+
+.. NOTE::
+
+  The method logic takes a single parameter (if you have been following the lambda project of java 8, you should already
+  infer what it takes), which is a function that takes a Message. So we declare said function between curly braces, and
+  the arrow separates the arguments the function take from its body.
+
 
 Let's see each concept in more detail.
 
@@ -100,8 +115,8 @@ A common pattern when ignoring the previousContent is giving the variable the na
 
   message.map{_ => newPayload}
 
-In such case, the underscore acts as a placeholder (hence the character used), it indicates that we are declaring
-a function which takes one parameter, and that we don't care about it.
+In such case, the underscore acts as a placeholder (hence the character used), it indicates that there is a variable
+there, and that we don't care about it.
 
 
 Endpoint
@@ -114,7 +129,8 @@ When defining a flow, you must provide it either with a Source endpoint, or a Re
 need an inbound endpoint. The rest are meant to be used in the flow logic.
 
 Endpoints are never instantiated directly, instead you access them through a EndpointFactory. This allows for an
-automatic lifecyle management, as well reusage features, specially when it comes to resources.
+automatic lifecyle management, as well reusage features, specially when it comes to resources (think of a connection
+to somewhere for example).
 
 Inbound Endpoints
 *****************
@@ -133,6 +149,52 @@ endpoint define request-response flows, which means you must *always* provide a 
 Outbound Endpoints
 ******************
 
+Sink and Askable are the two types of outbound endpoints, since they send something over the transport on demand.
+This endpoints are used inisde the logic definition, and they return a `Future <Futures>`_ object representing the
+asynchrounous computation they will perform.
+
+Sink endpoints, as their name imply, simple send something over the transport, obtaining no response. Typical sink
+endpoints may be log endpoints, or an endpoint to execute statements (non queries) to a database. They only method
+they provide is push. Usage is like:
+
+.. code-block:: scala
+
+  [val future = ]SomeSinkEndpoint.push(myMessage)
+
+Like we said, pushing something over the sink, returns a future, even when there is no answer. This future represents
+the completion of such task, and it might result in failure, so you can check the future if you want.
+
+Askable endpoints on the other hand, send something over the transport, but always expect an answer back.
+Usage is like:
+
+.. code-block:: scala
+
+  [val responseFuture = ]SomeAskableEndpoint.ask(myMessage[, timeout = someTimeout])
+
+In the case of the askable endpoints, the future it returns also represents the anwser we will get, or the exception
+if the operation failed.
+The timeout parameter we specified, hints the transport that it should provide a result in the future in at most
+that time. If the timout is exceeded, it should complete the future with a timeout exception.
+
+For better understanding of futures, please read its section.
+
+Pull Endpoints
+**************
+
+This endpoints are not inbound, since they cannot define a flow, and are not outbound, since they cant send anything.
+They can only attempt to retrieve something when asked. This kind of endpoint may represent task like reading the
+content of a file, or an URL, or executing some predefined select on a database, or running a system process
+and obtaining its output. You can think of them as an Askable endpoint that you ask nothing, and it provides an answer.
+
+Their usage is like:
+
+.. code-block:: scala
+
+  [val valueFuture = ]SomePullEndpoint.pull()
+
+Although we marked valueFuture as optional, it would not make much sense to run a PullEndpoint ignoring its result.
+The pull operation returns a Future with the data that we are pulling, or an exception if something went wrong.
+
 Logical Endpoints
 *****************
 
@@ -141,7 +203,7 @@ they are logical).
 
 Right now, Luthier has only a two logical endpoints, Metronome and Polling endpoint.
 
-A Metronome endpoints takes its concept from its musician tool, because it emits a pulse at a constant rate. With this
+A Metronome endpoints takes its concept from the musician tool, because it emits a pulse at a constant rate. With this
 endpoint, you choose what the pulse is. For example:
 
 .. code-block:: scala
@@ -167,7 +229,6 @@ something to that webservice. It could look something like this:
     }
   }
 
-*<TODO>*
 
 Flows
 -----
