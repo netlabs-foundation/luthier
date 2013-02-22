@@ -52,7 +52,10 @@ about the usage of parenthesis at this point, but it is enough to know that in s
 might declare more than one parameter list, which might be good for grouping parameters (and some other usages will
 see later). In our case, separating the name from the endpoint declaration is visually appealing.
 
-Then comes the structure of the flow. Between the logic and the flow declaration, you can modify some variables of
+
+.. _logic method description:
+|
+After the declaration comes the structure of the flow. Between the logic and the flow declaration, you can modify some variables of
 the flow, for example, the amount of workers. In this section of the flow declaration, you could also declare your
 own variables that could be accessed from each flow run, though care must be taken because of the concurrent nature
 of the runs.
@@ -233,12 +236,110 @@ something to that webservice. It could look something like this:
 Flows
 -----
 
-*<TODO>*
+Flows (yes, in plural) is the container that allows us to define flows. They have a reference to an AppContext which
+provide the root path of the flows (useful value to use inside them) and the actor system, which is the environment
+that controls our concurrency parameters, as well as support clustering and logging.
+A Flows instance will hold a reference to all the flows defined in it, so its easy to start, or stop them all at once.
+
+.. NOTE::
+
+  Though currently not used, this is a good point for extensions. You could for example extend the Flows container
+  with monitoring, and all the flows defined in it would automatically gain that functionality.
+
 
 Flow
 ----
 
-*<TODO>*
+If you have been reading orderly, you should have a pretty good idea by now of how ot work with flows. In this section
+we will explain some of its components.
+
+logic
+*****
+
+We use this method to provide the *logic* that our flow executes every time that it receives an incoming message.
+We already describe the structure of this method, so if you skip it, please read the `logic method description`_.
+
+name
+****
+
+The name of the flow is pretty much self explanatory, though one detail is important. This name must be unique for the
+given AppContext defined in the container Flows. This is like this, because there is an Akka actor for every flow,
+which is the one in charge of running for each incoming message.
+
+rootEndpoint
+************
+
+Is the source endpoint used to define the flow. Normally, you will never have to use this value.
+
+log
+***
+
+Is the logging facility of the flow. Contains the typical logging operations you would expect.
+The log instance is constructed based on the actor name of the flow, so when you log, you know exactly which flow is
+doing it. Here is an excerpt of the operations it supports:
+
+ * info(message: String)
+ * warning(message: String)
+ * error(message: String)
+ * debug(message: String)
+
+For a complete defintion, visit its documentation page: http://doc.akka.io/api/akka/2.0.2/#akka.event.LoggingAdapter
+
+workers
+*******
+
+This variable defines the amount of workers to create for the actor. Its default value is 5, but you can change this
+in the section that goes between the flow declaration and its logic, like:
+
+.. code-block:: scala
+
+  new Flow(...)(...) {
+    workers = 10
+    logic {rootMessage: Message[String] =>
+      ...
+    }
+  }
+
+This means that the flow will be run at most 10 times concurrently.
+
+Its important to highlight by now, that the workers of the flow are the ones executing the instructions in the logic
+block, **and nothing more**. That means that when the logic of your flow does a request on an askable endpoint for
+example, it will **not** block the flow workers during that request. Instead, when the transport effectively's got the
+result (whether it is the response or an exception), it will ask the flow to resume the execution it suspended.
+
+This is one of the key concepts of the architecture, that is non blocking. The workers of a flow will only be limited
+by cpu and will not block on endpoint usage.
+
+blockingWorkers and the blocking method
+***************************************
+
+Sometimes in the logic of a flow, you need to do a blocking call, be it because you are interfacing with another library
+or because Luthier didn't provide an endpoint for that, and you don't want to write one. In such cases, it might be
+easier to just block (for example, opening an reading on a socket). Since not blocking the workers actors is crucial,
+we provide a bunch of workers per flow for this exclusive purpose. `blockingWorkers` define the amount of workers, which
+defaults to 10, and the method blocking is used to submit them a task. A future object will be returned encapsulating
+the asynchronous result. Usage is like:
+
+.. code-block:: scala
+
+  new Flow(...)(...) {
+    blockingWorkers = 10
+    logic {rootMessage: Message[String] =>
+      ...
+      val result: Future[Message[<blockingOpResultType>]] = blocking {
+        val blockingOpResult = someBlockingOperation
+        rootMessage.map(_ => blockingOpResult)
+      }
+      result
+    }
+  }
+
+In the snippet above, we declare that when we receive a request, we must perform some blocking operation that outputs
+a `blockingOpResult`, we then create a message with that `blockingOpResult`, and that last statement is what blocking
+will return, eventually. Outside of the blocking call, we assign its result in a `result` value, and we define that
+our flow returns that.
+In the example, `<blockingOpResultType>` represents the type of the `someBlockingOperation` call, that we later return
+in our message.
 
 Flow Run
 --------
