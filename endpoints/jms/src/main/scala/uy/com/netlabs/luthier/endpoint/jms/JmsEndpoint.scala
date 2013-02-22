@@ -148,7 +148,7 @@ private[jms] trait BaseJmsEndpoint extends endpoint.base.BaseSource with endpoin
       res.setIntProperty("correlation-group-size", m.correlationGroupSize)
       res.setIntProperty("correlation-seq", m.correlationSequence)
     }
-    m.header.inbound.foreach((kv: (String, Any)) => res.setObjectProperty(kv._1, kv._2))
+    m.header.outbound.foreach((kv: (String, Any)) => res.setObjectProperty(kv._1, kv._2))
     res
   }
 }
