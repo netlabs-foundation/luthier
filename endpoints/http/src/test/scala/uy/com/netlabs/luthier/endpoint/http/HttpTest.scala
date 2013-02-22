@@ -69,7 +69,7 @@ class HttpTest extends BaseFlowsTest {
         val reqResponse = inFlow { (flow, m) =>
           import flow._
           implicit val flowRun = m.flowRun
-          val res = Await.result(Http(url("http://localhost:3987/some/path") -> new OkFunctionHandler(as.String)).pull(), 3.seconds).payload 
+          val res = Await.result(Http(url("http://localhost:3987/some/path") -> new OkFunctionHandler(as.String)).pull(), 3.seconds).payload
           println("Res gotten " + res)
           res
         }
