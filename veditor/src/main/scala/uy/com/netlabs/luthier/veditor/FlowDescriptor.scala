@@ -1,4 +1,4 @@
-package uy.com.netlabs.luthier.runner
+package uy.com.netlabs.luthier.veditor
 
 import scala.tools.nsc.interactive.Global
 

@@ -26,11 +26,6 @@ class FlowAnalyzer(val classpath: Seq[String]) {
   val compiler = new Global(compilerSettings, reporter, "FlowAnalyzer")
   import compiler._
   
-  private[this] val browser = new TreeBrowsers {
-    val global: compiler.type = compiler
-  }
-  private[this] lazy val browserInstance = browser.create()
-  
   private[this] lazy val FlowType = compiler.typeOf[Flow]
   
   def analyze(file: Path, maxWaitTimeout: Long = 10000) {
@@ -51,19 +46,32 @@ class FlowAnalyzer(val classpath: Seq[String]) {
         flowClasses foreach (t => println(showRaw(t) + "----------------\n\n\n"))
         
         //create FlowDescriptors from the classes
-        flowClasses map {
-          case t@Template(parents, self, body) => 
-            browserInstance.browse(body.head)
-            val constr = body.map (_ collect {
-                case t@Apply(Apply(Select(Super(_, tpnme.EMPTY), nme.CONSTRUCTOR), List(flowName)),
-                             List(Apply(sym, args))) =>
-                  println("FlowName " + flowName)
-                  t
+        val descriptors = flowClasses map {
+          case t@Template(parents, self, body) =>
+//            TreeDescriptor.describe(t, compiler)
+            val Seq((flowName, endpoint, pattern)) = body.map (_ collect {
+                case t@Apply( //flow constructor
+                    Apply(//first parameter list
+                      Apply(Select(Super(_, tpnme.EMPTY), nme.CONSTRUCTOR), List(flowName)), //flow name
+                      List(Apply(sym, args)) //second parameter list, endpoint factory argument
+                    ),
+                    List(TypeApply(Select(_, pattern), _))) => //third parameter list, exchange pattern
+                  
+                  (flowName, sym.symbol.owner, pattern)
               }).flatten
-            t
+            val logicResult = t.tpe.member(newTypeName("LogicResult"))
+            val responseType = if (logicResult.typeSignature =:= typeOf[Unit]) None
+            else Some(logicResult.typeSignature.toString)
+            FlowDescriptor(flowName.toString, 
+                           endpoint.typeConstructor.toString, 
+                           pattern.decoded,
+                           t.tpe.member(newTypeName("InboundEndpointTpe")).toString,
+                           responseType,
+                           t.pos)
         }
         
-        flowClasses
+        descriptors foreach println
+        descriptors
       })
     reporter.infos foreach (i => println(Console.YELLOW + i + Console.YELLOW))
   }
