@@ -59,9 +59,12 @@ class FlowAnalyzer(val classpath: Seq[String]) {
                   
                   (flowName, sym.symbol.owner, pattern)
               }).flatten
+
+            TreeDescriptor.describe(t.tpe, compiler)
             val logicResult = t.tpe.member(newTypeName("LogicResult"))
             val responseType = if (logicResult.typeSignature =:= typeOf[Unit]) None
             else Some(logicResult.typeSignature.toString)
+            //TreeDescriptor.describe(t.tpe.member(newTypeName("InboundEndpointTpe")).typeSignature, compiler)
             FlowDescriptor(flowName.toString, 
                            endpoint.typeConstructor.toString, 
                            pattern.decoded,
