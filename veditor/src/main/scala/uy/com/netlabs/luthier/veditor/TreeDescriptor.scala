@@ -1,6 +1,6 @@
 package uy.com.netlabs.luthier.veditor
 
-import scala.reflect.api.Trees
+import scala.reflect.api.{Trees, Types, Symbols}
 
 import javafx._, application.Application, stage.Stage
 
@@ -173,6 +173,85 @@ object TreeDescriptor {
       res
     }
     val root = toJfxTreeItem(tree)
+    rootStage.get
+    application.Platform.runLater(new Runnable {
+        def run {
+          val s = new stage.Stage()
+          s.setScene(new scene.Scene(new RootNode(root)))
+          s.show()
+        }
+      })
+  }
+
+def describe(tpe: Types#TypeApi, universe: Types with Symbols) {
+    import universe._
+    initJfx
+    def treeItem(a: Any) = new scene.control.TreeItem(a)
+    def listTreeItem(name: String, a: Iterable[scene.control.TreeItem[_]]) = {
+      val res = new scene.control.TreeItem[Any](name)
+      a foreach (t => res.getChildren.add(t.asInstanceOf[scene.control.TreeItem[Any]]))
+      res
+    }
+    val processedTypes = scala.collection.mutable.Set.empty[Types#TypeApi]
+    def symbolToJfxTreeItem(s: Symbols#SymbolApi): scene.control.TreeItem[Any] = {
+      val res = treeItem(s)
+      if (s != NoSymbol) res.getChildren.add(toJfxTreeItem(s.typeSignature))
+      res
+    }
+    def toJfxTreeItem(tpe: Types#TypeApi): scene.control.TreeItem[Any] = {
+      if (processedTypes(tpe)) return treeItem("<repeated>")
+      processedTypes += tpe
+      val res = treeItem(tpe.getClass.getName)
+      tpe match {
+        case AnnotatedType(annotations, underlying, selfsym) =>
+          res.getChildren.add(listTreeItem("annotations", annotations map treeItem))
+          res.getChildren.add(toJfxTreeItem(underlying))
+          res.getChildren.add(symbolToJfxTreeItem(selfsym))
+        case BoundedWildcardType(bounds) =>
+          res.getChildren.add(toJfxTreeItem(bounds))
+        case ClassInfoType(parents, decls, clazz) =>
+          res.getChildren.add(listTreeItem("parents", parents map toJfxTreeItem))
+          res.getChildren.add(listTreeItem("decls", decls map symbolToJfxTreeItem))
+          res.getChildren.add(symbolToJfxTreeItem(clazz))
+        case ConstantType(constant) =>
+          res.getChildren.add(treeItem(constant))
+        case  ExistentialType(quantified, underlying) =>
+          res.getChildren.add(listTreeItem("quantified", quantified map symbolToJfxTreeItem))
+          res.getChildren.add(toJfxTreeItem(underlying))
+        case MethodType(params, respte) =>
+          res.getChildren.add(listTreeItem("params", params map symbolToJfxTreeItem))
+          res.getChildren.add(toJfxTreeItem(respte))
+        case NullaryMethodType(resultType) =>
+          res.getChildren.add(toJfxTreeItem(resultType))
+        case PolyType(typeParams, resultType) =>
+          res.getChildren.add(listTreeItem("typeParams", typeParams map symbolToJfxTreeItem))
+          res.getChildren.add(toJfxTreeItem(resultType))
+        case RefinedType(parents, decls) =>
+          res.getChildren.add(listTreeItem("parents", parents map toJfxTreeItem))
+          res.getChildren.add(listTreeItem("decls", decls map symbolToJfxTreeItem))
+        case SingleType(pre, sym) =>
+          res.getChildren.add(toJfxTreeItem(pre))
+          res.getChildren.add(symbolToJfxTreeItem(sym))
+        case SingleType(thistpe, supertpe) =>
+          res.getChildren.add(toJfxTreeItem(thistpe))
+          res.getChildren.add(symbolToJfxTreeItem(supertpe))
+        case ThisType(sym) =>
+          res.getChildren.add(symbolToJfxTreeItem(sym))
+        case TypeBounds(lower, upper) =>
+          res.getChildren.add(toJfxTreeItem(lower))
+          res.getChildren.add(toJfxTreeItem(upper))
+        case TypeRef(pre, sym, args) =>
+          res.getChildren.add(toJfxTreeItem(pre))
+          res.getChildren.add(symbolToJfxTreeItem(sym))
+          res.getChildren.add(listTreeItem("args", args map toJfxTreeItem))
+        case other =>
+      }
+      val descr = treeItem("toString")
+      descr.getChildren.add(treeItem(tpe.toString))
+      res.getChildren.add(descr)
+      res
+    }
+    val root = toJfxTreeItem(tpe)
     rootStage.get
     application.Platform.runLater(new Runnable {
         def run {
