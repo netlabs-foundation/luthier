@@ -135,14 +135,16 @@ trait Flow extends FlowPatterns with Disposable {
         def receive = {
           case w: Flow.Work[_] =>
             val oldContext = scala.concurrent.BlockContext.current
-            new scala.concurrent.BlockContext {
+            val bc = new scala.concurrent.BlockContext {
               def blockOn[T](thunk: => T)(implicit permission: scala.concurrent.CanAwait): T = {
                 log.warning("Blocking from a flow actor thread is discouraged!")
                 oldContext.blockOn(thunk)
               }
             }
-            try w.promise.complete(Success(w.task()))
-            catch { case ex => w.promise.complete(Failure(ex)) }
+            scala.concurrent.BlockContext.withBlockContext(bc) {
+              try w.promise.complete(Success(w.task()))
+              catch { case ex => w.promise.complete(Failure(ex)) }
+            }
         }
       }).withRouter(RoundRobinRouter(nrOfInstances = workers)), name.replace(' ', '-') + "-actors")
   /**
