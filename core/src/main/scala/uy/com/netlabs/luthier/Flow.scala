@@ -137,7 +137,7 @@ trait Flow extends FlowPatterns with Disposable {
             val oldContext = scala.concurrent.BlockContext.current
             val bc = new scala.concurrent.BlockContext {
               def blockOn[T](thunk: => T)(implicit permission: scala.concurrent.CanAwait): T = {
-                log.warning("Blocking from a flow actor thread is discouraged!")
+                log.warning("Blocking from a flow actor is discouraged! You'd be better composing futures.")
                 oldContext.blockOn(thunk)
               }
             }
