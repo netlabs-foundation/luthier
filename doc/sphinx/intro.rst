@@ -544,7 +544,9 @@ Use like this:
   //or if you just want to know when its done
   Await.ready(someFuture, 10.seconds)
 
-Remember that in the flows, when you use endpoints, they will return future instances representing their actions
+Remember that in the flows, when you use endpoints, they will return future instances representing their actions, it's
+highly discouraged that you block on they flow's actor (you even get a warning message in runtime if you do). Instead
+always try to compose your futures. Remember that request-response flows accept Futures for results.
 
 Flow Run
 --------
@@ -584,8 +586,6 @@ Of course, usage would be like:
       ...
     }
   }
-
-*<TODO>*
 
 ===============
 Getting Started
