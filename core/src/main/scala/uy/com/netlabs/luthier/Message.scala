@@ -96,4 +96,6 @@ object Message {
                                   correlationGroupSize: Int = 0,
                                   correlationSequence: Int = 0): Message[Payload] = MessageImpl(payload, inboundHeader, outboundHeader,
     replyTo, correlationId, correlationGroupSize, correlationSequence)
+
+  def unapply[T](msg: Message[T]) = Some(msg.payload)
 }

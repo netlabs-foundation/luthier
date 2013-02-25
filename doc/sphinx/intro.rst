@@ -438,6 +438,113 @@ in our message.
 Future
 ------
 
+This is another key concept for Luthier. Since most of the operations happen asynchronously, we need a safe, composable
+way to express that this operations might fail, or take some time, and that we might want to do stuff with their results
+once they become available.
+All of that is reprsented by Future. Its full type is Future[T] where T represents the result type of the operation (for
+operations that don't return anything, T is the special type Unit, which would be the java equivalente for Void, though
+not quite, because in java, when you declare a method to return Void, you still need to issue a `return null;` as last
+statement, and this isn't the case with Scala's Unit).
+A future encpasulates some code that will eventually complete or fail, so there is no way to actually obtain whatever
+it represents. There is no `get` operation, instead, you are supposed to compose its result with new logic. In order to
+do this, it provides the following operations:
+
+.. code-block:: scala
+
+  value: Option[Try[T]]
+
+      //The value of this Future.
+      //
+      //If the future is not completed the returned value will be None.
+      //If the future is completed the value will be Some(Success(t)) if
+      //it contains a valid result, or Some(Failure(error)) if it contains an exception.
+
+  onComplete[U](func: (Try[T]) ⇒ U): Unit
+      // When this future is completed, either through an exception, or a value, apply
+      // the provided function.
+      // If the future has already been completed, this will either be applied immediately
+      // or be scheduled asynchronously.
+      // Multiple callbacks may be registered; there is no guarantee that they will be
+      // executed in a particular order.
+  map[S](f: (T) ⇒ S): Future[S]
+      // Creates a new future by applying a function to the successful result of this future.
+      // If this future is completed with an exception then the new future will also contain
+      // this exception.
+  mapTo[S]: Future[S]
+      // Creates a new Future[S] which is completed with this Future's result if that
+      // conforms to S's erased type or a ClassCastException otherwise.
+  onFailure[U](callback: PartialFunction[Throwable, U]): Unit
+      // When this future is completed with a failure (i.e. with a throwable), apply the provided
+      // callback to the throwable.
+      // The future may contain a throwable object and this means that the future failed.
+      // Futures obtained through combinators have the same exception as the future they were obtained from.
+      // If the future has already been completed with a failure, this will either be
+      // applied immediately or be scheduled asynchronously.
+      // Will not be called in case that the future is completed with a value.
+      // Multiple callbacks may be registered; there is no guarantee that they will be
+      // executed in a particular order.
+  onSuccess[U](pf: PartialFunction[T, U]): Unit
+      // When this future is completed successfully (i.e. with a value), apply the provided partial
+      // function to the value if the partial function is defined at that value.
+      // If the future has already been completed with a value, this will either be applied
+      // immediately or be scheduled asynchronously.
+      // Multiple callbacks may be registered; there is no guarantee that they will be
+      // executed in a particular order.
+  recover[U >: T](pf: PartialFunction[Throwable, U]): Future[U]
+      // Creates a new future that will handle any matching throwable that this future might
+      // contain. If there is no match, or if this future contains a valid result then
+      // the new future will contain the same.
+      //
+      // Example:
+      //
+      // future (6 / 0) recover { case e: ArithmeticException => 0 } // result: 0
+      // future (6 / 0) recover { case e: NotFoundException   => 0 } // result: exception
+      // future (6 / 2) recover { case e: ArithmeticException => 0 } // result: 3
+  recoverWith[U >: T](pf: PartialFunction[Throwable, Future[U]]): Future[U]
+      // Creates a new future that will handle any matching throwable that this future might
+      // contain by assigning it a value of another future.
+      // If there is no match, or if this future contains a valid result then the new future
+      // will contain the same result.
+      //
+      // Example:
+      //
+      // val f = future { Int.MaxValue }
+      // future (6 / 0) recoverWith { case e: ArithmeticException => f } // result: Int.MaxValue
+  transform[S](s: (T) ⇒ S, f: (Throwable) ⇒ Throwable): Future[S]
+      // Creates a new future by applying the 's' function to the successful result of this future,
+      // or the 'f' function to the failed result. If there is any non-fatal exception thrown
+      // when 's' or 'f' is applied, that exception will be propagated to the resulting future.
+  zip[U](that: Future[U]): Future[(T, U)]
+      // Zips the values of this and that future, and creates a new future holding the tuple
+      // of their results.
+      // If this future fails, the resulting future is failed with the throwable stored in this.
+      // Otherwise, if that future fails, the resulting future is failed with the throwable
+      // stored in that.
+
+For a complete list on the methods, check `here <http://www.scala-lang.org/api/current/index.html#scala.concurrent.Future>`_.
+
+Blocking
+********
+
+For the unavoidable situation where you **have** to wait for the result, you can do so with Await.
+This tool takes a future and a timeout (always, non optional) and allows you to await for the result, in the case
+where the future ends with failure, it will rethrow the exception that caused it, otherwise it will return the result.
+Use like this:
+
+.. code-block:: scala
+
+  import scala.concurrent.Await       //import the Await object
+  import scala.concurrent.duration._  //provides the timeout syntax
+
+  ...
+
+  val someFuture: Future[Result] = ...
+  val r: Result = Await.result(someFuture, 10.seconds)
+
+  //or if you just want to know when its done
+  Await.ready(someFuture, 10.seconds)
+
+Remember that in the flows, when you use endpoints, they will return future instances representing their actions
 
 Flow Run
 --------
