@@ -14,8 +14,7 @@ object CocoonBuild extends Build {
     exportJars := true,
     resolvers ++= Seq(
       "Local maven repo" at "file://" + Path.userHome + "/.m2/repository/",
-      "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/",
-      Resolver.sonatypeRepo("snapshots"), Resolver.sonatypeRepo("releases")
+      "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/"
     ),
     libraryDependencies ++= Seq(
       "org.scala-lang" % "scala-reflect" % _scalaVersion,
