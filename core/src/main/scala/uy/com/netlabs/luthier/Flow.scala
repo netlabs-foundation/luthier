@@ -34,11 +34,11 @@ import scala.util._
  *   }
  *
  *   /**
- *    * General purpose listUsers, it will find the implicit FlowRun, obtain the endpoint, and call it's listUsers.
- *    * Note how we defined two parameter lists, and the first one is empty, this is so that the method can be called
- *    * like listUsers(). Otherwise, if users accidentally write listUsers() the compiler will complain that no FlowRun
- *    * is being passed.
- *    **/
+      *    * General purpose listUsers, it will find the implicit FlowRun, obtain the endpoint, and call it's listUsers.
+      *    * Note how we defined two parameter lists, and the first one is empty, this is so that the method can be called
+      *    * like listUsers(). Otherwise, if users accidentally write listUsers() the compiler will complain that no FlowRun
+      *    * is being passed.
+      *    **/
  *   def listUsers[F <: Flow {type InboundEndpoint = SomeInstantMessagingEndpoint}]()(implicit run: FlowRun[F]) = {
  *      run.flow.listUsers()
  *   }
@@ -132,12 +132,19 @@ trait Flow extends FlowPatterns with Disposable {
   var workers: Int = 5
 
   lazy val workerActors = appContext.actorSystem.actorOf(Props(new Actor {
-    def receive = {
-      case w: Flow.Work[_] =>
-        try w.promise.complete(Success(w.task()))
-        catch { case ex => w.promise.complete(Failure(ex)) }
-    }
-  }).withRouter(RoundRobinRouter(nrOfInstances = workers)), name.replace(' ', '-') + "-actors")
+        def receive = {
+          case w: Flow.Work[_] =>
+            val oldContext = scala.concurrent.BlockContext.current
+            new scala.concurrent.BlockContext {
+              def blockOn[T](thunk: => T)(implicit permission: scala.concurrent.CanAwait): T = {
+                log.warning("Blocking from a flow actor thread is discouraged!")
+                oldContext.blockOn(thunk)
+              }
+            }
+            try w.promise.complete(Success(w.task()))
+            catch { case ex => w.promise.complete(Failure(ex)) }
+        }
+      }).withRouter(RoundRobinRouter(nrOfInstances = workers)), name.replace(' ', '-') + "-actors")
   /**
    * Executes the passed ``task`` asynchronously in a FlowWorker and returns
    * a Future for the computation.
@@ -168,40 +175,40 @@ trait Flow extends FlowPatterns with Disposable {
    * Number of workers to allocate in the blocking workers pool.
    * Note that this threadpool is only instantiated if used by a call of blocking.
    */
-  var blockingWorkers: Int = 10
+   var blockingWorkers: Int = 10
 
-  private lazy val blockingExecutor = java.util.concurrent.Executors.newFixedThreadPool(blockingWorkers)
-  /**
-   * Private executor meant for IO
-   */
-  private lazy val blockingExecutorContext = ExecutionContext.fromExecutor(blockingExecutor)
+   private lazy val blockingExecutor = java.util.concurrent.Executors.newFixedThreadPool(blockingWorkers)
+   /**
+    * Private executor meant for IO
+    */
+   private lazy val blockingExecutorContext = ExecutionContext.fromExecutor(blockingExecutor)
 
-  /**
-   * Primitive to execute blocking code asynchronously without blocking
-   * the flow's worker.
-   *
-   * @returns A future for the computation
-   */
-  def blocking[R](code: => R): Future[R] = {
-    Future(code)(blockingExecutorContext)
-  }
-}
-object Flow {
-  class Work[R](val task: () => R) {
-    protected[Flow] val promise = Promise[R]()
-  }
+   /**
+    * Primitive to execute blocking code asynchronously without blocking
+    * the flow's worker.
+    *
+    * @returns A future for the computation
+    */
+   def blocking[R](code: => R): Future[R] = {
+      Future(code)(blockingExecutorContext)
+    }
+   }
+   object Flow {
+      class Work[R](val task: () => R) {
+        protected[Flow] val promise = Promise[R]()
+      }
 
-  import scala.reflect.macros.{ Context, Universe }
-  def findNearestMessageMacro[F <: Flow](c: Context): c.Expr[RootMessage[F]] = {
-    import c.universe._
-    val collected = c.enclosingClass.collect {
-      case a @ Apply(Ident(i), List(Function(List(param @ ValDef(modifiers, paramName, _, _)), _))) if i.encoded == "logic" &&
-        modifiers.hasFlag(Flag.PARAM) && param.symbol.typeSignature.toString.startsWith("uy.com.netlabs.luthier.RootMessage") &&
-        !c.typeCheck(c.parse(paramName.encoded), param.symbol.typeSignature, silent = true).isEmpty =>
-        paramName
-    }.head
-    val selectMessage = c.Expr(c.parse(collected.encoded))
-    reify(selectMessage.splice)
-  }
+      import scala.reflect.macros.{ Context, Universe }
+      def findNearestMessageMacro[F <: Flow](c: Context): c.Expr[RootMessage[F]] = {
+        import c.universe._
+        val collected = c.enclosingClass.collect {
+          case a @ Apply(Ident(i), List(Function(List(param @ ValDef(modifiers, paramName, _, _)), _))) if i.encoded == "logic" &&
+            modifiers.hasFlag(Flag.PARAM) && param.symbol.typeSignature.toString.startsWith("uy.com.netlabs.luthier.RootMessage") &&
+            !c.typeCheck(c.parse(paramName.encoded), param.symbol.typeSignature, silent = true).isEmpty =>
+            paramName
+        }.head
+        val selectMessage = c.Expr(c.parse(collected.encoded))
+        reify(selectMessage.splice)
+      }
 
-}
+    }
