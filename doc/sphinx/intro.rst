@@ -325,11 +325,33 @@ one:
 .. code-block:: scala
 
   //Forward a webservice call in case that we can't handle it
-  new Flow("ws-handler")(Ws) {
-    logic {wsResponse: Message[WsResponse] =>
-      log.info("Poll result: " + wsResponse.payload)
-    }
+  new Flow("endpoint-forwarder")(Jms.queue(..., jmsConnectionFactory)) {
+    logic {req => Jms.queue(..., jmsConnectionFactory).ask(req) }
   }
+
+Exchange pattern
+****************
+
+As you have seen, the exchange pattern of the flow depends entirely on the root endpoint you used to define it. Now,
+due to the nature of various transports, it makes sence for its endpoint to implement more than one endpoint type,
+and this might be a problem when you try to define a flow with and endpoint that is both a Source, and a Responsible
+endpoint.
+To solve this, we have to explicitly specify the exchange pattern in the flow optional third parameter list like this:
+
+.. code-block:: scala
+
+  new Flow("flow1")(SomeHybridEndpoint)(ExchangePattern.RequestResponse) {
+    logic {req => ... }
+  }
+  new Flow("flow2")(SomeHybridEndpoint)(ExchangePattern.OneWay) {
+    logic {req => ... }
+  }
+
+.. HINT::
+
+  Remeber when we said that having multiple parameter lists had other usages? well, this is one of them, making them
+  optional. In this case, the exchange pattern is infered via your endpoint type, only failing when your endpoint
+  supports both type.
 
 name
 ****
@@ -413,13 +435,48 @@ our flow returns that.
 In the example, `<blockingOpResultType>` represents the type of the `someBlockingOperation` call, that we later return
 in our message.
 
+Future
+------
+
+
 Flow Run
 --------
 
-*<TODO>*
+This is a special value that normally you don't deal with. It represents, as it name implies, a run of a flow. It is
+a value that is implicitly available in a run, and that adds coherence to it. It is defined by the root message that
+originates a run, plus the specific flow that defined it.
 
-Future
-------
+Normally, the expected usage for it is to define generic logic that can apply to different flow logics.
+Its type is defined as FlowRun[FlowType] where FlowType is bound to be the actual flow to which the run belongs.
+There are some really advance things you can do with the flow run, here we'll show a simple one, we'll define a
+helper function that sends any message to a predefined JMS log queue:
+
+.. code-block:: scala
+
+  def sendToLog(m: Message[_])(implicit flowRun: FlowRun[_ <: Flow]) = {
+    import flowRun.flow._
+    Jms.topic("log", jmsConnectionFactory, ioThreads = 1).push(m.as[Serializable]) //assert the message IS serializable
+  }
+
+In this example we are defining a method that accepts any message (again, the underscore acts as a placeholder) and then
+we declare a second parameter list that is implicit and takes a flow Run of some type that extends Flow (when
+when you define a Flow, you are creating a new type that extends it). Because the second parameter list is implicit, if
+all the parameters are implicitly available in the scope of the call to the operation, you won't need to provide them.
+Like we said previously, the flow run is implicitly present during the flow so it *will* be provided.
+In the content of the method, we first import `flowRun.flow._`, that is, we bring into scope the content of the flow that
+the flow run refers to. This is necessary since using endpoints and stuff depends on a flow context.
+
+Of course, usage would be like:
+
+.. code-block:: scala
+
+  new Flow(...)(...) {
+    logic {req =>
+      ...
+      sendToLog(req)
+      ...
+    }
+  }
 
 *<TODO>*
 
