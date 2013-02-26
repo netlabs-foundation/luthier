@@ -26,7 +26,8 @@ Core concepts
 
 We'll describe in this section the key compontents that comprise the library. Examples shown here will by partial (we
 might leave imports out, as well as other contextual items). For a full working example, please go to the section
-`Getting Started`_.
+`Getting Started`_. Also, every example will be shown twice, one with every type explicitly shown, and the other
+in "compact" form, that is, leaving out the types that the language already knows what they are.
 
 Let's start by having a look at how a typical flow looks like:
 
@@ -39,6 +40,19 @@ Let's start by having a look at how a typical flow looks like:
         "Hello " + previousMessageContent
       }
       response
+    }
+  }
+
+Succint version
+
+.. code-block:: scala
+
+  new Flow(name = "greet")(endpoint = SomeResponsibleEndpoint) {
+    workers = 10
+    logic {rootMessage =>
+      rootMessage map {previousMessageContent =>
+        "Hello " + previousMessageContent
+      }
     }
   }
 
@@ -217,6 +231,17 @@ endpoint, you choose what the pulse is. For example:
     }
   }
 
+
+Succint version
+
+.. code-block:: scala
+
+  new Flow("metronome")(Metronome(pulse = "Pulse", every = 1 second)) {
+    logic {rootMessage =>
+      log.info("A pulse was received, it contains: " + rootMessage.payload)
+    }
+  }
+
 The Polling endpoint, allows us to compose it with Pull or Askable endpoints to create a Source endpoint. For example
 suppose you have a webservice, that you want to consult periodically. Since webservices are by nature request-response
 endpoints always, they make up for a good askable endpoint. Now you want your flow to be run with the result of asking
@@ -228,6 +253,19 @@ something to that webservice. It could look something like this:
                                                       every = 1 second,
                                                       message = (wsParam1, wsParam2))) {
     logic {wsResponse: Message[WsResponse] =>
+      log.info("Poll result: " + wsResponse.payload)
+    }
+  }
+
+Succint version
+
+.. code-block:: scala
+
+
+  new Flow("poll-web-service")(Poll(MyWebServiceEndpoint,
+                                    every = 1 second,
+                                    message = (wsParam1, wsParam2))) {
+    logic {wsResponse =>
       log.info("Poll result: " + wsResponse.payload)
     }
   }
@@ -275,12 +313,36 @@ you do:
     val myMessage: Message[MyType] = inMessage.as[MyType]
   }
 
+Succint version
+
+.. code-block:: scala
+
+
+  logic {inMessage =>
+    val myMessage = inMessage.as[MyType]
+  }
+
 Your second tool, is type match. Suppose now that through another queue, you receive message of several different
 types, you can do a type match to handle each specific case as follow:
 
 .. code-block:: scala
 
   logic {inMessage: Message[Any] =>
+    inMessage.payload match {
+      case typeA: TypeA =>
+        ...
+        inMessage.map(...)
+      case typeB: TypeB => inMessage.map(...)
+      case other => inMessage.map(_ => "Unkown message: " + other)
+    }
+  }
+
+Succint version
+
+.. code-block:: scala
+
+
+  logic {inMessage =>
     inMessage.payload match {
       case typeA: TypeA =>
         ...
@@ -428,6 +490,22 @@ the asynchronous result. Usage is like:
     }
   }
 
+Succint version
+
+.. code-block:: scala
+
+  new Flow(...)(...) {
+    blockingWorkers = 10
+    logic {rootMessage =>
+      ...
+      val result = blocking {
+        val blockingOpResult = someBlockingOperation
+        rootMessage.map(_ => blockingOpResult)
+      }
+      result
+    }
+  }
+
 In the snippet above, we declare that when we receive a request, we must perform some blocking operation that outputs
 a ``blockingOpResult``, we then create a message with that ``blockingOpResult``, and that last statement is what blocking
 will return, eventually. Outside of the blocking call, we assign its result in a ``result`` value, and we define that
@@ -549,6 +627,25 @@ into the information that you required. Let's do just that in a flow:
     }
   }
 
+Succint version
+
+.. code-block:: scala
+
+  new Flow("obtain-item-price")(SomeInboundEndpoint) {
+    logic {rootMessage =>
+      //our root message contains a string with the item id
+      val wsResponse =
+        WebService(...).ask(rootMessage) //the webservice takes a string with the item id,
+                                         //since that is our request, we just send it over
+
+      //the flow definition now needs a response of a price, so we need to adapt the ItemData
+      val res = wsResponse.map {itemDataMessage =>
+        itemDataMessage.map(itemData => itemData.price)
+      }
+      res
+    }
+  }
+
 .. HINT::
 
   Notice in the statement ``itemDataMessage.map(itemData => itemData.price)`` that we are using parenthesis instead
@@ -597,6 +694,25 @@ data (the webservice endpoint syntax will be a pseudo syntax):
     }
   }
 
+Succint version
+
+.. code-block:: scala
+
+  new Flow("obtain-item-price")(SomeInboundEndpoint) {
+    logic {rootMessage =>
+      //our root message contains a string with the item name
+
+      val resolveNameFuture =
+        WebService("resolveNameOp", ...).ask(rootMessage)
+
+      val itemDataFuture =
+        resloveNameFuture.map {name =>
+          WebService("getItemData", ...).ask(name)
+        }
+     //what? nested futures?
+    }
+  }
+
 As you can see in the example above, when we mapped resolveNameFuture by using its message to ask for the item data,
 we are essentially mapping a Message[String] to a Future[Message[ItemData]], so the resulting value from mapping is a
 future of a future of a message of the item data!
@@ -621,6 +737,30 @@ So our flow would look like:
       val res: Future[Message[Double]] =
         itemDataFuture.map {itemDataMessage: Message[ItemData] =>
           itemDataMessage.map(itemData: ItemData => itemData.price)
+        }
+      res //res has now the correct type
+    }
+  }
+
+Succint version
+
+.. code-block:: scala
+
+  new Flow("obtain-item-price")(SomeInboundEndpoint) {
+    logic {rootMessage =>
+      //our root message contains a string with the item name
+
+      val resolveNameFuture =
+        WebService("resolveNameOp", ...).ask(rootMessage)
+
+      val itemDataFuture =
+        resolveNameFuture.flatMap {name =>
+          WebService("getItemData", ...).ask(name)
+        }
+
+      val res =
+        itemDataFuture.map {itemDataMessage =>
+          itemDataMessage.map(itemData => itemData.price)
         }
       res //res has now the correct type
     }
@@ -687,6 +827,23 @@ So our flow would look like:
         }
       }
 
+  Succint version
+
+    .. code-block:: scala
+
+
+      new Flow("obtain-item-price")(SomeInboundEndpoint) {
+        logic {rootMessage =>
+          //our root message contains a string with the item name
+
+          val res = for {
+            resolveNameMsg <- WebService("resolveNameOp", ...).ask(rootMessage)
+            itemDataMsg <- WebService("getItemData", ...).ask(resolveNameMsg)
+          } yield itemDataMsg.map(itemData => itemData.price)
+          res
+        }
+      }
+
 Case 2: aggregating futures
 ***************************
 
@@ -711,6 +868,30 @@ endpoints, that will all respond a message of Double, when we request the price 
         val minPrice: Future[Message[Double]]
         priceAnswersFuture.map(prices: Seq[Message[Double]] =>
           prices.minBy(msg: Message[Double] => msg.payload.price)
+        )
+        //return the minimum price
+        minPrice
+      }
+    }
+
+Succint version
+
+  .. code-block:: scala
+
+
+    new Flow("obtain-item-price")(SomeInboundEndpoint) {
+      val priceProviders = Seq(Endpoint1, Endpoitn2, Endpoint3...)
+      logic {rootMessage =>
+        //for each provider, we ask them the price
+        val priceAnswersFutures =
+          for (provider <- priceProviders) yield provider.ask(rootMessage)
+
+        //to aggregate the result of all of those futures, we use a generic
+        //tool defined on the Future object per se
+        val priceAnwsersFuture = Future.sequence(priceAnswersFutures)
+
+        val minPrice = priceAnswersFuture.map(prices =>
+          prices.minBy(msg => msg.payload.price)
         )
         //return the minimum price
         minPrice
