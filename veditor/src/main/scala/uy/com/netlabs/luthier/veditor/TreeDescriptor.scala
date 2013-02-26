@@ -1,13 +1,14 @@
 package uy.com.netlabs.luthier.veditor
 
-import scala.reflect.api.{Trees, Types, Symbols}
+import scala.util._
+import scala.reflect.api.{ Trees, Types, Symbols }
 
 import javafx._, application.Application, stage.Stage
 
 object TreeDescriptor {
 
   class Initializer extends Application {
-    
+
     def start(primaryStage) {
       primaryStage.centerOnScreen()
       rootStage put primaryStage
@@ -17,28 +18,41 @@ object TreeDescriptor {
     new Thread {
       override def run {
         try Application.launch(classOf[Initializer])
-        catch {case e => e.printStackTrace}
+        catch { case e => e.printStackTrace }
       }
     }.start()
   }
-  
+
   class RootNode(root: scene.control.TreeItem[Any]) extends scene.layout.BorderPane {
     val treeView = new scene.control.TreeView[Any](root)
     setCenter(treeView)
   }
-  
+
   private[this] val rootStage = new scala.concurrent.SyncVar[Stage]()
-  
-  
+
+  def LazyTreeItem(value: Any, children: => Iterable[scene.control.TreeItem[_]]) = new scene.control.TreeItem[Any](value) {
+    lazy val childrenEval = Try { //since this happens in the jfx thread, we must never throw exception
+      val res = children.toSeq
+      super.getChildren().setAll(res.asInstanceOf[Seq[scene.control.TreeItem[Any]]]: _*);
+      res
+    }.recover {case ex => println("Exception occurred while expanding node:" + ex); Seq.empty}.get
+
+    override def getChildren(): javafx.collections.ObservableList[scene.control.TreeItem[Any]] = {
+      childrenEval
+      return super.getChildren();
+    }
+
+    override def isLeaf(): Boolean = {
+      return childrenEval.isEmpty;
+    }
+
+  }
+
   def describe(tree: Trees#TreeApi, universe: Trees) {
     import universe._
     initJfx
     def treeItem(a: Any) = new scene.control.TreeItem(a)
-    def listTreeItem(name: String, a: Seq[scene.control.TreeItem[_]]) = {
-      val res = new scene.control.TreeItem[Any](name)
-      a foreach (t => res.getChildren.add(t.asInstanceOf[scene.control.TreeItem[Any]]))
-      res
-    }
+    def listTreeItem(name: String, a: => Seq[scene.control.TreeItem[_]]) = LazyTreeItem(name, a)
     def toJfxTreeItem(tree: Trees#TreeApi): scene.control.TreeItem[Any] = {
       val res = treeItem(tree.getClass.getName)
       tree match {
@@ -50,7 +64,7 @@ object TreeDescriptor {
         case AppliedTypeTree(tpt, args) =>
           res.getChildren.add(toJfxTreeItem(tpt))
           res.getChildren.add(listTreeItem("args", args map toJfxTreeItem))
-        case Apply(sym, args) => 
+        case Apply(sym, args) =>
           res.getChildren.add(toJfxTreeItem(sym))
           res.getChildren.add(listTreeItem("args", args map toJfxTreeItem))
         case Assign(lhs, rhs) =>
@@ -175,32 +189,21 @@ object TreeDescriptor {
     val root = toJfxTreeItem(tree)
     rootStage.get
     application.Platform.runLater(new Runnable {
-        def run {
-          val s = new stage.Stage()
-          s.setScene(new scene.Scene(new RootNode(root)))
-          s.show()
-        }
-      })
+      def run {
+        val s = new stage.Stage()
+        s.setScene(new scene.Scene(new RootNode(root)))
+        s.show()
+      }
+    })
   }
 
-def describe(tpe: Types#TypeApi, universe: Types with Symbols) {
+  def describe(tpe: Types#TypeApi, universe: Types with Symbols) {
     import universe._
     initJfx
     def treeItem(a: Any) = new scene.control.TreeItem(a)
-    def listTreeItem(name: String, a: Iterable[scene.control.TreeItem[_]]) = {
-      val res = new scene.control.TreeItem[Any](name)
-      a foreach (t => res.getChildren.add(t.asInstanceOf[scene.control.TreeItem[Any]]))
-      res
-    }
-    val processedTypes = scala.collection.mutable.Set.empty[Types#TypeApi]
-    def symbolToJfxTreeItem(s: Symbols#SymbolApi): scene.control.TreeItem[Any] = {
-      val res = treeItem(s)
-      if (s != NoSymbol) res.getChildren.add(toJfxTreeItem(s.typeSignature))
-      res
-    }
+    def listTreeItem(name: String, a: => Iterable[scene.control.TreeItem[_]]) = LazyTreeItem(name, a)
+    def symbolToJfxTreeItem(s: Symbols#SymbolApi): scene.control.TreeItem[Any] = LazyTreeItem(s, Seq(toJfxTreeItem(s.typeSignature)))
     def toJfxTreeItem(tpe: Types#TypeApi): scene.control.TreeItem[Any] = {
-      if (processedTypes(tpe)) return treeItem("<repeated>")
-      processedTypes += tpe
       val res = treeItem(tpe.getClass.getName)
       tpe match {
         case AnnotatedType(annotations, underlying, selfsym) =>
@@ -215,7 +218,7 @@ def describe(tpe: Types#TypeApi, universe: Types with Symbols) {
           res.getChildren.add(symbolToJfxTreeItem(clazz))
         case ConstantType(constant) =>
           res.getChildren.add(treeItem(constant))
-        case  ExistentialType(quantified, underlying) =>
+        case ExistentialType(quantified, underlying) =>
           res.getChildren.add(listTreeItem("quantified", quantified map symbolToJfxTreeItem))
           res.getChildren.add(toJfxTreeItem(underlying))
         case MethodType(params, respte) =>
@@ -254,11 +257,11 @@ def describe(tpe: Types#TypeApi, universe: Types with Symbols) {
     val root = toJfxTreeItem(tpe)
     rootStage.get
     application.Platform.runLater(new Runnable {
-        def run {
-          val s = new stage.Stage()
-          s.setScene(new scene.Scene(new RootNode(root)))
-          s.show()
-        }
-      })
+      def run {
+        val s = new stage.Stage()
+        s.setScene(new scene.Scene(new RootNode(root)))
+        s.show()
+      }
+    })
   }
 }
