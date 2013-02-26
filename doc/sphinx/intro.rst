@@ -74,7 +74,7 @@ type of the messages that originates flow runs from the endpoint you used to cre
 
 In the body of our logic, we are declaring a value (val, which is an immutable variable) that contains the result of
 transforming the root message, and then we write a statement with it. The last expression of the logic block
-is what the flow should return (in case it is a request-response flow), so here our logic is returning `response`.
+is what the flow should return (in case it is a request-response flow), so here our logic is returning ``response``.
 
 .. NOTE::
 
@@ -112,7 +112,7 @@ type of the message, when mapping, you don't need to tell him the type of the pa
 Please note that mapping always returns a new message instance, immutability is a critical concept in a big
 concurrent system, so in Luthier we strive to keep mutability at its minimum.
 
-A common pattern when ignoring the previousContent is giving the variable the name `_` like:
+A common pattern when ignoring the previousContent is giving the variable the name ``_`` like:
 
 .. code-block:: scala
 
@@ -262,9 +262,9 @@ We already describe the structure of this method, so if you skip it, please read
 The logic block must comply with the defintion of the Flow. That is, when you declare a flow, and you give it a root
 endpoint, that endpoint actually tells the flow three things: the payload type of the incoming messages, whether or not
 it is request-response or one-way, and, in case it is request-response, the valid response types. Many source endpoints
-declare a very generic payload type, or the most generic one being `Any` (which as its name states, it can be anything).
+declare a very generic payload type, or the most generic one being ``Any`` (which as its name states, it can be anything).
 In such cases there are several tools you can use to work with the specific payload.
-The first tool is the the `as` operator of messages. Suppose you are working with JMS, and you know that through that
+The first tool is the the ``as`` operator of messages. Suppose you are working with JMS, and you know that through that
 queue that you are using, you are only sending messages of a specific type, since JMS supports several divergent types,
 the endpoint would declare an Any payload, in order to say, this message is of this type (which is known as casting)
 you do:
@@ -292,7 +292,7 @@ types, you can do a type match to handle each specific case as follow:
 
 The match statement acts like a switch, only one of the case definitions will be run. The last expression of the
 executed branch of the switch, is the return value for the logic (in case this is a request-response flow).
-Note how in the last `case` statement we do not declare the type of other, this acts as a wildcard, so we can handle
+Note how in the last ``case`` statement we do not declare the type of other, this acts as a wildcard, so we can handle
 unexpected cases.
 
 Another important aspect of the logic is the return value when you are defining request-response flows.
@@ -311,7 +311,7 @@ receive a compilation error like:
   ]
           "someMessage"
 
-In that example, we forgot to return `"someMessage"` inside a message object via mapping on the root message, hence
+In that example, we forgot to return ``"someMessage"`` inside a message object via mapping on the root message, hence
 the compiler complaints.
 There is another important piece of information in that compilation error. Note that you are allowed to return either a
 Message of an accepted type, or a Future of a Message of the expected type. If you read the section of endpoints already,
@@ -410,7 +410,7 @@ blockingWorkers and the blocking method
 Sometimes in the logic of a flow, you need to do a blocking call, be it because you are interfacing with another library
 or because Luthier didn't provide an endpoint for that, and you don't want to write one. In such cases, it might be
 easier to just block (for example, opening an reading on a socket). Since not blocking the workers actors is crucial,
-we provide a bunch of workers per flow for this exclusive purpose. `blockingWorkers` define the amount of workers, which
+we provide a bunch of workers per flow for this exclusive purpose. ``blockingWorkers`` define the amount of workers, which
 defaults to 10, and the method blocking is used to submit a task for them. A future object will be returned encapsulating
 the asynchronous result. Usage is like:
 
@@ -429,10 +429,10 @@ the asynchronous result. Usage is like:
   }
 
 In the snippet above, we declare that when we receive a request, we must perform some blocking operation that outputs
-a `blockingOpResult`, we then create a message with that `blockingOpResult`, and that last statement is what blocking
-will return, eventually. Outside of the blocking call, we assign its result in a `result` value, and we define that
+a ``blockingOpResult``, we then create a message with that ``blockingOpResult``, and that last statement is what blocking
+will return, eventually. Outside of the blocking call, we assign its result in a ``result`` value, and we define that
 our flow returns that.
-In the example, `<blockingOpResultType>` represents the type of the `someBlockingOperation` call, that we later return
+In the example, ``<blockingOpResultType>`` represents the type of the ``someBlockingOperation`` call, that we later return
 in our message.
 
 Future
@@ -443,10 +443,10 @@ way to express that this operations might fail, or take some time, and that we m
 once they become available.
 All of that is reprsented by Future. Its full type is Future[T] where T represents the result type of the operation (for
 operations that don't return anything, T is the special type Unit, which would be the java equivalente for Void, though
-not quite, because in java, when you declare a method to return Void, you still need to issue a `return null;` as last
+not quite, because in java, when you declare a method to return Void, you still need to issue a ``return null;`` as last
 statement, and this isn't the case with Scala's Unit).
 A future encpasulates some code that will eventually complete or fail, so there is no way to actually obtain whatever
-it represents. There is no `get` operation, instead, you are supposed to compose its result with new logic. In order to
+it represents. There is no ``get`` operation, instead, you are supposed to compose its result with new logic. In order to
 do this, it provides the following operations:
 
 .. code-block:: scala
@@ -522,6 +522,223 @@ do this, it provides the following operations:
       // stored in that.
 
 For a complete list on the methods, check `here <http://www.scala-lang.org/api/current/index.html#scala.concurrent.Future>`_.
+
+The methods shown are the most common ones used with Futures, though there are some that you will use so much, that they
+deserve some attention of their own.
+
+Lets start with the most common one: map. Since futures encapsulate computations that will eventually yield results,
+more often than note you will want to do something with that result once it is avilable. Think for example on the
+following flow logic: upon an item price request, you need to consult a webservice that provides all the information
+available for that item, now since you only need the price, you need to transform the response form the webservice
+into the information that you required. Let's do just that in a flow:
+
+.. code-block:: scala
+
+  new Flow("obtain-item-price")(SomeInboundEndpoint) {
+    logic {rootMessage: Message[String] =>
+      //our root message contains a string with the item id
+      val wsResponse: Future[Message[ItemData]] =
+        WebService(...).ask(rootMessage) //the webservice takes a string with the item id,
+                                         //since that is our request, we just send it over
+
+      //the flow definition now needs a response of a price, so we need to adapt the ItemData
+      val res: Future[Message[Double]] = wsResponse.map {itemDataMessage: Message[ItemData] =>
+        itemDataMessage.map(itemData => itemData.price)
+      }
+      res
+    }
+  }
+
+.. HINT::
+
+  Notice in the statement ``itemDataMessage.map(itemData => itemData.price)`` that we are using parenthesis instead
+  of curly braces, when we define statement blocks of just one line, like this map instance, we can use parenthesis.
+
+First we declare the flow with some endpoint that represents our request-response logic.
+In the logic definition, we sent the message as is to the webservice call and we get a future back, representing
+the eventual response. Now, the response (when it becomes available) will be of type ItemData, and our flow
+is supposed to return just the price (for this example, we chose Double to represent it) so we must adapt the webservice
+response by mapping over the ``wsResponse`` future. Writing this ``map`` is the same as when we mapped over messages: we
+first declare the content that will be mapped, which is the value that is encapsulated by the future, then the arrow,
+then the statements that represent the mapping -- remember that the last statement is the one returned --.
+So in our example, we are mapping the item data that is sent to us from the webservice, by just using its field price.
+Note that mapping a future returns, again, a future. This is what propagates our logic efficiently without blocking, we
+now have a future of the correct type, and it wont block at all, when the response arrives, the mapping will be applied
+and the future ``res`` will be completed.
+Now, remember that flows accepts as responses either a message of the expected type, or a future of a message of the
+expected type, here we are providing the later, hence completing the flow definition.
+
+You might be thinking, the previous flow obtained its data from just one place, so mapping works, but what happens
+when you need to retrieve data from one place, then use that value to obtain data from another palce (possibly even
+do this n-times), and then respond? or what happens when you need to retrieve data from several places at the same time
+and then aggregate their results later? Lets study those two cases:
+
+Case 1: concatenating futures
+*****************************
+
+Lets start by doing the same thing we did with map before and see what happens. Suppose that our request
+has an item name, which we must consult to a webservice to obtain the item ID, and then we are ready to ask for its
+data (the webservice endpoint syntax will be a pseudo syntax):
+
+.. code-block:: scala
+
+  new Flow("obtain-item-price")(SomeInboundEndpoint) {
+    logic {rootMessage: Message[String] =>
+      //our root message contains a string with the item name
+
+      val resolveNameFuture: Future[Message[String]] =
+        WebService("resolveNameOp", ...).ask(rootMessage)
+
+      val itemDataFuture: Future[Future[Message[ItemData]]] =
+        resloveNameFuture.map {name: Message[String] =>
+          WebService("getItemData", ...).ask(name)
+        }
+     //what? nested futures?
+    }
+  }
+
+As you can see in the example above, when we mapped resolveNameFuture by using its message to ask for the item data,
+we are essentially mapping a Message[String] to a Future[Message[ItemData]], so the resulting value from mapping is a
+future of a future of a message of the item data!
+The way to alleviate this issue is by using ``flatMap`` instead of ``map``. If you check the definition we included
+above, you will see that flatMap is like map, but it *flattens* (that's why its called ``flatMap``) one layer of Futures.
+So our flow would look like:
+
+.. code-block:: scala
+
+  new Flow("obtain-item-price")(SomeInboundEndpoint) {
+    logic {rootMessage: Message[String] =>
+      //our root message contains a string with the item name
+
+      val resolveNameFuture: Future[Message[String]] =
+        WebService("resolveNameOp", ...).ask(rootMessage)
+
+      val itemDataFuture: Future[Message[ItemData]] =
+        resolveNameFuture.flatMap {name: Message[String] =>
+          WebService("getItemData", ...).ask(name)
+        }
+
+      val res: Future[Message[Double]] =
+        itemDataFuture.map {itemDataMessage: Message[ItemData] =>
+          itemDataMessage.map(itemData: ItemData => itemData.price)
+        }
+      res //res has now the correct type
+    }
+  }
+
+.. HINT::
+
+  ``map`` and ``flatMap`` are no new concepts, in fact, they are like basic blocks of what is known as functional
+  programming, although their name varies in the literature. This concepts are quite general and they encompass
+  any generic container. For example, our type Message, is just a container of a payload T, hence it is able to map
+  and flatMap. Collection classes, the class Option, Try, Either and many others also are containers which satisfy
+  this concept.
+  In fact, it's so common for a container to be able to provide this functionality, that scala added a special syntax
+  to use them, which in certain circumstances becomes much more readable. The rule is something like this for some
+  futures of Ints:
+
+  .. code-block:: scala
+
+    val res: Future[Int] = for {
+      a <- futureA
+      b <- futureB
+      c <- futureC
+    } yield a + b + c
+
+    //translates to
+    val res2: Future[Int] =
+      futureA.flatMap {a =>
+        futureB.flatMap {b =>
+          futureC.map {c => a + b + c}
+        }
+      }
+
+  It translates each ``<-`` arrow (called generator) to a flatmaps except for the last one, which is just a map.
+  This syntax, which is called for-comprehension, also supports filtering which looks like:
+
+  .. code-block:: scala
+
+    val res: Future[Int] = for {
+      a <- futureA
+      if a > 10
+      b <- futureB
+      c <- futureC
+      if b > c
+    } yield a + b + c
+
+  The translation for this is a little more involved and non important, but if you still want to know, check
+  Scala's documentation `here <http://docs.scala-lang.org/overviews/core/futures.html#functional_composition_and_forcomprehensions>`_.
+
+  As a final example, lets see how does our example looks like using this syntax:
+
+    .. code-block:: scala
+
+      new Flow("obtain-item-price")(SomeInboundEndpoint) {
+        logic {rootMessage: Message[String] =>
+          //our root message contains a string with the item name
+
+          val res: Future[Message[Double]] = for {
+            resolveNameMsg: Message[String] <-
+                           WebService("resolveNameOp", ...).ask(rootMessage)
+            itemDataMsg: Message[ItemData] <-
+                           WebService("getItemData", ...).ask(resolveNameMsg)
+          } yield itemDataMsg.map(itemData: ItemData => itemData.price)
+          res
+        }
+      }
+
+Case 2: aggregating futures
+***************************
+
+In this case we want to create several futures in parallel, which represent requests to different providers, and
+then aggregate their results to return the cheapest price. For this example, we will assume we have a list of askable
+endpoints, that will all respond a message of Double, when we request the price of an item. The flow looks like:
+
+  .. code-block:: scala
+
+    new Flow("obtain-item-price")(SomeInboundEndpoint) {
+      val priceProviders = Seq(Endpoint1, Endpoitn2, Endpoint3...)
+      logic {rootMessage: Message[String] =>
+        //for each provider, we ask them the price
+        val priceAnswersFutures: Seq[Future[Message[Double]]] =
+          for (provider <- priceProviders) yield provider.ask(rootMessage)
+
+        //to aggregate the result of all of those futures, we use a generic
+        //tool defined on the Future object per se
+        val priceAnwsersFuture: Future[Seq[Message[Double]]] =
+                            Future.sequence(priceAnswersFutures)
+
+        val minPrice: Future[Message[Double]]
+        priceAnswersFuture.map(prices: Seq[Message[Double]] =>
+          prices.minBy(msg: Message[Double] => msg.payload.price)
+        )
+        //return the minimum price
+        minPrice
+      }
+    }
+
+We started by sending each provider the same request, and obtained a different future for each of their answers.
+
+.. NOTE::
+
+  Note how we could've used map, instead of the for-yield syntax here.
+
+Since we need to operate once all of those futures are completed, one might be tempted to block, but remember
+that we never want to do that. Instead, we used a general function defined in the Future object (as opposed to eeach
+instance) called sequence. Notice how after applying this function Seq and Future swapped places when comparing the
+variables ``priceAnswersFutures`` and ``priceAnwsersFuture``. We moved from a sequence of futures of messages, to a
+single future, that once it completes, will contain a sequence of messages.
+
+.. HINT::
+
+  Again, as with map and flatMap, sequence is another general concept of functional programming, and it is applicable
+  to most generic containers, so you will find it on collections classes and other containers of the sort.
+  It basically states that sequence over Seq[Container[A]] for any A yields Container[Seq[A]].
+
+We finally used a useful operation over the sequence, that finds for us the minimum element if we provide it with a
+function that tells it how to compare its elements, in this case, by telling it to use the price field of the payload
+which is a number.
+
 
 Blocking
 ********
