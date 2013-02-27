@@ -26,7 +26,7 @@ Core concepts
 
 We'll describe in this section the key compontents that comprise the library. Examples shown here will by partial (we
 might leave imports out, as well as other contextual items). For a full working example, please go to the section
-`Getting Started`_. Also, every example will be shown twice, one with every type explicitly shown, and the other
+:ref:`usage`. Also, every example will be shown twice, one with every type explicitly shown, and the other
 in "compact" form, that is, leaving out the types that the language already knows what they are.
 
 Let's start by having a look at how a typical flow looks like:
@@ -983,10 +983,4 @@ Of course, usage would be like:
       sendToLog(req)
       ...
     }
-  }
-
-===============
-Getting Started
-===============
-
-*<TODO>*
+  }Ge
