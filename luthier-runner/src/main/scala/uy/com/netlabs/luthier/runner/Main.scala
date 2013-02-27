@@ -36,10 +36,7 @@ object Main {
       else initialized.success(())
     }
 
-    val runner = new AppContext {
-      val name = "Runner"
-      val rootLocation = Paths.get("")
-    }
+    val runner = AppContext.build("Runner")
     val runnerFlows = new Flows {
       val appContext = runner
     }

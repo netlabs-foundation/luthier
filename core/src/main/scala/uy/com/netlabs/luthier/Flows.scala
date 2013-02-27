@@ -104,6 +104,14 @@ trait Flows extends FlowsImplicits0 {
     res
   }
 
+  /**
+   * Helper method that starts all the flows registered in this container
+   */
+  def startAllFlows() {registeredFlows foreach (_.start())}
+  /**
+   * Helper method that stops all the flows registered in this container
+   */
+  def stopAllFlows() {registeredFlows foreach (_.dispose())}
 }
 object Flows {
 

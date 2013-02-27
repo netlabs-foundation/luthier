@@ -13,11 +13,7 @@ object WsFastTest extends App {
     def iDoNothing(): Unit
   }
 
-  val app = new AppContext {
-    def name: String = "WsFastTest"
-    def rootLocation: java.nio.file.Path = null
-
-  }
+  val app = AppContext.build("WsFastTest")
 
   new Flows {
     def appContext = app

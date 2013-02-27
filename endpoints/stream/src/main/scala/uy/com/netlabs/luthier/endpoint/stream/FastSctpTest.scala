@@ -7,7 +7,7 @@ import Sctp._
 
 object FastSctpTest extends App {
   val test = new Flows {
-    val appContext = AppContext.quick("streams")
+    val appContext = AppContext.build("streams")
     new Flow("ss")(Server(1500, 1024)) {
       logic { client =>
         val clientChannel = client.payload.conn

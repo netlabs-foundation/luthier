@@ -160,10 +160,7 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
             val r = file.stripSuffix(".fflow").stripSuffix(".scala").replace('/', '-')
             if (r.charAt(0) == '-') r.drop(1) else r
           }
-          val appContext = new AppContext {
-            val name = appName
-            val rootLocation = filePath
-          }
+          val appContext = AppContext.build(appName, filePath)
           val flowss = possibleFlows map {
             case Right((flowsSymbol, argumentsSymbols)) =>
               def loadClass(c: String) = compilerLazy.getInterpreterClassLoader.loadClass(c)

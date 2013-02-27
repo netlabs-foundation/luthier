@@ -8,10 +8,7 @@ import language._
 
 object JmsTest extends App {
 
-  val myApp = new AppContext {
-    val name = "Test Jms App"
-    val rootLocation = Paths.get(".")
-  }
+  val myApp = AppContext.build("Test Jms App")
   new Flows {
 
     val jmsConnectionFactory = {

@@ -8,7 +8,7 @@ import java.nio.channels._
 
 object FastTcpTest extends App {
   val test = new Flows {
-    val appContext = AppContext.quick("streams")
+    val appContext = AppContext.build("streams")
     new Flow("ss")(Server(1500, 1024)) {
       logic { client =>
         new Flow("clientHandler-" + client.payload)(Handler(client, consumers.lines(), serializers.string, ReadWaitAction.ReadValueData(2000, "lazy client"))) {
