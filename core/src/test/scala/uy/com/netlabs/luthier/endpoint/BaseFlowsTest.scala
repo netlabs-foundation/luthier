@@ -7,10 +7,7 @@ import java.nio.file.Paths
 class BaseFlowsTest extends FunSpec with BeforeAndAfter {
   var testApp: AppContext = _
   before {
-    testApp = new AppContext {
-      val name = "Test App"
-      val rootLocation = Paths.get(".")
-    }
+    testApp = AppContext.build("Test App")
   }
   after {
     testApp.actorSystem.shutdown()

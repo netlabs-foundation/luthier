@@ -18,10 +18,7 @@ import uy.com.netlabs.luthier.endpoint.Process
 class FunctionTest extends FunSpec with BeforeAndAfter {
   var myApp: AppContext = _
   before {
-    myApp = new AppContext {
-      val name = "Test Function App"
-      val rootLocation = Paths.get(".")
-    }
+    myApp = AppContext.build("Test Function App")
   }
   after {
     myApp.actorSystem.shutdown()

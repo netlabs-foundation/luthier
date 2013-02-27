@@ -36,10 +36,8 @@ class FlowsRunner(val appContext: AppContext,
     compiler
   }
 
-  def this(appContextName: String, classLoader: ClassLoader) = this(new AppContext {
-    val name = appContextName
-    val rootLocation = Paths.get("")
-  }, FlowsRunner.defaultCompilerSettings(classLoader), classLoader)
+  def this(appContextName: String, classLoader: ClassLoader) = this(AppContext.build(appContextName, Paths.get("")),
+    FlowsRunner.defaultCompilerSettings(classLoader), classLoader)
   def this(classLoader: ClassLoader) = this("Runner", classLoader)
 
   /**
@@ -68,7 +66,7 @@ object FlowsRunner {
 
     settings.YmethodInfer.value = true
     //    settings.optimise.value = true
-//    settings.usejavacp.value = true
+    //    settings.usejavacp.value = true
     //    settings.Yinferdebug.value = true
     //    settings.Xprint.value = List("typer")
     //    settings.debug.value = true
@@ -83,9 +81,9 @@ object FlowsRunner {
   private[this] def classpath(parentClassLoader: ClassLoader) = {
     import java.net.URLClassLoader
     def cp(cl: ClassLoader): Seq[java.io.File] = cl match {
-      case null => Seq.empty
+      case null               => Seq.empty
       case cl: URLClassLoader => cl.getURLs().map(u => new java.io.File(u.toURI())) ++ cp(cl.getParent)
-      case other => cp(other.getParent())
+      case other              => cp(other.getParent())
     }
     val urlsFromClasspath = Seq(getClass.getClassLoader(), parentClassLoader, ClassLoader.getSystemClassLoader()).flatMap(cp).distinct
 

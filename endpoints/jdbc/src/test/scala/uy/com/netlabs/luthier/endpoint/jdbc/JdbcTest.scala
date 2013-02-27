@@ -20,10 +20,7 @@ class JdbcTest extends FunSpec with BeforeAndAfter {
   var myApp: AppContext = _
   var dataSource: JdbcConnectionPool = _
   before {
-    myApp = new AppContext {
-      val name = "Test Jdbc App"
-      val rootLocation = Paths.get(".")
-    }
+    myApp = AppContext.build("Test Jdbc App")
     dataSource = JdbcConnectionPool.create("jdbc:h2:mem:test", "test", "test")
     val conn = dataSource.getConnection()
     try {
