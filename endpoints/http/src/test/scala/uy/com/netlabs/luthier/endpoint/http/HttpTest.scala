@@ -19,7 +19,7 @@ class HttpTest extends BaseFlowsTest {
       new Flows {
         val appContext = testApp
         val result = Promise[Option[String]]()
-        val flow = new Flow("Poll Http")(Poll(Http(url("http://www.google.com/").setFollowRedirects(true) -> new OkFunctionHandler(as.jsoup.Document)), 1.seconds)) { //initial delay is 0
+        val flow = new Flow("Poll Http")(Poll(Http(url("http://www.google.com/").setFollowRedirects(true), new OkFunctionHandler(as.jsoup.Document)), 1.seconds)) { //initial delay is 0
           logic { m =>
             result success {
               if (m.payload.select("a[href]").size != 0) None
@@ -41,14 +41,32 @@ class HttpTest extends BaseFlowsTest {
           import flow._
           val req = url("http://www.google.com/").setFollowRedirects(true) -> new OkFunctionHandler(as.jsoup.Document)
           Await.result(Http[org.jsoup.nodes.Document]().ask(m.map(_ => req)) map { m =>
-            println("Cookies: ")
-            println(m.header.inbound.get("Cookies"))
+              println("Cookies: ")
+              println(m.header.inbound.get("Cookies"))
 
-            if (m.payload.select("a[href]").size != 0) None
-            else Some("payload with 0 links?")
-          }, 5.seconds)
+              if (m.payload.select("a[href]").size != 0) None
+              else Some("payload with 0 links?")
+            }, 5.seconds)
         }
         assert(Await.result(res, 6.seconds))
+      }
+    }
+    it("Should be able to authenticate using SSL") {
+      new Flows {
+        val appContext = testApp
+        val res = inFlow {(flow, m) =>
+          import flow._
+          implicit val flowRun = m.flowRun
+
+          val request =
+            Http[String](url("https://redmine.netlabs.com.uy/"), new OkFunctionHandler(as.String),
+                         httpClientConfig = ClientConfig(sslContext = SSLContext(
+                  SslKeys("/home/rcano/rcano.netlabs.com.uy.der"),
+                  SslCerts("/home/rcano/rcano.netlabs.com.uy.crt"),
+                  SslCerts("/home/rcano/ca.netlabs.com.uy.cer"), sslProtocol = "TLSv1.2")(flow.appContext))).pull()
+          println("Request result: " + Await.result(request, 3.seconds))
+        }
+        Await.result(res, 6.seconds)
       }
     }
   }
@@ -69,7 +87,7 @@ class HttpTest extends BaseFlowsTest {
         val reqResponse = inFlow { (flow, m) =>
           import flow._
           implicit val flowRun = m.flowRun
-          val res = Await.result(Http(url("http://localhost:3987/some/path") -> new OkFunctionHandler(as.String)).pull(), 3.seconds).payload
+          val res = Await.result(Http(url("http://localhost:3987/some/path"), new OkFunctionHandler(as.String)).pull(), 3.seconds).payload
           println("Res gotten " + res)
           res
         }

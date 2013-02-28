@@ -8,23 +8,32 @@ import scala.collection.JavaConversions._
 
 import typelist._
 
-import com.ning.http.client.{ AsyncCompletionHandler, Cookie, RequestBuilder => Request }
+import com.ning.http.client.{ AsyncHttpClient, AsyncHttpClientConfig,
+                             AsyncCompletionHandler, Cookie, RequestBuilder => Request }
 import dispatch.{ Promise => _, _ }
 import unfiltered.filter.async.Plan
 import unfiltered.request._
 import unfiltered.response._
 
+import javax.net.ssl._
 import javax.servlet._, http._
 
 object Http {
 
-  class HttpDispatchEndpoint[R] private[Http] (f: Flow, req: Option[(Request, FunctionHandler[R])], ioThreads: Int) extends PullEndpoint with Askable {
+  class HttpDispatchEndpoint[R] private[Http] (f: Flow,
+                                               req: Option[(Request, FunctionHandler[R])],
+                                               ioThreads: Int,
+                                               httpClientConfig: AsyncHttpClientConfig) extends PullEndpoint with Askable {
     val flow = f
     type Payload = R
     type Response = R
     type SupportedTypes = (Request, FunctionHandler[R]) :: TypeNil
 
-    val dispatcher = new dispatch.Http().threads(ioThreads)
+    val dispatcher = new dispatch.FixedThreadPoolExecutor {
+      val threadPoolSize = ioThreads
+      val timeout = dispatch.Duration.millis(Long.MaxValue) //no timeout
+      lazy val client = new AsyncHttpClient(httpClientConfig)
+    }
 
     def start() {}
     def dispose() {
@@ -88,6 +97,7 @@ object Http {
       val cookies = msg.header.inbound.getOrElse("Cookies", Seq.empty).asInstanceOf[Seq[Cookie]]
       cookies foreach req._1.addCookie
       //      println("Sending cookies: " + cookies)
+
       dispatcher(wrapRequest(req)).onComplete {
         case Right(res) => promise.success(toMessage(res, msg))
         case Left(err)  => promise.failure(err)
@@ -96,11 +106,13 @@ object Http {
     }
   }
 
-  private case class EF[R](req: Option[(Request, FunctionHandler[R])], ioThreads: Int) extends EndpointFactory[HttpDispatchEndpoint[R]] {
-    def apply(f: Flow) = new HttpDispatchEndpoint(f, req, ioThreads)
+  private case class EF[R](req: Option[(Request, FunctionHandler[R])], ioThreads: Int,
+                           httpClientConfig: AsyncHttpClientConfig) extends EndpointFactory[HttpDispatchEndpoint[R]] {
+    def apply(f: Flow) = new HttpDispatchEndpoint(f, req, ioThreads, httpClientConfig)
   }
-  def apply[R](req: (Request, FunctionHandler[R]), ioThreads: Int = 1): EndpointFactory[PullEndpoint { type Payload = R }] = EF(Some(req), ioThreads)
-  def apply[R](ioThreads: Int = 1): EndpointFactory[Askable { type Response = R; type SupportedTypes = HttpDispatchEndpoint[R]#SupportedTypes }] = EF(None, ioThreads)
+  //this two lines are ugly as hell :)
+  def apply[R](req: Request, handler: FunctionHandler[R], ioThreads: Int = 1, httpClientConfig: AsyncHttpClientConfig = new AsyncHttpClientConfig.Builder().build()): EndpointFactory[PullEndpoint { type Payload = R }] = EF(Some(req->handler), ioThreads, httpClientConfig)
+  def apply[R](ioThreads: Int = 1, httpClientConfig: AsyncHttpClientConfig = new AsyncHttpClientConfig.Builder().build()): EndpointFactory[Askable { type Response = R; type SupportedTypes = HttpDispatchEndpoint[R]#SupportedTypes }] = EF(None, ioThreads, httpClientConfig)
 
   //Unfiltered part
 
@@ -140,9 +152,9 @@ object Http {
         case req =>
           onRequestHandler(newReceviedMessage(req)).onComplete {
             case Success(m) => m.payload.value match {
-              case s: String => req.respond(ResponseString(s))
-              case rf: ResponseFunction[HttpServletResponse @unchecked] => req.respond(rf)
-            }
+                case s: String => req.respond(ResponseString(s))
+                case rf: ResponseFunction[HttpServletResponse @unchecked] => req.respond(rf)
+              }
             case Failure(ex) => req.respond(InternalServerError ~> ResponseString(ex.toString))
           }(flow.workerActorsExecutionContext)
       }
