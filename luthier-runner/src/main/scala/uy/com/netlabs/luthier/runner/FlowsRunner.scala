@@ -3,6 +3,7 @@ package runner
 
 import scala.tools.nsc.Settings
 import scala.tools.nsc.interpreter.{ IMain, IR }
+import scala.util._
 import scala.concurrent._
 import scala.concurrent.duration._
 import scala.collection.JavaConversions._
@@ -37,7 +38,7 @@ class FlowsRunner(val appContext: AppContext,
   }
 
   def this(appContextName: String, classLoader: ClassLoader) = this(AppContext.build(appContextName, Paths.get("")),
-    FlowsRunner.defaultCompilerSettings(classLoader), classLoader)
+                                                                    FlowsRunner.defaultCompilerSettings(classLoader), classLoader)
   def this(classLoader: ClassLoader) = this("Runner", classLoader)
 
   /**
@@ -58,6 +59,21 @@ class FlowsRunner(val appContext: AppContext,
     h.startWatching(runnerFlows)
     h
   }.to[Array]
+
+  /**
+   * Disposes this FlowsRunner shutting down its compiler instance and its actor system, this in turn
+   * causes the monitoring of flows to stop, but *not* the running flows. To stop them you must use
+   * their respective ``FlowHandler``s
+   */
+  def dispose() {
+    val s1 = Try(runnerFlows.appContext.actorSystem.shutdown())
+    val s2 = Try(runnerFlows.stopAllFlows())
+    val s3 = Try(compiler.close())
+    //re throw the first exception encountered... Possibly not the best of logics?
+    s1.get
+    s2.get
+    s3.get
+  }
 }
 object FlowsRunner {
   private[FlowsRunner] val logger = LoggerFactory.getLogger(classOf[FlowsRunner])
