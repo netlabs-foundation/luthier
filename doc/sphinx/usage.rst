@@ -114,3 +114,45 @@ on a file change event.
 When the runner successfully loads a flow, it will still keep monitoring the file and if it changes, it will attempt to
 load it, and if it compiles fine, it will load the flow, stop the previous incarnation, and then start the new one,
 reducing down times to under 50 milliseconds (on an i7 2500 processor, it takes 10 ms).
+
+Here is how you setup a runner in your code:
+
+.. code-block:: scala
+
+  import java.nio.Paths
+  import uy.com.netlabs.luthier.runner.{FlowsRunner, FlowHandler}
+
+  val runner = new FlowsRunner("GDS", Main.class.getClassLoader());
+  //bind some variable, so that it is accessible from the flows
+  runner.bindObject("platform", "java.lang.String", "MyPlatform")
+  //load three flows
+  val handlers: Array[FlowHandler] =
+    runner.load(Paths.get("/some/path/flow1.flow"),
+                Paths.get("/some/path/flow2.flow"),
+                Paths.get("/some/path/flow3.flow"))
+
+First of all is instantiating its main class, ``FlowsRunner``, then we could for example bind some objects (note
+that you must fully type it in the second parameter) so that it is usable from the flows (which will look like a global
+value). Finally we call the load method (which can be called at different times) which returns an array of FlowHandler,
+each representing one of the specified flow files.
+
+Here's the list of operations supported by FlowHanlder:
+
+.. code-block:: scala
+
+  val filePath: Path
+    //Path of flow loaded
+  def flowRef(flowName: String): Option[Flow]
+    //Searchs for a specific Flow instance with the given name
+  var lastUpdate: Long
+    //Last time that the flows file was read
+  def load(): () ⇒ Unit
+    //Attempts a load in the current thread.
+  def theFlows: Option[Seq[Flows]]
+    //List of Flows container read from the file.
+  def watcherFlow: Option[Flow]
+    //Flow registered in the FlowsRunner actorSystem to monitor the file. Might be none, if it hasn't started
+    //watching it yet.
+
+The api of the ``FlowsRunner`` is even usable from Java, so that you could create a project in that language
+and code the business logic in it, but do all the routing in nice Luthier's flows.
