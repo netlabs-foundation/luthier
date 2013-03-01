@@ -13,22 +13,12 @@ object JmsTest extends App {
 
     val jmsConnectionFactory = {
       val res = new org.apache.activemq.pool.PooledConnectionFactory("tcp://localhost:61616")
-//      res.setDispatchAsync(true)
-//      res.setUseRetroactiveConsumer(true)
-//      res.setRedeliveryPolicy({
-//        val res = new org.apache.activemq.RedeliveryPolicy
-//        res setMaximumRedeliveries 1
-//        res
-//      })
-//      res.createQueueConnection
       res.start
       res
     }
     val appContext = myApp
 
     val askMeQueue = Jms.queue("askMe", jmsConnectionFactory)
-
-    class Lala()
 
     new Flow("say hello")(askMeQueue)(ExchangePattern.RequestResponse) {
       logic { req =>
