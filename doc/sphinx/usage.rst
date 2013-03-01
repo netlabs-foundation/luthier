@@ -218,6 +218,124 @@ Transports
 ==========
 
 In this section we show you the several transports implemented and how to use their ``EndpointFactories``.
+When we list the factory methods, the parameters that have parameter equating a value, means that is their
+default, and providing it is optional.
 
 JMS Transport
 -------------
+
+JMS is a transport type that supports all the possible endpoints thanks to its versatility. Its endpoint factory is
+located at ``uy.com.netlabs.luthier.endpoint.jms.Jms``. It has two main options:
+
+.. code-block:: scala
+
+  Jms.queue(queue: String, connectionFactory: ConnectionFactory, messageSelector: String = null, ioThreads: Int = 4)
+
+Creates an endpoint that communicates with a JMS queue. The endpoint produced serves as Source, Responsible, Askable
+and Sink endoint types. Note that since it is a valid Source and Responsible type, you will have to specify which type
+of flow you want by expliciting it.
+
+**Params:**
+
+ * queue: name of the queue to use.
+ * connectionFactory: JMS connection factory used to produce connections. Typically, you'll want a pooled connection
+   factory.
+ * messageSelector: JMS message selector used to filter accepted messages.
+ * ioThreads: Amount of threads in its input-output threadpool. This threadpool is only used to perform JMS io, reading
+   and writing messages, so normally a size of 4 is a good tradeoff between performance and thread footprint.
+
+**Inbound message type:** Any
+  That is the nearest common acestor for java.io.Serializable, String and array of byte messages.
+**Supported payloads:** String, Array[Byte] and java.io.Serializable.
+  Any of this types of payload is fine send over.
+
+|
+|
+.. code-block:: scala
+
+  Jms.topic(topic: String, connectionFactory: ConnectionFactory, messageSelector: String = null, ioThreads: Int = 4)
+
+Creates an endpoint that communicates with a JMS topic. The endpoint produced serves as Source and Sink endpoint types.
+Due to the nature of topics, it makes no sense to make the endpoint responsible or askable, only sink and source. So you
+can listen to messages sent to it, and send messages to it.
+
+**Params:**
+
+ * queue: name of the topic to use.
+ * connectionFactory: JMS connection factory used to produce connections. Typically, you'll want a pooled connection
+   factory.
+ * messageSelector: JMS message selector used to filter accepted messages.
+ * ioThreads: Amount of threads in its input-output threadpool. This threadpool is only used to perform JMS io, reading
+   and writing messages, so normally a size of 4 is a good tradeoff between performance and thread footprint.
+
+**Inbound message type:** Any
+  That is the nearest common acestor for java.io.Serializable, String and array of byte messages.
+**Supported payloads:** String, Array[Byte] and java.io.Serializable.
+  Any of this types of payload is fine send over.
+|
+|
+Full example:
+
+.. code-block:: scala
+
+  import uy.com.netlabs.luthier._
+  import uy.com.netlabs.luthier.endpoint.jms
+  import scala.concurrent.duration._
+  import language._
+
+  object JmsTest extends App {
+
+    val myApp = AppContext.build("Test Jms App")
+    new Flows {
+      val appContext = myApp
+
+      // instantiate an ActiveMQ pooled connection factory to a broker in this machine
+      val jmsConnectionFactory = {
+        val res = new org.apache.activemq.pool.PooledConnectionFactory("tcp://localhost:61616")
+        res.start
+        res
+      }
+
+      val askMeQueue = Jms.queue("askMe", jmsConnectionFactory)
+
+      new Flow("say hello")(askMeQueue)(ExchangePattern.RequestResponse) {
+        logic { req =>
+          req.map(payload => "Hello " + payload)
+        }
+      }
+
+      new Flow("logQuestion")(Jms.queue("logQuestion",
+                              jmsConnectionFactory))(ExchangePattern.OneWay) {
+        logic { req =>
+          //ask the request to the askMeQueue, and if that succeedes, send the response to
+          //topic result
+          askMeQueue.ask(req.as[String]) map {r =>
+            Jms.topic("result", jmsConnectionFactory).push(r.as[String])
+          }
+        }
+      }
+      new Flow("listenResult")(Jms.topic("result", jmsConnectionFactory)) {
+        logic {req => println("Result to some request: " + req.payload)}
+      }
+
+      new Flow("ping")(endpoint.logical.Metronome("ping", 1 seconds)) {
+        logic {m =>
+          println("...pinging")
+          //send to logQuestion via push. The future returned represents the
+          //operation, so we register a side effect on completion, to log
+          //whether it was a failure or a success.
+          Jms.queue("logQuestion", jmsConnectionFactory).push(m).
+            onComplete (t => println("Ping result " + t))
+        }
+      }
+
+      registeredFlows foreach (_.start)
+    }
+  }
+
+The example sets up for interacting flows. Though they are all visible through JMS, to make the example
+self-contained, we added a ping flow, that is triggered by a Metronome with a pulse that is the text ``"ping"`` every
+one second. So every second we are sending a message to the logQuestion queue. The logQuestion in turn, assumes
+the message is a string (we could've checked, but it wasn't important) and asks it to the askMeQueue which is handled
+by the say hello flow. The later simple concatenates a string and sends it back, then the logQuestion will send
+the reply to the result topic by mapping on the ask future.
