@@ -156,3 +156,68 @@ Here's the list of operations supported by FlowHanlder:
 
 The api of the ``FlowsRunner`` is even usable from Java, so that you could create a project in that language
 and code the business logic in it, but do all the routing in nice Luthier's flows.
+
+Runner's flows files
+--------------------
+
+As we mentioned, there are two types of flows files the runners accepts:
+
+ * .flow
+
+     This files contains only flow definition, the runner takes cares of wrapping them in a Flows containers
+     so they can be as succint as possible. The pros are that you write as less as possible, the cons is that since
+     this is not a valid scala file, IDEs won't be happy with it, and wont provide their goodness.
+     They look like this:
+
+     .. code-block:: scala
+
+       import uy.com.netlabs.luthier.endpoint.SomeEndpoint
+
+       new Flow("test")(SomeEndpoint) {
+         logic {req =>
+         }
+       }
+
+     The runner will automatically add the imports:
+
+     .. code-block:: scala
+
+       import uy.com.netlabs.luthier._
+       import uy.com.netlabs.luthier.typelist._
+       import scala.language._
+
+     and wrap them in a Flows container.
+
+ * .fflow or .scala
+
+     This files (known as full flows files) are full scala files so any IDE will be happy with it provided that you set up the classpath
+     correctly.
+     The Runner will compile this file and search for the top level classes that you defined, filtering for the
+     the ones that extends Flows, define a single constructor (the primary) and that their first parameter is an AppContext.
+
+     If they define more parameters in their constructors, they will try to be matched using the objects that you
+     previously bound to the FlowsRunner. The matching is made via type and name.
+     Normally one fo this looks like:
+
+     .. code-block:: scala
+
+       import uy.com.netlabs.luthier._
+       import uy.com.netlabs.luthier.typelist._
+       import scala.language._
+       import uy.com.netlabs.luthier.endpoint.SomeEndpoint
+
+       class MyFlows(appContext: AppContext) extends Flows {
+         new Flow("test")(SomeEndpoint) {
+           logic {req =>
+           }
+         }
+       }
+
+
+Transports
+==========
+
+In this section we show you the several transports implemented and how to use their ``EndpointFactories``.
+
+JMS Transport
+-------------
