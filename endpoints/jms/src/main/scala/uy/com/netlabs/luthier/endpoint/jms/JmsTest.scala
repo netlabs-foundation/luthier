@@ -1,8 +1,6 @@
 package uy.com.netlabs.luthier
 package endpoint.jms
 
-import java.nio.file.{ Paths, Files }
-import scala.concurrent.Future
 import scala.concurrent.duration._
 import language._
 
