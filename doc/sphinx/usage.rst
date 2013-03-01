@@ -251,7 +251,6 @@ of flow you want by expliciting it.
   Any of this types of payload is fine send over.
 
 |
-|
 .. code-block:: scala
 
   Jms.topic(topic: String, connectionFactory: ConnectionFactory, messageSelector: String = null, ioThreads: Int = 4)
@@ -273,7 +272,7 @@ can listen to messages sent to it, and send messages to it.
   That is the nearest common acestor for java.io.Serializable, String and array of byte messages.
 **Supported payloads:** String, Array[Byte] and java.io.Serializable.
   Any of this types of payload is supported by JMS.
-|
+
 |
 Full example:
 
