@@ -224,8 +224,9 @@ default, and providing it is optional.
 JMS Transport
 -------------
 
-JMS is a transport type that supports all the possible endpoints thanks to its versatility. Its endpoint factory is
-located at ``uy.com.netlabs.luthier.endpoint.jms.Jms``. It has two main options:
+**Location:** ``uy.com.netlabs.luthier.endpoint.jms.Jms``
+
+JMS is a transport type that supports all the possible endpoints thanks to its versatility. It has two main options:
 
 .. code-block:: scala
 
@@ -271,7 +272,7 @@ can listen to messages sent to it, and send messages to it.
 **Inbound message type:** Any
   That is the nearest common acestor for java.io.Serializable, String and array of byte messages.
 **Supported payloads:** String, Array[Byte] and java.io.Serializable.
-  Any of this types of payload is fine send over.
+  Any of this types of payload is supported by JMS.
 |
 |
 Full example:
@@ -329,7 +330,7 @@ Full example:
         }
       }
 
-      registeredFlows foreach (_.start)
+      startAllFlows()
     }
   }
 
@@ -339,3 +340,65 @@ one second. So every second we are sending a message to the logQuestion queue. T
 the message is a string (we could've checked, but it wasn't important) and asks it to the askMeQueue which is handled
 by the say hello flow. The later simple concatenates a string and sends it back, then the logQuestion will send
 the reply to the result topic by mapping on the ask future.
+
+File Transport
+--------------
+
+**Location:** ``uy.com.netlabs.luthier.endpoint.file.File``
+
+Simple file transport support that adds basic functionality.
+
+.. code-block:: scala
+
+  File(path: String, charset: String = "UTF-8", ioThreads: Int = 1)
+
+Creates a File endpoint to specific file, this endpoint supports Sink and Pull endpoint types.
+
+**Params:**
+
+ * path: Path to the desired file. If relative, the endpoint will resolve it to the root path of the flow's AppContext
+ * charset: Charset to use when writing text to it.
+ * ioThreads: Threads in its IO threadpool.
+
+**Inbound message type:** Array[Byte]
+  Reading the file always returns its content as an array of bytes.
+**Supported payloads:** Iterable[Byte], Array[Byte], String, and java.io.Serializable.
+  Any of this types of payload is writable to a file.
+
+Full example:
+
+.. code-block:: scala
+
+  import uy.com.netlabs.luthier._
+  import uy.com.netlabs.luthier.endpoint.logical.Polling._
+  import uy.com.netlabs.luthier.endpoint.file._
+
+  import scala.util._
+  import scala.util.hashing.MurmurHash3
+  import scala.concurrent._, duration._
+  import language._
+
+  object JmsTest extends App {
+
+    val myApp = AppContext.build("Test File App")
+    new Flows {
+      val appContext = myApp
+      new Flow("monitor file")(Poll(File("path/to/file"), every = 1.seconds)) {
+        @volatile var lastHash: Int = -1
+        logic { m =>
+          val fileHash = MurmurHash3.bytesHash(m.payload)
+          if (lastHash != fileHash) {
+            File("dest/path/newFile").push(m).onFailure {
+              case ex: Exception => log.error(ex, "Failed to copy file")
+            }
+          }
+        }
+      }
+
+      startAllFlows()
+    }
+  }
+
+This example contains one flow which shows the two usage types for this endpoint. It polls a file every 1 second
+and calculates a hash to see if it changed. In case it did, it copies over to another destination, registering a side
+effect on the future to check if it failed and logs it.
