@@ -1,4 +1,4 @@
-============
+in============
 Introduction
 ============
 
@@ -24,7 +24,7 @@ we can scale up vertically and horinzontally with ease. Please visit the Akka we
 Core concepts
 =============
 
-We'll describe in this section the key compontents that comprise the library. Examples shown here will by partial (we
+We'll describe in this section the key compontents that comprise the library. Examples shown here will be partial (we
 might leave imports out, as well as other contextual items). For a full working example, please go to the section
 :ref:`usage`. Also, every example will be shown twice, one with every type explicitly shown, and the other
 in "compact" form, that is, leaving out the types that the language already knows what they are.
@@ -89,6 +89,9 @@ type of the messages that originates flow runs from the endpoint you used to cre
 In the body of our logic, we are declaring a value (val, which is an immutable variable) that contains the result of
 transforming the root message, and then we write a statement with it. The last expression of the logic block
 is what the flow should return (in case it is a request-response flow), so here our logic is returning ``response``.
+Note that in the succint version, we are abusing the fact that the last expression of the logic block is returned to
+skip the val declaration, since we don't actually need to assign it to a value to return it, we just leave it as the
+last expression in the block.
 
 .. NOTE::
 
@@ -110,11 +113,11 @@ then aggregating their results.
 One important thing about messages, is that you should never create them, instead, you should always obtain a new
 modified version via a transformation on a previous one (being the flow run originating message, the root one).
 Doing otherwise is possible, but you would be losing the metadata associated with the message, that might be important
-(for example, a reply to destination in a JMS based flow). In order to promote this, we made it a little difficult (or
-verbose) to instantiate messages from scratch, and easy to transform a previous instance to obtain what we desire.
-In case you are wondering, what If the message I want has nothing to do with the previous one? then you can safely
-ignore the previous content in the transformation.
-The method map defined on message is what we use to obtain new ones. It's structure is:
+(for example, a reply to destination in a JMS based flow). In order to promote message transformation instead of creation
+from scratch, we made it a little difficult (or verbose) to instantiate messages from scratch, and easy to transform a
+previous instance to obtain what we desire. In case you are wondering, what If the message I want has nothing to do
+with the previous one? then you can safely ignore the previous content in the transformation.
+The method map defined on message is what we use to obtain new ones. Its structure is:
 
 .. code-block:: scala
 
@@ -126,7 +129,7 @@ type of the message, when mapping, you don't need to tell him the type of the pa
 Please note that mapping always returns a new message instance, immutability is a critical concept in a big
 concurrent system, so in Luthier we strive to keep mutability at its minimum.
 
-A common pattern when ignoring the previousContent is giving the variable the name ``_`` like:
+A common pattern when ignoring the previousContent is naming the variable ``_``, like:
 
 .. code-block:: scala
 
@@ -170,8 +173,8 @@ Sink and Askable are the two types of outbound endpoints, since they send someth
 This endpoints are used inisde the logic definition, and they return a `Future <Futures>`_ object representing the
 asynchrounous computation they will perform.
 
-Sink endpoints, as their name imply, simple send something over the transport, obtaining no response. Typical sink
-endpoints may be log endpoints, or an endpoint to execute statements (non queries) to a database. They only method
+Sink endpoints, as their name imply, simply send something over the transport, obtaining no response. Typical sink
+endpoints may be log endpoints, or an endpoint to execute statements (non queries) to a database. The only method
 they provide is push. Usage is like:
 
 .. code-block:: scala
@@ -198,7 +201,7 @@ For better understanding of futures, please read its section.
 Pull Endpoints
 **************
 
-This endpoints are not inbound, since they cannot define a flow, and are not outbound, since they cant send anything.
+These endpoints are not inbound, since they cannot define a flow, and are not outbound, since they cant send anything.
 They can only attempt to retrieve something when asked. This kind of endpoint may represent task like reading the
 content of a file, or an URL, or executing some predefined select on a database, or running a system process
 and obtaining its output. You can think of them as an Askable endpoint that you ask nothing, and it provides an answer.
@@ -983,4 +986,4 @@ Of course, usage would be like:
       sendToLog(req)
       ...
     }
-  }Ge
+  }
