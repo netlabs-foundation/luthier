@@ -18,7 +18,7 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
 
   private[this] var _watcherFlow: Option[Flow] = None
   def watcherFlow = _watcherFlow
-  def startWatching(runnerFlows: Flows) {
+  private[runner] def startWatching(runnerFlows: Flows) {
     import runnerFlows._
     _watcherFlow = Some(new runnerFlows.Flow("Watch " + file.replace('/', '_'))(endpoint.logical.Metronome(100.millis)) {
         logic { m =>
@@ -45,7 +45,7 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
     _watcherFlow.get.start()
     logger.info("Started watching file " + file)
   }
-  def tryCompile(): Boolean = {
+  private[this] def tryCompile(): Boolean = {
     if (Files.exists(filePath)) {
       lastUpdate = System.currentTimeMillis()
       filePath match {
@@ -63,7 +63,7 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
       false
     }
   }
-  def flowScript(): String = {
+  private[this] def flowScript(): String = {
     val content = Files.readAllLines(filePath, java.nio.charset.Charset.forName("utf8")).toSeq
     val appName = {
       val r = file.stripSuffix(".flow").replace('/', '-')
@@ -98,7 +98,7 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
       throw new java.io.FileNotFoundException(Console.RED + s" Flow $file does not exists")
     }
   }
-  def loadFlow(filePath: Path): () => Unit = {
+  private[this] def loadFlow(filePath: Path): () => Unit = {
     println("Loading flow " + filePath)
     val script = flowScript
     require(compilerLazy.interpret(script) == IR.Success, "Failed compiling flow " + file)
@@ -114,7 +114,7 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
       _theFlows = Seq(flows)
     }
   }
-  def loadFullFlow(filePath: Path): () => Unit = {
+  private[this] def loadFullFlow(filePath: Path): () => Unit = {
     try {
       val content = Files.readAllLines(filePath, java.nio.charset.Charset.forName("utf8")).toSeq
       require(compilerLazy.interpret(content mkString "\n") == IR.Success, "Failed compiling flow " + file)
