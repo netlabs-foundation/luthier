@@ -26,7 +26,9 @@ object JmsTest extends App {
 
     new Flow("logQuestion")(Jms.queue("logQuestion", jmsConnectionFactory))(ExchangePattern.OneWay) {
       logic { req =>
-        askMeQueue.ask(req.as[String]) onSuccess {case r => Jms.topic("result", jmsConnectionFactory).push(r.as[String])}
+        askMeQueue.ask(req.as[String]) map {r =>
+          Jms.topic("result", jmsConnectionFactory).push(r.as[String])
+        }
       }
     }
     new Flow("listenResult")(Jms.topic("result", jmsConnectionFactory)) {
