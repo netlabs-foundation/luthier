@@ -73,7 +73,7 @@ by calling start on a flow, or in batch, by invoking Flows helper function start
   }
   flows.startAllFlows()
 
-Let's see a full example using one of the existing transports:
+Lets see a full example using one of the existing transports:
 
 .. code-block:: scala
 
@@ -528,3 +528,257 @@ populate it. Then we declare our class that represents the table in the DB and a
 columns positionally. Finally we declare our Flows container with two flows to showcase the two type of endpoints, where
 the first one polls the database every one second with a fixed queries and lists the avaiable coffees, and the second
 one shows how you could define a parameterized query that you specify its parameters on each call.
+
+WebService Transport
+--------------------
+
+**Location:** ``uy.com.netlabs.luthier.endpoint.cxf.codefirst.Ws`` and ``uy.com.netlabs.luthier.endpoint.cxf.dynamic.WsInvoker``
+
+The implementation of the web-service transports makes use of Apache CFX library to provide SOAP enabled web-services.
+Since SOAP webservices are shema-full endpoints, the bindings that are necessary are usually too coupled and verbose
+(take for example javax-ws), they usually demand that you write a bunch of classes that represent your webservice,
+annotate them with javax-ws annotations, and then run a tool that generates the wsdl. The opposite is not as complicated,
+but couples your code to the webservice more tightly, since you use a tool to import a wsdl, and it generates a bunch
+of classes which you ultimately use.
+In the implementation of this endpoint, we tried as much as possible to make your code independant of the specifics
+of said bindings (i.e.: you won't be running any of those tools, and your webservices should be dynamic).
+
+.. code-block:: scala
+
+  Ws[I, PL, R](sei: Sei[I], maxResponseTimeout: FiniteDuration,
+               ioWorkers: Int)(webMethod: (I) ⇒ MethodRef[I, PL, R])
+
+This factory creates a Responsible endpoint that serves a web-service as specified by the Interface ``I``.
+The types ``PL`` and ``R``, represent the payload type of incoming request, and the response type, of the expected response.
+Note that this parameters only appear on that interface MethodRef, which we are supposed to provide with a function
+in the second parameter list. This function represents the web-service method that we are defining in the flow declared
+with this endpoint, and that syntax basically enables a DSL that allows you to select a method from the interface ``I``
+from a proxy instance of it.
+An example will make this more clear, lets first declare a webservice defintion:
+
+.. code-block:: scala
+
+  trait MyWebservice {
+    @javax.jws.WebMethod
+    def greet(user: String): String
+    @javax.jws.WebMethod
+    def sum(a: Double, b: Double): Double
+  }
+
+Unfortunately, we still need to declare an interface with an annotations on the methods like in java, though we hope
+that you find the succint syntax of Scala for this easy enough to make it bearable, like we do.
+The transport allows us to decouple the webservice implementation by letting us define a flow for each web method, but
+first we need a service endpoint interface that represents our webservice. Lets do that and also write a flow for sum:
+
+.. code-block:: scala
+
+  val endpointIface = Sei[MyWebservice]("http://localhost:8080", "/myws")
+  new Flow("sum")(Ws(endpointIface)(_.sum _)) {
+    logic {req =>
+      val reqParams: Tuple2[Double, Double] = req.payload
+      //return the addition
+      req.map(_ => reqParams._1 + reqParams._2)
+    }
+  }
+
+A ``Sei`` instance is usually declared as a single field, instead of declaring it directly in the ``Ws`` factory call,
+since it contain the setup for the webservice server that will serve our methods, this way you can have many flows
+using the same sei, that together implement the methods of a webservice. If you don't do it this way, you would need a
+different address for each web method, but due to the nature of webservices, all of the methods would be served under
+each address, but the non-implemented ones will always return an exception.
+Now the explanation of the MethodRef DSL part that we were talking about, note how nicely we selected the method that we
+wanted to implement. This syntax means, the underscore would represent a MyWebservice instance, for which we are
+selecting the method sum *but*, instead of calling it, we write a blank and an underscore. This tells scala that we do
+not want to call the method, but instead, we like a function from it with the same signature (this is known as
+`currying <http://en.wikipedia.org/wiki/Currying>`_), in this case, it will be a function that takes two doubles and
+return one double.
+This function will in turn be transformed in our MethodRef capturing the types of the signature, so that our endpoint
+is fully typed with respect to the method that we are implementing. The mapping happens like this, all the parameters
+that the method takes are boundled up in a tuple instance (we showed that in the example by declaring a field reqParams
+of type Tuple2), so if you take 10 parameters, you get a Tuple10. In scala, tuples range from 2 to 22 so thats the
+maximum amount of parameters that you can take (and if you are taking more, you are probably doing something wrong), and
+each value in the tuple is accessed with a field named ``_i``, where i ranges from 1 to the size of the tuple. If your
+method only takes one parameter, then thats the request type. It is not tupled.
+
+.. NOTE::
+
+  A nice syntax in scala for untupling is:
+
+  .. code-block:: scala
+
+    val (a, b) = myTuple2
+    val (a, b, c) = myTuple3
+    ...
+    val (e1, e2, e3, ..., e22) = myTuple22
+
+Finally, as expected, the return type of the method, is also what our responsible expects.
+
+**Params:**
+
+ * sei: The service endpoint interface that defines our web-service.
+ * maxResponseTimeout: Timeout for responses to ocurre. Remeber that http is synchronous, but our flows are not, so we
+   must have a timeout after wich, an exception is returned to the client.
+ * ioThreads: Threads in its IO threadpool used to perform the queries and extract the data with the row mapper.
+ * webMethod: WebMethod that we want to implement.
+
+**Inbound message type:** TupleN[N1, N2...]
+  Request will always be instances of tupleN or the type of the single parameter, as described in the endpoint description.
+**Supported payloads:** WebMethod return type.
+  The only accepted type is the type declared in the web method.
+
+|
+.. code-block:: scala
+
+  WsInvoker[Result](client: WsClient, operation: String,
+                    shutDownClientOnEndpointDispose: Boolean = false)
+
+Creates a webservice invoker endpoint that is an Askable endpoint. The key to the endpoint is the WsClient instance
+that is a dynamic webservice invoker of CXF.
+So, in order to define a WsInvoker, lets first define a WsClient for the webservice we defined earlier and note, that
+we do not need any kind of shared api, that for instance could've been the MyWebservice interface:
+
+.. code-block:: scala
+
+  val client = WsClient("http://localhost:8080/myws?wsdl")
+
+That line will actually connect to the server and download the wsdl, generatic the specific classes in a runtime,
+client-specific, classloader.
+
+Now, inside a flow definition, we could invoke the sum web method with:
+
+.. code-block:: scala
+
+  val resp: Future[Message[Double]] =
+    WsInvoker[Double](client, "sum").ask(m.map(_ => Seq(4.0, 6.0)))
+
+We instance the endpoint with the type of the result, which we known to be Double, the client we previously instantiated,
+and the name of the method we wish to invoke. With our endpoint set, we call the webservice method, by asking a message
+with a payload of type Seq, and the parameters to the method, in this case, sum takes two doubles and so we passed.
+
+Now suppose that the webservice we are trying to consult, takes as parameter some special class they defined, say for
+example a User. Tools like jaxws would typically create a class User for you when you import the wsdl, and you would
+have to use that code in a statically coupled way.
+Since the purpose of our endpoint is that it is dynamic, so that we skip all together the import step, and so its runtime
+dependant, we need a way to instantiate the that type User without actually knowing it fully. For this purpse, WsClient
+has a method ``instance(className: String)`` that instantiates a class that it dynamically produced when instantiated,
+and that it has in its internal classloader. Lets create an instance of the user class.
+
+.. code-block:: scala
+
+  val user = client.instance("some.package.User")
+
+In order to make it easy to set the parameters that we do know the class have, we make use of a special capability of
+Scala that lets us do runtime dispatch of methods, so that user instance that the WsClient returned, is actually dynamic,
+and when you call methods like:
+
+.. code-block:: scala
+
+  user.setName("Daniel")
+  user.setLastName("Rabinovich")
+
+It will actually search of a method setName and setLastName in the dynamic class and call them.
+Finally, to pass this user to a method request, you would ask like this:
+
+.. code-block:: scala
+
+  myInvoker.ask(m.map(_ => user.instance))
+
+The value instance of user, is the actual instance of the dynamic class.
+
+Note how our web-service client is not code coupled to the User class, they may add other attributes, and our code
+would still work, because the class is runtime created. We need not recompile our code with a more recent version of the
+wsdl to make use of newer attributes.
+
+**Params:**
+
+ * client: Web-service dynamic client that handles the CXF code related to processing the webservice.
+ * operation: Name of the web method we want to invoke.
+ * shutDownClientOnEndpointDispose: Whether or not to close the WsClient after the ask invocation. Under some
+   circumstances, you might want to create a brand new WsClient for each call and dispose it afterwards. Other times
+   you want to reuse the WsClient that you already created, since this saves up the time of downloading the wsdl, parsing
+   it, and creating the dynamic classes. Logically the second option is the default.
+
+.. WARN::
+
+  The WsInvoker endpoint makes use of the Flows blocking thread pool by using the function ``blocking``. Please have
+  this in mind with regard to thread pool size allocations, because you might be using ``blocking`` yourself, or might
+  want to limit the amount of concurrent requests to the server.
+
+**In message type:** Specified response type declared on the WsInvoker instantiation.
+
+**Supported payloads:** Seq[Any] or Product.
+  The endpoint will accept in its ask operation either. For more that one parameter, tuples might be handy, but for
+  single parameters, since there is no syntax for Tuple1, you might want to use Seq, or you might want to always use
+  Seq for consistency.
+
+Full example:
+
+.. code-block:: scala
+
+  import uy.com.netlabs.luthier._
+  import uy.com.netlabs.luthier.endpoint.cxf.codefirst._
+  import uy.com.netlabs.luthier.endpoint.cxf.dynamic._
+  import uy.com.netlabs.luthier.endpoint.logical.Metronome
+
+  import scala.concurrent.duration._
+
+  import language._
+
+
+  class User {
+    private var name: String = null
+    def setName(name: String) {this.name = name}
+    def getName() = name
+    private var lastName: String = null
+    def setLastName(lastName: String) {this.lastName = lastName}
+    def getLastName() = lastName
+  }
+
+  object WsExample extends App {
+
+    trait MyWebservice {
+      @javax.jws.WebMethod
+      def greet(user: User): String
+      @javax.jws.WebMethod
+      def sum(a: Double, b: Double): Double
+    }
+
+    new Flows {
+      val appContext = AppContext.build("Ws Test")
+
+      val sei = Sei[MyWebservice]("http://localhost:8080", "/myws")
+      new Flow("sum")(Ws(sei)(_.sum _)) {
+        logic {req =>
+          req map (params => params._1 + params._2)
+        }
+      }
+      new Flow("greet")(Ws(sei)(_.greet _)) {
+        logic {req =>
+          req.map(user => "Hello Mr. " + user.getLastName)
+        }
+      }
+
+      val client = WsClient("http://localhost:8080/myws?wsdl")
+      new Flow("consult webservices")(Metronome(1.second)) {
+        logic {req =>
+          val user = client.instance("User") //User is not in any package.
+          user.setName("Carlos")
+          user.setLastName("López Puccio")
+          val greetResp =
+            WsInvoker[String](client, "greet").ask(req.map(_ => Seq(user.instance)))
+          greetResp map {resp => println("Greeted with: " + resp.payload)}
+          val sumResp =
+            WsInvoker[Double](client, "sum").ask(req.map(_ => Seq(10, 50)))
+          sumResp map {resp =>
+            assert(resp.payload == 60, "Sum must yield 60")
+          }
+        }
+      }
+    }
+  }
+
+The example puts together everything that we already described in the description sections of the endpoints. First it
+declares a typical User class, and the MyWebservice interface. Inside the Flows container, the first two flows serve
+the two methods of the webservice reutilizing the ``sei`` instance. The third flows creates a WsClient against the
+webservice we created previously, and queries it every one second for a greet and a sum. Not the use of the dynamic
+instance for User, and how we specify the expected return type between brackets when we declare the WsInvoker endpoint.
