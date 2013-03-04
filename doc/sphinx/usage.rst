@@ -359,7 +359,7 @@ Creates a File endpoint to specific file, this endpoint supports Sink and Pull e
  * charset: Charset to use when writing text to it.
  * ioThreads: Threads in its IO threadpool.
 
-**Inbound message type:** Array[Byte]
+**In message type:** Array[Byte]
   Reading the file always returns its content as an array of bytes.
 **Supported payloads:** Iterable[Byte], Array[Byte], String, and java.io.Serializable.
   Any of this types of payload is writable to a file.
@@ -401,3 +401,130 @@ Full example:
 This example contains one flow which shows the two usage types for this endpoint. It polls a file every 1 second
 and calculates a hash to see if it changed. In case it did, it copies over to another destination, registering a side
 effect on the future to check if it failed and logs it.
+
+JDBC Transport
+--------------
+
+**Location:** ``uy.com.netlabs.luthier.endpoint.jdbc.Jdbc``
+
+This transports supports prepared statements via an Askable and a Pull endpoint. While in the pull endpoint you already
+specify the parameters, in the askable one you set the parameters with the message that you ask.
+In order to facilitate extraction of data, the factories to the endpoints take a row mapper function that takes a row
+and produces a object. The Row interface is defined as:
+
+.. code-block:: scala
+
+  trait Row {
+    def get[Type](col: String): Type
+    def get[Type](index: Int): Type
+  }
+
+It provides to ways of getting a fields value, via column name, or positional index, just like JDBC. What's good about
+this interfaces is that we can validate that the type you passed is a valid JDBC sql type, so that for instance, if you
+request a java.sql.Date it will work, but if you request a java.util.Properties, it won't compile, saying that
+java.util.Properties is not a mapped sql type.
+
+Here are the factories:
+
+.. code-block:: scala
+
+  Jdbc.const[R](query: String, rowMapper: (Row) ⇒ R,
+                dataSource: DataSource, ioThreads: Int)
+
+Creates a JDBC constant pull endpoint, that is, the params are fixed.
+
+**Params:**
+
+ * query: SQL query to be performed.
+ * rowMapper: Row mapper function that takes a row instance and returns an object of type R (for result).
+ * dataSource: JDBC connection provider (pooled connection data source are recommended).
+ * ioThreads: Threads in its IO threadpool used to perform the queries and extract the data with the row mapper.
+
+**In message type:** IndexedSeq[R]
+  Reading the endpoint will return instances of R (through an indexed sequence), where R is a type that you parameterize
+  with the mapper function.
+
+|
+.. code-block:: scala
+
+  Jdbc.parameterized[R](query: String, rowMapper: (Row) ⇒ R,
+                        dataSource: DataSource, ioThreads: Int)
+
+Creates a JDBC endpoint which takes sql parameters that are passed on each request (ask invocation). The query that
+you pass must have sql parameters specified with ``?`` which you later pass on each ask via a tuple or sequence or
+product instance (of which case class are valid candidates, read about them `here <http://www.scala-lang.org/node/107>`_).
+
+**Params:**
+
+ * query: SQL query to be performed, there should be sql paramaterized variables declared with ``?``.
+ * rowMapper: Row mapper function that takes a row instance and returns an object of type R (for result).
+ * dataSource: JDBC connection provider (pooled connection data source are recommended).
+ * ioThreads: Threads in its IO threadpool used to perform the queries and extract the data with the row mapper.
+
+**In message type:** IndexedSeq[R]
+  Reading the endpoint will return instances of R (through an indexed sequence), where R is a type that you parameterize
+  with the mapper function.
+**Supported payloads:** IndexedSeq[_ <: Any], Product.
+  Asking always take an instance of a product, or a sequence of values.
+
+Full example:
+
+.. code-block:: scala
+
+  import uy.com.netlabs.luthier._
+  import endpoint.jdbc._
+
+  import scala.concurrent._, duration._
+  import scala.util._
+  import language._
+
+  import endpoint.logical.Polling._
+  import endpoint.logical.Metronome
+
+  object JdbcFastTest extends App {
+    //create a H2 in memory DB
+    val dataSource: javax.sql.DataSource =
+      org.h2.jdbcx.JdbcConnectionPool.create("jdbc:h2:mem:test", "test", "test")
+    val conn = dataSource.getConnection()
+    try {
+      val st = conn.createStatement()
+      st.execute("CREATE TABLE Coffees (cofName text, supId text, price double)")
+      st.execute("INSERT INTO Coffees VALUES('Colombian', '101', 7.99)")
+      st.execute("INSERT INTO Coffees VALUES('Colombian_Decaf', '101', 8.99)")
+      st.execute("INSERT INTO Coffees VALUES('French_Roast_Decaf', '49', 9.99)")
+    } finally { conn.close() }
+
+    //Declare a class that represents our coffees
+    case class Coffee(name: String, supId: String, price: Double)
+    //define a mapper function from rows to coffees
+    val coffeeMapper = (r: Row) => new Coffee(r.get[String](1),
+                                              r.get[String](2),
+                                              r.get[Double](3))
+
+    new Flows {
+      val appContext = AppContext.build("Jdbc Test")
+
+      new Flow("Poll jdbc")(Poll(Jdbc.const("", coffeeMapper, dataSource), every = 1.second)) {
+        logic {coffees =>
+          for (coffee <- coffees.payload) println(coffee)
+        }
+      }
+
+      val query = Jdbc.parameterized(
+                       "SELECT * from Coffees WHERE price > ? AND price < ?",
+                       coffeeMapper, dataSource)
+      new Flow("Check coffee's prices")(Metronome(1.second)) {
+        logic {pulse =>
+          query.ask(pulse.map(_ => (5, 8))) map {coffees =>
+            println("Best priced coffees: " + coffees.payload.mkString(", "))
+          }
+        }
+      }
+    }
+  }
+
+This example is quite self-explanatory (and admittedly silly). First we create an in-memory H2 DB for the example and
+populate it. Then we declare our class that represents the table in the DB and a row mapper for it, that maps the
+columns positionally. Finally we declare our Flows container with two flows to showcase the two type of endpoints, where
+the first one polls the database every one second with a fixed queries and lists the avaiable coffees, and the second
+one shows how you could define a parameterized query that you specify its parameters on each call.
