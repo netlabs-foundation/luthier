@@ -782,3 +782,75 @@ declares a typical User class, and the MyWebservice interface. Inside the Flows 
 the two methods of the webservice reutilizing the ``sei`` instance. The third flows creates a WsClient against the
 webservice we created previously, and queries it every one second for a greet and a sum. Not the use of the dynamic
 instance for User, and how we specify the expected return type between brackets when we declare the WsInvoker endpoint.
+
+HTTP Transport
+--------------
+
+**Location:** ``uy.com.netlabs.luthier.endpoint.http.Http``
+
+The HTTP transport is implemented using Jetty to server http request, and AsyncHttpClient for doing requests. It uses
+two complementary libraries to do both tasks called databinder.unfiltered (server) and databinder.dispatch (client).
+
+.. code-block:: scala
+
+  Http.server(port: Int)
+
+Creates a Responsible http server endpoint that listens on the given port. Since http requests are always synchronous and
+expect a response, there is no Source implementation.
+The api of dispatch.unfiltered enhances the api of standard javax.servlet.http.HttpServletRequest by providing a DSL
+for extracting information. A typical request
+is handled like:
+
+.. code-block:: scala
+
+  new Flow("http-server")(Http.server(3987)) {
+    import unfiltered.request._ //bring into scope the unfiltered DSL
+    logic { m =>
+      m.payload match {
+        //respond a string with the requested path
+        case GET(Path(p)) => m map (_ => p)
+      }
+    }
+  }
+
+The payload of the request is javax.servlet.http.HttpServletRequest, which is the expected type that unfiltered handles,
+while the expected response is either a String, or an uniltered ResponseFunction. Read about unfitlered's DSL
+`here <http://unfiltered.databinder.net/Request+Matchers.html>`_
+
+**Params:**
+
+ * port: The port where the Jetty server listens for requests.
+
+**Inbound message type:** javax.servlet.http.HttpServletRequest.
+  A typical servlet request, which allows you to use fully its api, or use the unfiltered helpers.
+**Supported payloads:** String or unfiltered.response.ResponseFunction[javax.servlet.http.HttpServletResponse].
+  You can return a plain string, or use one of the many response functions that unfiltered has, for example to return
+  a json message.
+
+|
+.. code-block:: scala
+
+  Http[R](req: RequestBuilder, handler: FunctionHandler[R],
+          ioThreads: Int, httpClientConfig: AsyncHttpClientConfig = defaultConfig)
+
+Creates a Pull endpoint with the specified request and response handler. Using dispatch, you specify a request and how
+to handle response independently. Requests will typically include post params, or credentials, while response handlers
+will tranform the response to some sensible data, for example transforming an html page with jsoup to a org.w3c.Document.
+For documentation on dispatch see `here <http://dispatch.databinder.net/Dispatch.html>`_
+
+**Params:**
+
+ * req: Request object. Contains url, credentials, http method, and request content.
+ * handler: Function that transforms the server response into something useful. Goes from something as simple as a
+   StringResponseHandler, to BytesResponseHandler, JsonResponseHandlers and DocumentResponseHandlers.
+ * ioThreads: Amount of threads passed to the configuration of the HttpClient.
+ * httpCientConfig: A thorough configration of the AsyncHttpClient can be passed with this parameter. You can either use
+   its builder interface as defined `here <http://www.jarvana.com/jarvana/view/com/ning/async-http-client/1.7.0/async-http-client-1.7.0-javadoc.jar!/index.html?com/ning/http/client/AsyncHttpClientConfig.html>`_.
+   You can our the helper object uy.com.netlabs.luthier.endpoint.http.ClientConfig, which takes every parameter as optional,
+   allowing you to use it like ``ClientConfig(allowPoolingConnection = true, requestTimeoutInMs = 15000,
+   realm = someRealm, sslContext = someSslContext)`` to create a AsyncHttpClientConfig instance.
+
+**In message type:** R.
+  R where R is the return type specified in the FunctionHandler that you pass in the handler param.
+
+<TODO> the askable endpoint, and the full example.
