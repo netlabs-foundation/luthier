@@ -123,50 +123,76 @@ class JdbcAskable[R](val flow: Flow,
 }
 
 trait Row {
-  def get[Type: ClassTag](col: String): Type
-  def get[Type: ClassTag](index: Int): Type
+  def get[Type: Row.SqlMappedType](col: String): Type
+  def get[Type: Row.SqlMappedType](index: Int): Type
 }
 private[jdbc] object Row {
   import java.lang.{ Byte => JByte, Short => JShort, Integer => JInt, Long => JLong, Float => JFloat, Double => JDouble, Character => JChar, Boolean => JBoolean }
-  class ClassExtractor(valid: Class[_]*) {
-    def unapply(c: Class[_]) = valid.find(_ == c)
+  @annotation.implicitNotFound("${T} is not a JDBC mapped type.")
+  trait SqlMappedType[T] {
+    def extract(col: Int, resultSet: ResultSet): T
+    def extract(col: String, resultSet: ResultSet): T
   }
+  implicit object ByteSqlMappedType extends SqlMappedType[Byte] {
+    def extract(col: Int, resultSet: ResultSet) = resultSet.getByte(col)
+    def extract(col: String, resultSet: ResultSet) = resultSet.getByte(col)
+  }
+  implicit object ShortSqlMappedType extends SqlMappedType[Short] {
+    def extract(col: Int, resultSet: ResultSet) = resultSet.getShort(col)
+    def extract(col: String, resultSet: ResultSet) = resultSet.getShort(col)
+  }
+  implicit object IntSqlMappedType extends SqlMappedType[Int] {
+    def extract(col: Int, resultSet: ResultSet) = resultSet.getInt(col)
+    def extract(col: String, resultSet: ResultSet) = resultSet.getInt(col)
+  }
+  implicit object LongSqlMappedType extends SqlMappedType[Long] {
+    def extract(col: Int, resultSet: ResultSet) = resultSet.getLong(col)
+    def extract(col: String, resultSet: ResultSet) = resultSet.getLong(col)
+  }
+  implicit object FloatSqlMappedType extends SqlMappedType[Float] {
+    def extract(col: Int, resultSet: ResultSet) = resultSet.getFloat(col)
+    def extract(col: String, resultSet: ResultSet) = resultSet.getFloat(col)
+  }
+  implicit object DoubleSqlMappedType extends SqlMappedType[Double] {
+    def extract(col: Int, resultSet: ResultSet) = resultSet.getDouble(col)
+    def extract(col: String, resultSet: ResultSet) = resultSet.getDouble(col)
+  }
+  implicit object BooleanSqlMappedType extends SqlMappedType[Boolean] {
+    def extract(col: Int, resultSet: ResultSet) = resultSet.getBoolean(col)
+    def extract(col: String, resultSet: ResultSet) = resultSet.getBoolean(col)
+  }
+  implicit object StringSqlMappedType extends SqlMappedType[String] {
+    def extract(col: Int, resultSet: ResultSet) = resultSet.getString(col)
+    def extract(col: String, resultSet: ResultSet) = resultSet.getString(col)
+  }
+  implicit object BigDecimalSqlMappedType extends SqlMappedType[java.math.BigDecimal] {
+    def extract(col: Int, resultSet: ResultSet) = resultSet.getBigDecimal(col)
+    def extract(col: String, resultSet: ResultSet) = resultSet.getBigDecimal(col)
+  }
+  implicit object ByteArraySqlMappedType extends SqlMappedType[Array[Byte]] {
+    def extract(col: Int, resultSet: ResultSet) = resultSet.getBytes(col)
+    def extract(col: String, resultSet: ResultSet) = resultSet.getBytes(col)
+  }
+  implicit object BlobSqlMappedType extends SqlMappedType[java.sql.Blob] {
+    def extract(col: Int, resultSet: ResultSet) = resultSet.getBlob(col)
+    def extract(col: String, resultSet: ResultSet) = resultSet.getBlob(col)
+  }
+  implicit object ClobSqlMappedType extends SqlMappedType[java.sql.Clob] {
+    def extract(col: Int, resultSet: ResultSet) = resultSet.getClob(col)
+    def extract(col: String, resultSet: ResultSet) = resultSet.getClob(col)
+  }
+  implicit object DateSqlMappedType extends SqlMappedType[java.util.Date] {
+    def extract(col: Int, resultSet: ResultSet) = resultSet.getDate(col)
+    def extract(col: String, resultSet: ResultSet) = resultSet.getDate(col)
+  }
+  implicit object SqlDateSqlMappedType extends SqlMappedType[java.sql.Date] {
+    def extract(col: Int, resultSet: ResultSet) = resultSet.getDate(col)
+    def extract(col: String, resultSet: ResultSet) = resultSet.getDate(col)
+  }
+
   def apply(resultSet: ResultSet) = new Row {
-    def get[Type: ClassTag](col: String): Type = {
-      classTag[Type].runtimeClass match {
-        case c if c == classOf[JByte] || c == JByte.TYPE => resultSet.getByte(col).asInstanceOf[Type]
-        case c if c == classOf[JShort] || c == JShort.TYPE => resultSet.getShort(col).asInstanceOf[Type]
-        case c if c == classOf[JInt] || c == JInt.TYPE => resultSet.getInt(col).asInstanceOf[Type]
-        case c if c == classOf[JLong] || c == JLong.TYPE => resultSet.getLong(col).asInstanceOf[Type]
-        case c if c == classOf[JFloat] || c == JFloat.TYPE => resultSet.getFloat(col).asInstanceOf[Type]
-        case c if c == classOf[JDouble] || c == JDouble.TYPE => resultSet.getDouble(col).asInstanceOf[Type]
-        case c if c == classOf[JBoolean] || c == JBoolean.TYPE => resultSet.getBoolean(col).asInstanceOf[Type]
-        case c if c == classOf[String] => resultSet.getString(col).asInstanceOf[Type]
-        case c if c == classOf[java.math.BigDecimal] => resultSet.getBigDecimal(col).asInstanceOf[Type]
-        case c if c == classOf[Array[Byte]] => resultSet.getBytes(col).asInstanceOf[Type]
-        case c if c == classOf[java.sql.Blob] => resultSet.getBlob(col).asInstanceOf[Type]
-        case c if c == classOf[java.sql.Clob] => resultSet.getClob(col).asInstanceOf[Type]
-        case c if c == classOf[java.util.Date] => resultSet.getDate(col).asInstanceOf[Type]
-        case other => throw new IllegalArgumentException(s"No direct sql mapping for $other")
-      }
-    }
-    def get[Type: ClassTag](col: Int): Type = {
-      classTag[Type].runtimeClass match {
-        case c if c == classOf[JByte] || c == JByte.TYPE => resultSet.getByte(col).asInstanceOf[Type]
-        case c if c == classOf[JShort] || c == JShort.TYPE => resultSet.getShort(col).asInstanceOf[Type]
-        case c if c == classOf[JInt] || c == JInt.TYPE => resultSet.getInt(col).asInstanceOf[Type]
-        case c if c == classOf[JLong] || c == JLong.TYPE => resultSet.getLong(col).asInstanceOf[Type]
-        case c if c == classOf[JFloat] || c == JFloat.TYPE => resultSet.getFloat(col).asInstanceOf[Type]
-        case c if c == classOf[JDouble] || c == JDouble.TYPE => resultSet.getDouble(col).asInstanceOf[Type]
-        case c if c == classOf[JBoolean] || c == JBoolean.TYPE => resultSet.getBoolean(col).asInstanceOf[Type]
-        case c if c == classOf[String] => resultSet.getString(col).asInstanceOf[Type]
-        case c if c == classOf[java.math.BigDecimal] => resultSet.getBigDecimal(col).asInstanceOf[Type]
-        case c if c == classOf[Array[Byte]] => resultSet.getBytes(col).asInstanceOf[Type]
-        case c if c == classOf[java.sql.Blob] => resultSet.getBlob(col).asInstanceOf[Type]
-        case c if c == classOf[java.sql.Clob] => resultSet.getClob(col).asInstanceOf[Type]
-        case c if c == classOf[java.util.Date] => resultSet.getDate(col).asInstanceOf[Type]
-        case other => throw new IllegalArgumentException(s"No direct sql mapping for $other")
-      }
-    }
+
+    def get[Type: Row.SqlMappedType](col: String): Type = implicitly[Row.SqlMappedType[Type]].extract(col, resultSet)
+    def get[Type: Row.SqlMappedType](col: Int): Type = implicitly[Row.SqlMappedType[Type]].extract(col, resultSet)
   }
 }
