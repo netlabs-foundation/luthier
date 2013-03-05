@@ -853,4 +853,109 @@ For documentation on dispatch see `here <http://dispatch.databinder.net/Dispatch
 **In message type:** R.
   R where R is the return type specified in the FunctionHandler that you pass in the handler param.
 
-<TODO> the askable endpoint, and the full example.
+|
+.. code-block:: scala
+
+  Http[R](ioThreads: Int = 1, httpClientConfig: AsyncHttpClientConfig = deaultConfig
+
+Creates an Askable endpoint. This endpoint works similarly as the pull endpont, except that you pass the request and
+the response handler in the ask message.
+
+**Params:**
+
+ * ioThreads: Amount of threads passed to the configuration of the HttpClient.
+ * httpCientConfig: A thorough configration of the AsyncHttpClient can be passed with this parameter. You can either use
+   its builder interface as defined `here <http://www.jarvana.com/jarvana/view/com/ning/async-http-client/1.7.0/async-http-client-1.7.0-javadoc.jar!/index.html?com/ning/http/client/AsyncHttpClientConfig.html>`_.
+   You can our the helper object uy.com.netlabs.luthier.endpoint.http.ClientConfig, which takes every parameter as optional,
+   allowing you to use it like ``ClientConfig(allowPoolingConnection = true, requestTimeoutInMs = 15000,
+   realm = someRealm, sslContext = someSslContext)`` to create a AsyncHttpClientConfig instance.
+
+**In message type:** R.
+  R where R is the return type specified in the FunctionHandler that you pass in the handler param.
+**Supported payloads:** (Request, FunctionHandler[R]) .
+  You must ask messages with a paylod of tuple2 containing the request, and the function handler
+
+Full example:
+
+.. code-block:: scala
+
+  import uy.com.netlabs.luthier._
+  import endpoint.http._
+  import endpoint.file._
+  import endpoint.logical.Polling._
+
+  import language._
+  import scala.concurrent.duration._
+
+  import dispatch.{Http => _, _} //import everything, except Http, so that
+  //it doesn't collide with our Http object
+
+  object HttpExample extends App {
+
+    new Flows {
+      val appContext = AppContext.build("Http Example")
+
+      new Flow("http-server")(Http.server(8888)) {
+        import unfiltered.request._
+        import unfiltered.response._
+        logic {req =>
+          req.payload match {
+            //capture the path of the past, as well as the post params
+            case POST(Path(p)) & Params(params) =>
+              //return a simple string representing the parameters map
+              req.map(_ => params.mkString("\n"))
+
+            case GET(Path(p)) =>
+              //serve files relatives to root (not recomended but still)
+              //remember that File(p).pull() returns a Future[Message[Array[Byte]]], so we map
+              //the future message, to a message of ResponseBytes containing the read bytes
+              //so that we return a Future[Message[ResponseFunction[Array[Byte]]]]
+              File(p).pull().map(bytesMsg =>
+                bytesMsg.map(bytes => ResponseBytes(bytes))
+              ).recover {
+                case ex: java.io.FileNotFoundException =>
+                  req.map(_ => NotFound ~> ResponseString("File " + p + " not found"))
+                case ex: Exception =>
+                  req.map(_ => ServiceUnavailable ~> ResponseString(ex.toString))
+              }
+
+            //for all other cases...
+            case _ =>
+              req.map(_ => MethodNotAllowed ~> ResponseString("Must be POST OR GET"))
+          }
+        }
+      }
+
+      new Flow("poll-google")(Poll(
+          Http(url("http://www.google.com").setFollowRedirects(true),
+               new OkFunctionHandler(as.String)),
+          every = 10.seconds)) {
+        logic {req =>
+          val askReq =
+            Http[String]().ask(req.map(_ => (url("http://www.google.com").
+                 setFollowRedirects(true), new OkFunctionHandler(as.String))))
+          askReq map (res => assert(req.payload == res.payload,
+                                    "Polling and asking the same, should return the same."))
+        }
+      }
+    }
+  }
+
+The example starts with a server flow on port 8888. Before defining the logic, we bring into scope the DSLs of
+unfiltered for requests parsing and response creation. In the logic, we know that the payload is an http request
+so we write a match clause to handle the cases that we are about using unfiltered's DSL.
+We spefically handle two cases, POSTS and GETS. For the former we are simply returning a string concatenation
+of the parameters passed in the POST request. For the GET case, we are doing something more interesting (and violating
+all security advises), we are retrieving from the filesystem, files with a path relative to the rootLocation of the
+AppContext via the File endpoint, then we map its result (a future of message of a byte array) to create a message
+with a ResponseBytes wrapping the bytes read, and we return that. Not how composition shines here, and even in the
+case that the file does not exists, because we are handling that case by recovering the failed future, handling
+specifically the file not found case, and returning a very crude 404, we are also handling other general exception
+that might happend and return service unavailable.
+Finally, for all other http requests, we return a method not allowed.
+
+The second flow showcases the poll and ask endpoint by doing the very same operation on boths. The request in both
+cases it created by requesting an url, configuring it to follow redirects is there are any, and passing as response
+handler an OkFunctionHandler which transforms the response to a String. OkFunctionHandler is a handler that will fail
+for http status codes distinct from 200. There are other ways to setup FunctionHandlers and other converters like
+``as.Bytes``. Again, for more functionality read databinder.dispatch's `documentation <http://dispatch.databinder.net/Dispatch.html>`_.
