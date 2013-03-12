@@ -42,6 +42,9 @@ case class SslKeys(paths: String*)
 case class SslCerts(paths: String*)
 
 object SSLContext {
+  private implicit class ByteArrayOps(val bytes: Array[Byte]) extends AnyVal {
+    def asStream = new java.io.ByteArrayInputStream(bytes)
+  }
   /**
    * Provisionary documentation: keys MUST be in pkcs8 DER format in order to be read by standard java security.
    * You can convert them from other formats like this
@@ -61,42 +64,33 @@ object SSLContext {
       val keyLocation = appContext.rootLocation.resolve(loc)
       val keyData = Files.readAllBytes(keyLocation)
       val privateKey = keyFactory.generatePrivate(new java.security.spec.PKCS8EncodedKeySpec(keyData))
-
     }
 
     val certFactory = java.security.cert.CertificateFactory.getInstance("X.509")
     for (loc <- authCerts.paths) {
       val certLocation = appContext.rootLocation.resolve(loc)
       val in = Files.newInputStream(certLocation)
-      try {
-        val cert = certFactory.generateCertificate(Files.newInputStream(certLocation))
-        keyStore.setCertificateEntry(certLocation.getFileName.toString, cert)
-      } finally {
-        try in.close() catch {case _: java.io.IOException =>}
-      }
+      val certData = Files.readAllBytes(certLocation)
+      val cert = certFactory.generateCertificate(certData.asStream)
+      keyStore.setCertificateEntry(certLocation.getFileName.toString, cert)
     }
     kmf.init(keyStore, null)
 
     val tmf = TrustManagerFactory.getInstance("PKIX")
     val trustStore = java.security.KeyStore.getInstance("JKS")
-
-    //attempt to load the default ca certs
-    trustStore.load(Files.newInputStream(Paths.get(scala.util.Properties.javaHome, "lib", "security", "cacerts")), null)
+    trustStore.load(null)
 
     for (loc <- peerCerts.paths) {
       val certLocation = appContext.rootLocation.resolve(loc)
-      val in = Files.newInputStream(certLocation)
-      try {
-        val certPath = certFactory.generateCertPath(Files.newInputStream(certLocation))
-        for (cert <- certPath.getCertificates.asScala) {
-          trustStore.setCertificateEntry(certLocation.getFileName.toString, cert)
-        }
-      } finally {
-        try in.close() catch {case _: java.io.IOException =>}
-      }
+      val certData = Files.readAllBytes(certLocation)
+      val cert = certFactory.generateCertificate(certData.asStream)
+      trustStore.setCertificateEntry(certLocation.getFileName.toString, cert)
     }
 
-    tmf.init(trustStore)
+
+//    trustStore.aliases.asScala.map(a => a->scala.util.Try(trustStore.getCertificate(a))) foreach println
+
+    tmf.init(new javax.net.ssl.CertPathTrustManagerParameters(new java.security.cert.PKIXBuilderParameters(trustStore, null)))
 
     myContext.init(kmf.getKeyManagers, tmf.getTrustManagers, null)
     myContext
