@@ -61,8 +61,8 @@ object Main {
 
       //declare basic imports
       if (compiler.addImports("uy.com.netlabs.luthier._",
-      "uy.com.netlabs.luthier.typelist._",
-      "scala.language._") != IR.Success) initialized.failure(new IllegalStateException("Could not add default imports"))
+                              "uy.com.netlabs.luthier.typelist._",
+                              "scala.language._") != IR.Success) initialized.failure(new IllegalStateException("Could not add default imports"))
       else initialized.success(())
     }
 
@@ -80,7 +80,7 @@ object Main {
     //instantiate the flows:
     for (f <- flows) {
       val h = new FlowHandler(lazyCompiler, runner.actorSystem.log, f)
-      h.load()() //attempt to initialize it synchronously
+      h.load(runnerFlows.appContext)() //attempt to initialize it synchronously
       h.startWatching(runnerFlows)
     }
     println("all apps initialized")
