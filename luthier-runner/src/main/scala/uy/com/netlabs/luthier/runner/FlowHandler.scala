@@ -58,7 +58,7 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
               if (attrs.lastModifiedTime().toMillis() > lastUpdate) {
                 logger.info(Console.MAGENTA + s"Reloading flow $file" + Console.RESET)
                 if (tryCompile()) {
-                  val instantiate = load()
+                  val instantiate = load(runnerFlows.appContext)
                   if (_theFlows != null) {
                     logger.info(Console.MAGENTA + s"Stoping previous incarnation" + Console.RESET)
                     _theFlows foreach (_.registeredFlows foreach (_.dispose()))
@@ -103,10 +103,7 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
       import uy.com.netlabs.luthier._
       import uy.com.netlabs.luthier.typelist._
       import scala.language._
-      val app = new AppContext {
-        val name = "${appName}"
-        val rootLocation = java.nio.file.Paths.get("$file")
-      }
+      val app = new AppContext.build("${appName}", java.nio.file.Paths.get("$file"), config)
       val flow = new Flows {
         val appContext = app
 
@@ -115,12 +112,12 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
     """
     script
   }
-  def load(): () => Unit = {
+  def load(parentAppContext: AppContext): () => Unit = {
     if (Files.exists(filePath)) {
       lastUpdate = System.currentTimeMillis()
       filePath match {
-        case _ if (filePath.toString endsWith ".fflow") || (filePath.toString endsWith ".scala") => loadFullFlow(filePath)
-        case _ if filePath.toString endsWith ".flow"  => loadFlow(filePath)
+        case _ if (filePath.toString endsWith ".fflow") || (filePath.toString endsWith ".scala") => loadFullFlow(parentAppContext, filePath)
+        case _ if filePath.toString endsWith ".flow"  => loadFlow(parentAppContext, filePath)
         case _                                        => throw new Exception(s"Unsupported file $filePath")
       }
 
@@ -128,9 +125,10 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
       throw new java.io.FileNotFoundException(Console.RED + s" Flow $file does not exists")
     }
   }
-  private[this] def loadFlow(filePath: Path): () => Unit = {
+  private[this] def loadFlow(parentAppContext: AppContext, filePath: Path): () => Unit = {
     println("Loading flow " + filePath)
     val script = flowScript
+    require(compilerLazy.bind("config", parentAppContext.actorSystem.settings.config) == IR.Success, "Failed compiling flow " + file)
     require(compilerLazy.interpret(script) == IR.Success, "Failed compiling flow " + file)
     val flows = compilerLazy.lastRequest.getEvalTyped[Flows].getOrElse(throw new IllegalStateException("Could not load flow " + file))
     () => {
@@ -144,7 +142,7 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
       _theFlows = Seq(flows)
     }
   }
-  private[this] def loadFullFlow(filePath: Path): () => Unit = {
+  private[this] def loadFullFlow(parentAppContext: AppContext, filePath: Path): () => Unit = {
     try {
       val content = Files.readAllLines(filePath, java.nio.charset.Charset.forName("utf8")).toSeq
       require(compilerLazy.interpret(content mkString "\n") == IR.Success, "Failed compiling flow " + file)
@@ -190,7 +188,7 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
             val r = file.stripSuffix(".fflow").stripSuffix(".scala").replace('/', '-')
             if (r.charAt(0) == '-') r.drop(1) else r
           }
-          val appContext = AppContext.build(appName, filePath)
+          val appContext = AppContext.build(appName, filePath, parentAppContext.actorSystem.settings.config)
           val flowss = possibleFlows map {
             case Right((flowsSymbol, argumentsSymbols)) =>
               def loadClass(c: String) = compilerLazy.getInterpreterClassLoader.loadClass(c)
