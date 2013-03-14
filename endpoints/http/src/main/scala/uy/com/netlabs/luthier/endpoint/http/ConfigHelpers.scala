@@ -59,22 +59,18 @@ object SSLContext {
     val keyStore = java.security.KeyStore.getInstance("JKS")
     keyStore.load(null) //just initialize it. Thank you sun for your really intuitive interfaces...
 
-    val keyFactory = java.security.KeyFactory.getInstance("RSA")
-    for (loc <- authKeys.paths) {
-      val keyLocation = appContext.rootLocation.resolve(loc)
-      val keyData = Files.readAllBytes(keyLocation)
-      val privateKey = keyFactory.generatePrivate(new java.security.spec.PKCS8EncodedKeySpec(keyData))
-    }
 
+    val noPass = "no-pass".toCharArray
+    val keyFactory = java.security.KeyFactory.getInstance("RSA")
     val certFactory = java.security.cert.CertificateFactory.getInstance("X.509")
-    for (loc <- authCerts.paths) {
-      val certLocation = appContext.rootLocation.resolve(loc)
-      val in = Files.newInputStream(certLocation)
-      val certData = Files.readAllBytes(certLocation)
-      val cert = certFactory.generateCertificate(certData.asStream)
-      keyStore.setCertificateEntry(certLocation.getFileName.toString, cert)
+    for ((key, cert) <- authKeys.paths.zip(authCerts.paths)) {
+      val certLocation = appContext.rootLocation.resolve(cert)
+      val keyLocation = appContext.rootLocation.resolve(key)
+      val certificates = certFactory.generateCertificates(Files.readAllBytes(certLocation).asStream)
+      val pk = keyFactory.generatePrivate(new java.security.spec.PKCS8EncodedKeySpec(Files.readAllBytes(keyLocation)))
+      keyStore.setKeyEntry(keyLocation.getFileName.toString, pk, noPass, certificates.asScala.toArray)
     }
-    kmf.init(keyStore, null)
+    kmf.init(keyStore, noPass)
 
     val tmf = TrustManagerFactory.getInstance("PKIX")
     val trustStore = java.security.KeyStore.getInstance("JKS")
@@ -90,7 +86,8 @@ object SSLContext {
 
 //    trustStore.aliases.asScala.map(a => a->scala.util.Try(trustStore.getCertificate(a))) foreach println
 
-    tmf.init(new javax.net.ssl.CertPathTrustManagerParameters(new java.security.cert.PKIXBuilderParameters(trustStore, null)))
+    tmf.init(trustStore)
+//    tmf.init(new javax.net.ssl.CertPathTrustManagerParameters(new java.security.cert.PKIXBuilderParameters(trustStore, null)))
 
     myContext.init(kmf.getKeyManagers, tmf.getTrustManagers, null)
     myContext
