@@ -45,54 +45,57 @@ import dispatch.{ Promise => _, _ }
 
 class HttpTest extends BaseFlowsTest {
   describe("An Http client Endpoint") {
-//    it("Should be able to perform HTTP request and transform its result") {
-//      new Flows {
-//        val appContext = testApp
-//        val result = Promise[Option[String]]()
-//        val flow = new Flow("Poll Http")(Poll(Http(url("http://www.google.com/").setFollowRedirects(true), new OkFunctionHandler(as.jsoup.Document)), 1.seconds)) { //initial delay is 0
-//          logic { m =>
-//            result success {
-//              if (m.payload.select("a[href]").size != 0) None
-//              else Some("payload with 0 links?")
-//            }
-//          }
-//        }
-//        flow.start
-//        val res = Try(Await.result(result.future, 5.seconds))
-//        flow.dispose
-//        assert(res.get)
-//      }
-//    }
-//    it("Should be able to ask HTTP request and transform its result") {
-//      new Flows {
-//        val appContext = testApp
-//
-//        val res = inFlow { (flow, m) =>
-//          import flow._
-//          val req = url("http://www.google.com/").setFollowRedirects(true) -> new OkFunctionHandler(as.jsoup.Document)
-//          Await.result(Http[org.jsoup.nodes.Document]().ask(m.map(_ => req)) map { m =>
-//              println("Cookies: ")
-//              println(m.header.inbound.get("Cookies"))
-//
-//              if (m.payload.select("a[href]").size != 0) None
-//              else Some("payload with 0 links?")
-//            }, 5.seconds)
-//        }
-//        assert(Await.result(res, 6.seconds))
-//      }
-//    }
+    it("Should be able to perform HTTP request and transform its result") {
+      new Flows {
+        val appContext = testApp
+        val result = Promise[Option[String]]()
+        val flow = new Flow("Poll Http")(Poll(Http(url("http://www.google.com/").setFollowRedirects(true), new OkFunctionHandler(as.jsoup.Document)), 1.seconds)) { //initial delay is 0
+          logic { m =>
+            result success {
+              if (m.payload.select("a[href]").size != 0) None
+              else Some("payload with 0 links?")
+            }
+          }
+        }
+        flow.start
+        val res = Try(Await.result(result.future, 5.seconds))
+        flow.dispose
+        assert(res.get)
+      }
+    }
+    it("Should be able to ask HTTP request and transform its result") {
+      new Flows {
+        val appContext = testApp
+
+        val res = inFlow { (flow, m) =>
+          import flow._
+          val req = url("http://www.google.com/").setFollowRedirects(true) -> new OkFunctionHandler(as.jsoup.Document)
+          Await.result(Http[org.jsoup.nodes.Document]().ask(m.map(_ => req)) map { m =>
+              println("Cookies: ")
+              println(m.header.inbound.get("Cookies"))
+
+              if (m.payload.select("a[href]").size != 0) None
+              else Some("payload with 0 links?")
+            }, 5.seconds)
+        }
+        assert(Await.result(res, 6.seconds))
+      }
+    }
     it("Should be able to authenticate using SSL") {
       new Flows {
         val appContext = testApp
+
+        val sslContext = SSLContext(
+          SslKeys("/home/rcano/rcano.netlabs.com.uy.der"), SslCerts("/home/rcano/rcano.netlabs.com.uy.crt"),
+          SslCerts("/home/rcano/nlca.netlabs.com.uy.crt"), sslProtocol = "TLSv1.2")
+
         val res = inFlow {(flow, m) =>
           import flow._
           implicit val flowRun = m.flowRun
 
           val request =
-            Http[String](url("https://redmine.netlabs.com.uy/"), new OkFunctionHandler(as.String),
-                         httpClientConfig = ClientConfig(sslContext = SSLContext(
-                  SslKeys("/home/rcano/rcano.netlabs.com.uy.der"), SslCerts("/home/rcano/rcano.netlabs.com.uy.crt"),
-                  SslCerts("/home/rcano/nlca.netlabs.com.uy.crt"), sslProtocol = "TLSv1.2"))).pull()
+            Http[String](url("https://redmine.netlabs.com.uy/"), new FunctionHandler(as.String),
+                         httpClientConfig = ClientConfig(sslContext = sslContext)).pull()
           println("Request result: " + Await.result(request, 3.seconds))
         }
         Await.result(res, 6.seconds)
