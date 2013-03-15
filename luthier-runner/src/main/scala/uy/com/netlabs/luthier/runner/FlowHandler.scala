@@ -113,7 +113,6 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
     }
   }
   private[this] def loadFlow(parentAppContext: AppContext, filePath: Path): () => Unit = {
-    println("Loading flow " + filePath)
     val script = flowScript
     require(compilerLazy.bind("config", parentAppContext.actorSystem.settings.config) == IR.Success, "Failed compiling flow " + file)
     require(compilerLazy.interpret(script) == IR.Success, "Failed compiling flow " + file)
