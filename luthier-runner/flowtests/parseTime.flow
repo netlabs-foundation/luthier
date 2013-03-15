@@ -1,0 +1,18 @@
+import scala.concurrent.duration._
+import uy.com.netlabs.luthier.endpoint.stream._, Tcp._
+new Flow("parser")(Server(4000, 1024)) {
+  logic {client =>
+    new Flow("clientHandler-" + client.payload)(Handler(client, consumers.lines(),
+                                                        ReadWaitAction.ReadValueData(2000, "---"))) {
+      logic { m: Message[String] =>
+        println("Read: " + m.payload)
+        m.payload match {
+          case "---" =>
+          case req =>
+            client.payload.conn.write(java.nio.ByteBuffer wrap req.getBytes)
+        }
+        closeClient(client)
+      }
+    }
+  }
+}
