@@ -58,7 +58,7 @@ object Tcp extends StreamEndpointServerComponent {
   }
 
   class ServerSocketEndpoint private[Tcp] (val flow: Flow, socketAddress: SocketAddress, val readBuffer: Int) extends ServerComponent {
-    val serverChannel = {
+    lazy val serverChannel = {
       val res = ServerSocketChannel.open()
       res.configureBlocking(false)
       res.bind(socketAddress)
