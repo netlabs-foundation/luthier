@@ -59,6 +59,7 @@ object Main {
       //insert restOfArgs into compiler
       require(compiler.bind("args", "Seq[String]", restOfArgs.to[Seq]) == IR.Success, "Could not bind args")
 
+      require(compiler.bind("interpreter", compiler) == IR.Success, "Could not bind interpreter")
       //declare basic imports
       if (compiler.addImports("uy.com.netlabs.luthier._",
                               "uy.com.netlabs.luthier.typelist._",
