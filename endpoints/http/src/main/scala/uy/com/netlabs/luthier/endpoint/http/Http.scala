@@ -74,6 +74,7 @@ object Http {
 
     private def wrapRequest(r: (Request, FunctionHandler[R])) = {
       r._1.build() -> new AsyncCompletionHandler[(R, HeaderBaggage)] {
+
         def onCompleted(response) = r._2.onCompleted(response) -> response.getCookies
         //proxy all methods -- must call all supers because this AsyncCompletionHandler is horribly stateful
         override def onBodyPartReceived(content) = {
@@ -109,6 +110,7 @@ object Http {
     private def toMessage(resp: (R, HeaderBaggage), mf: MessageFactory) = {
       import collection.JavaConversions._
       val res = mf(resp._1)
+      res.header.outbound.clear
       res.header.inbound += ("Cookies" -> resp._2)
       res
     }
@@ -125,8 +127,8 @@ object Http {
       val promise = Promise[Message[Response]]()
       val req = msg.as[(Request, FunctionHandler[R])].payload
       val cookies = msg.header.outbound.getOrElse("Cookies", Seq.empty).asInstanceOf[Seq[Cookie]]
-      cookies foreach req._1.addCookie
-      //      println("Sending cookies: " + cookies)
+      cookies foreach req._1.addOrReplaceCookie
+//      println("Sending cookies: " + cookies)
 
       dispatcher(wrapRequest(req)).onComplete {
         case Right(res) => promise.success(toMessage(res, msg))
