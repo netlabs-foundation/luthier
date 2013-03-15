@@ -59,7 +59,7 @@ object Sctp extends StreamEndpointServerComponent {
   }
 
   class ServerChannelEndpoint private[Sctp] (val flow: Flow, socketAddress: SocketAddress, val readBuffer: Int) extends ServerComponent {
-    val serverChannel = {
+    lazy val serverChannel = {
       val res = SctpServerChannel.open()
       res.configureBlocking(false)
       res.bind(socketAddress)

@@ -54,6 +54,10 @@ protected trait StreamEndpointServerComponent {
 
     val flow: Flow
     val readBuffer: Int
+    /**
+     * The actual serverChannel. This variable MUST be lazy. otherwise,
+     * initialization will happen before the start method is called.
+     */
     val serverChannel: SelectableChannel with InterruptibleChannel
     def serverChannelAccept(): ClientConn
 
