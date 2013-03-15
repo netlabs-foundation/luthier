@@ -41,7 +41,7 @@ trait MethodRef[ClassRef, ArgumentList, ReturnType] {
 }
 object MethodRef {
 
-  private class MethodRefImpl[ClassRef, ArgumentList, ReturnType](val method: Method) extends MethodRef[ClassRef, ArgumentList, ReturnType]
+  class MethodRefImpl[ClassRef, ArgumentList, ReturnType](val method: Method) extends MethodRef[ClassRef, ArgumentList, ReturnType]
 
   implicit def methodRef[ClassRef, R](f: () => R) = macro MethodRefMacros.methodRefImpl0[ClassRef, R]
   implicit def methodRef[ClassRef, P1, R](f: P1 => R) = macro MethodRefMacros.methodRefImpl1[ClassRef, P1, R]
