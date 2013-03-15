@@ -86,7 +86,9 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
           compilerLazy.compileString(content.mkString("\n"))
         case _ if filePath.toString endsWith ".flow"  =>
           val script = "object script {\n" + 
-          "  val config = com.typesafe.config.ConfigFactory.load()" + //have to simulate a valid config
+          "  val args: Seq[String] = null\n" + 
+          "  val interpreter: scala.tools.nsc.interpreter.IMain = null\n" + 
+          "  val config = com.typesafe.config.ConfigFactory.load()\n" + //have to simulate a valid config
           flowScript + "\n}"
           compilerLazy.compileString(script)
         case _                                        =>
