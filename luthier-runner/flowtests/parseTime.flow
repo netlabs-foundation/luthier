@@ -1,17 +1,24 @@
 import scala.concurrent.duration._
-import uy.com.netlabs.luthier.endpoint.stream._, Tcp._
+import uy.com.netlabs.luthier.endpoint._, stream._, Tcp._, http._
+import dispatch.{Http=>_, _}
+import scala.util._, scala.concurrent.duration._
 new Flow("parser")(Server(4000, 1024)) {
   logic {client =>
+    val getGoogle = Http[String](url("http://www.netlabs.com.uy"), new FunctionHandler(as.String)).pull()
     new Flow("clientHandler-" + client.payload)(Handler(client, consumers.lines(),
                                                         ReadWaitAction.ReadValueData(2000, "---"))) {
-      logic { m: Message[String] =>
+      logic {m =>
         println("Read: " + m.payload)
         m.payload match {
           case "---" =>
           case req =>
-            client.payload.conn.write(java.nio.ByteBuffer wrap req.getBytes)
+            getGoogle.onComplete {
+              case Success(msg) =>
+                client.payload.conn.write(java.nio.ByteBuffer wrap msg.payload.getBytes)
+                closeClient(client)
+              case Failure(err) => closeClient(client)
+            }
         }
-        closeClient(client)
       }
     }
   }
