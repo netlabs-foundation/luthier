@@ -56,7 +56,7 @@ object TypeList {
         case typeNil if typeNil.toString == typeNilFullName => Nil
         case TypeRef(RefinedType(parents, decls), sym, args) =>
           sym match {
-            case alias: AliasTypeSymbol => disect(deAlias(alias.typeSignature))
+            case alias: AliasTypeSymbol => disect(normalizeAliases(alias.typeSignature))
             case other => /*println(s"No idea so: $other - ${other.getClass}"); *//*no idea so...*/List(sym.toString)
           }
         case TypeRef(prefix, sym, args) if sym.baseClasses.contains(typeListSymbol) && prefix.memberInfo(sym) != NoType => // might be of the form SomeClass[reification]#SomeType
