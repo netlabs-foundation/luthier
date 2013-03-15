@@ -81,24 +81,35 @@ class HttpTest extends BaseFlowsTest {
         assert(Await.result(res, 6.seconds))
       }
     }
-    it("Should be able to authenticate using SSL") {
-      new Flows {
-        val appContext = testApp
+    if (scala.util.Properties.userName == "rcano") {
+      it("Should be able to authenticate using SSL") {
+        new Flows {
+          val appContext = testApp
 
-        val sslContext = SSLContext(
-          SslKeys("/home/rcano/rcano.netlabs.com.uy.der"), SslCerts("/home/rcano/rcano.netlabs.com.uy.crt"),
-          SslCerts("/home/rcano/nlca.netlabs.com.uy.crt"), sslProtocol = "TLSv1.2")
+          val sslContext = SSLContext(
+            SslKeys("/home/rcano/rcano.netlabs.com.uy.der"), SslCerts("/home/rcano/rcano.netlabs.com.uy.crt"),
+            SslCerts("/home/rcano/nlca.netlabs.com.uy.crt"), sslProtocol = "TLSv1.2")
 
-        val res = inFlow {(flow, m) =>
-          import flow._
-          implicit val flowRun = m.flowRun
+          val res = inFlow {(flow, m) =>
+            import flow._
+            implicit val flowRun = m.flowRun
 
-          val request =
-            Http[String](url("https://redmine.netlabs.com.uy/"), new FunctionHandler(as.String),
-                         httpClientConfig = ClientConfig(sslContext = sslContext)).pull()
-          println("Request result: " + Await.result(request, 3.seconds))
+            def redmine[T] = Http[T](httpClientConfig = ClientConfig(sslContext = sslContext))
+            val postParams = Map("username"->"someUser", "password"->new String("somePass"))
+            val request =
+              redmine[String].ask(m map (_ => (url("https://redmine.netlabs.com.uy/login").setFollowRedirects(true) << postParams, new FunctionHandler(as.String))))
+
+            //example that after login, would download the time_entries csv (it works :) )
+//          val request =
+//            redmine[String].ask(m map (_ => (url("https://redmine.netlabs.com.uy/login").setFollowRedirects(true) << postParams, new OkFunctionHandler(as.String)))).flatMap {res =>
+//              res.header.swap //swap headers to send the cookies we received
+//              redmine[String].ask(res map (_ => (url("https://redmine.netlabs.com.uy/time_entries.csv"), new OkFunctionHandler(as.String))))
+//            }
+
+            println("Request result: " + Await.result(request, 3.seconds))
+          }
+          Await.result(res, 6.seconds)
         }
-        Await.result(res, 6.seconds)
       }
     }
   }
