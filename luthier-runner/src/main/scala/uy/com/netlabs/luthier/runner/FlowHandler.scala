@@ -38,6 +38,8 @@ import scala.collection.JavaConversions._
 import scala.concurrent.duration._
 import akka.event.LoggingAdapter
 
+import language._
+
 class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
   private lazy val compilerLazy = compiler
   val filePath = Paths.get(file)
@@ -69,7 +71,7 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
                 } else logger.info(Console.MAGENTA + s"Flow does not compile" + Console.RESET)
               }
             }
-          } catch { case ex => logger.warning("Error while loading flow " + file, ex) }
+          } catch { case ex: Throwable => logger.warning("Error while loading flow " + file, ex) }
         }
       })
     _watcherFlow.get.start()
@@ -83,7 +85,10 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
           val content = Files.readAllLines(filePath, java.nio.charset.Charset.forName("utf8")).toSeq
           compilerLazy.compileString(content.mkString("\n"))
         case _ if filePath.toString endsWith ".flow"  =>
-          compilerLazy.compileString(flowScript)
+          val script = "object script {\n" + 
+          "  val config = com.typesafe.config.ConfigFactory.load()" + //have to simulate a valid config
+          flowScript + "\n}"
+          compilerLazy.compileString(script)
         case _                                        =>
           logger.warning(s"Unsupported file $filePath")
           false
@@ -92,25 +97,6 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
       logger.warning(Console.RED + s" Flow $file does not exists")
       false
     }
-  }
-  private[this] def flowScript(): String = {
-    val content = Files.readAllLines(filePath, java.nio.charset.Charset.forName("utf8")).toSeq
-    val appName = {
-      val r = file.stripSuffix(".flow").replace('/', '-')
-      if (r.charAt(0) == '-') r.drop(1) else r
-    }
-    val script = s"""
-      import uy.com.netlabs.luthier._
-      import uy.com.netlabs.luthier.typelist._
-      import scala.language._
-      val app = AppContext.build("${appName}", java.nio.file.Paths.get("$file"), config)
-      val flow = new Flows {
-        val appContext = app
-
-        ${content.mkString("\n")}
-      }
-    """
-    script
   }
   def load(parentAppContext: AppContext): () => Unit = {
     if (Files.exists(filePath)) {
@@ -141,6 +127,25 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
       logger.info(Console.GREEN + f"  App fully initialized. Total time: ${totalTime / 1000000000d}%.3f" + Console.RESET)
       _theFlows = Seq(flows)
     }
+  }
+  private[this] def flowScript(): String = {
+    val content = Files.readAllLines(filePath, java.nio.charset.Charset.forName("utf8")).toSeq
+    val appName = {
+      val r = file.stripSuffix(".flow").replace('/', '-')
+      if (r.charAt(0) == '-') r.drop(1) else r
+    }
+    val script = s"""
+      import uy.com.netlabs.luthier._
+      import uy.com.netlabs.luthier.typelist._
+      import scala.language._
+      val app = AppContext.build("${appName}", java.nio.file.Paths.get("$file"), config)
+      val flow = new Flows {
+        val appContext = app
+
+        ${content.mkString("\n")}
+      }
+    """
+    script
   }
   private[this] def loadFullFlow(parentAppContext: AppContext, filePath: Path): () => Unit = {
     try {
