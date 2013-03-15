@@ -101,12 +101,13 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
   def load(parentAppContext: AppContext): () => Unit = {
     if (Files.exists(filePath)) {
       lastUpdate = System.currentTimeMillis()
-      filePath match {
-        case _ if (filePath.toString endsWith ".fflow") || (filePath.toString endsWith ".scala") => loadFullFlow(parentAppContext, filePath)
-        case _ if filePath.toString endsWith ".flow"  => loadFlow(parentAppContext, filePath)
-        case _                                        => throw new Exception(s"Unsupported file $filePath")
+      compilerLazy.beQuietDuring {
+        filePath match {
+          case _ if (filePath.toString endsWith ".fflow") || (filePath.toString endsWith ".scala") => loadFullFlow(parentAppContext, filePath)
+          case _ if filePath.toString endsWith ".flow"  => loadFlow(parentAppContext, filePath)
+          case _                                        => throw new Exception(s"Unsupported file $filePath")
+        }
       }
-
     } else {
       throw new java.io.FileNotFoundException(Console.RED + s" Flow $file does not exists")
     }
