@@ -42,49 +42,21 @@ import org.slf4j._
 import scala.annotation.varargs
 
 class FlowsRunner(val appContext: AppContext,
-                  compilerSettings: Settings, classLoader: ClassLoader) {
-  import FlowsRunner._
+                  protected val compilerSettings: Settings, classLoader: ClassLoader) extends InterpretersComponent {
 
-  private[this] val compiler = new IMain(compilerSettings)
+  protected val logger = FlowsRunner.logger
   private[this] val initialized = Promise[Unit]()
-  compiler.initialize {
-    //declare basic imports
-    initialized.success(())
-    //    if (compiler.addImports("uy.com.netlabs.luthier._",
-    //      "uy.com.netlabs.luthier.typelist._",
-    //      "scala.language._") != IR.Success) initialized.failure(new IllegalStateException("Could not add default imports"))
-    //    else initialized.success(())
-  }
 
   val runnerFlows = new Flows {
     val appContext = FlowsRunner.this.appContext
-  }
-
-  // a compiler that will wait until its fully instantiated, just the first time.
-  private[this] lazy val lazyCompiler = {
-    if (!initialized.isCompleted) logger.info("Waiting for compiler to finish initializing")
-    Await.result(initialized.future, Duration.Inf)
-    compiler
   }
 
   def this(appContextName: String, classLoader: ClassLoader) = this(AppContext.build(appContextName, Paths.get("")),
                                                                     FlowsRunner.defaultCompilerSettings(classLoader), classLoader)
   def this(classLoader: ClassLoader) = this("Runner", classLoader)
 
-  /**
-   * Binds the given object into the compiler instance, so its accessible as a global variable from the
-   * flows
-   */
-  def bindObject(name: String, classDecl: String, obj: Any) {
-    lazyCompiler.bind(name, classDecl, obj) match {
-      case IR.Error      => throw new IllegalStateException("Could not bind " + name)
-      case IR.Incomplete => throw new IllegalStateException("Definition incomplete for variable " + name)
-      case _             =>
-    }
-  }
-
   @varargs def load(flows: Path*) = flows.map { path =>
-    val h = new FlowHandler(lazyCompiler, appContext.actorSystem.log, path.toAbsolutePath().toString)
+    val h = new FlowHandler(Interpreters.newInterpreter(path.getFileName.toString), appContext.actorSystem.log, path.toAbsolutePath().toString)
     h.load(runnerFlows.appContext)() //attempt to initialize it synchronously
     h.startWatching(runnerFlows)
     h
@@ -98,11 +70,10 @@ class FlowsRunner(val appContext: AppContext,
   def dispose() {
     val s1 = Try(runnerFlows.appContext.actorSystem.shutdown())
     val s2 = Try(runnerFlows.stopAllFlows())
-    val s3 = Try(compiler.close())
+    Interpreters.disposeAll()
     //re throw the first exception encountered... Possibly not the best of logics?
     s1.get
     s2.get
-    s3.get
   }
 }
 object FlowsRunner {
@@ -111,15 +82,8 @@ object FlowsRunner {
     val settings = new Settings
 
     settings.YmethodInfer.value = true
-    //    settings.optimise.value = true
-    //    settings.usejavacp.value = true
-    //    settings.Yinferdebug.value = true
-    //    settings.Xprint.value = List("typer")
-    //    settings.debug.value = true
-    //    settings.log.value = List("typer")
-    //    settings.Ytyperdebug.value = true
     val cp = classpath(parentClassLoader)
-    println("Using classpath:\n\t" + cp.mkString("\n\t"))
+    logger.info("Using classpath:\n\t" + cp.mkString("\n\t"))
     settings.classpath.value = cp.mkString(java.io.File.pathSeparator)
     settings
   }
@@ -149,7 +113,6 @@ object FlowsRunner {
     val urlsFromManifest = cpInManifest.split(" ").map(j => j.split("/").foldLeft(basePathForLibs)((d, p) => d.resolve(p))).map(_.toFile).filter(_.exists)
     val allUrls = urlsFromClasspath ++ urlsFromManifest
 
-    logger.info("FlowsRunner using classpath:\n\t" + allUrls.map(_.toString).mkString("\n\t"))
     allUrls
   }
 }

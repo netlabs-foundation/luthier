@@ -41,7 +41,11 @@ import akka.event.LoggingAdapter
 import language._
 
 class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
-  private lazy val compilerLazy = compiler
+  private lazy val compilerLazy = {
+    val res = compiler
+    if (!res.isInitializeComplete) res.initializeSynchronous
+    res
+  }
   val filePath = Paths.get(file)
   @volatile var lastUpdate: Long = 0
   @volatile private[this] var _theFlows: Seq[Flows] = _
@@ -85,9 +89,9 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
           val content = Files.readAllLines(filePath, java.nio.charset.Charset.forName("utf8")).toSeq
           compilerLazy.compileString(content.mkString("\n"))
         case _ if filePath.toString endsWith ".flow"  =>
-          val script = "object script {\n" + 
-          "  val args: Seq[String] = null\n" + 
-          "  val interpreter: scala.tools.nsc.interpreter.IMain = null\n" + 
+          val script = "object script {\n" +
+          "  val args: Seq[String] = null\n" +
+          "  val interpreter: scala.tools.nsc.interpreter.IMain = null\n" +
           "  val config = com.typesafe.config.ConfigFactory.load()\n" + //have to simulate a valid config
           flowScript + "\n}"
           compilerLazy.compileString(script)
