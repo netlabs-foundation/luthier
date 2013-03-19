@@ -35,16 +35,18 @@ import java.nio.file._
 import scala.tools.nsc.interpreter.{ IMain, IR }
 import scala.util._
 import scala.collection.JavaConversions._
-import scala.concurrent.duration._
+import scala.concurrent._, duration._
 import akka.event.LoggingAdapter
 
 import language._
 
-class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
+class FlowHandler(compiler: Future[IMain], logger: LoggingAdapter, file: String) {
   private lazy val compilerLazy = {
-    val res = compiler
-    if (!res.isInitializeComplete) res.initializeSynchronous
-    res
+    if (!compiler.isCompleted) {
+      logger.info(s"Waiting for compiler for $file")
+      Await.ready(compiler, Duration.Inf)
+    }
+    compiler.value.get.get
   }
   val filePath = Paths.get(file)
   @volatile var lastUpdate: Long = 0
@@ -107,20 +109,20 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
   def load(parentAppContext: AppContext): () => Unit = {
     if (Files.exists(filePath)) {
       lastUpdate = System.currentTimeMillis()
-      compilerLazy.beQuietDuring {
+//      compilerLazy.beQuietDuring {
         filePath match {
           case _ if (filePath.toString endsWith ".fflow") || (filePath.toString endsWith ".scala") => loadFullFlow(parentAppContext, filePath)
           case _ if filePath.toString endsWith ".flow"  => loadFlow(parentAppContext, filePath)
           case _                                        => throw new Exception(s"Unsupported file $filePath")
         }
-      }
+//      }
     } else {
       throw new java.io.FileNotFoundException(Console.RED + s" Flow $file does not exists")
     }
   }
   private[this] def loadFlow(parentAppContext: AppContext, filePath: Path): () => Unit = {
     val script = flowScript
-    require(compilerLazy.bind("config", parentAppContext.actorSystem.settings.config) == IR.Success, "Failed compiling flow " + file)
+    require(compilerLazy.bind("config", "Any", parentAppContext.actorSystem.settings.config) == IR.Success, "Failed compiling flow " + file)
     require(compilerLazy.interpret(script) == IR.Success, "Failed compiling flow " + file)
     val flows = compilerLazy.lastRequest.getEvalTyped[Flows].getOrElse(throw new IllegalStateException("Could not load flow " + file))
     () => {
@@ -144,7 +146,7 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
       import uy.com.netlabs.luthier._
       import uy.com.netlabs.luthier.typelist._
       import scala.language._
-      val app = AppContext.build("${appName}", java.nio.file.Paths.get("$file"), config)
+      val app = AppContext.build("${appName}", java.nio.file.Paths.get("$file"), config.asInstanceOf[com.typesafe.config.Config])
       val flow = new Flows {
         val appContext = app
 

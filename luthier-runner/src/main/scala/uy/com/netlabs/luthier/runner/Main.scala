@@ -44,13 +44,12 @@ object Main extends InterpretersComponent {
   import org.apache.log4j._
   Logger.getRootLogger.addAppender(new  ConsoleAppender(new SimpleLayout, "System.out"))
   val compilerSettings = FlowsRunner.defaultCompilerSettings(getClass.getClassLoader())
-  compilerSettings.usejavacp.value = true
   val logger = LoggerFactory.getLogger(getClass)
 
   def main(args: Array[String]) {
     val (flows, restOfArgs) = args.span(_.matches(".*\\.(flow|fflow)"))
 
-    Interpreters.bindObject("args", "Seq[String]", restOfArgs.to[Seq])
+    Interpreters.bindObject("args", "Vector[String]", restOfArgs.to[Seq])
     Interpreters.addImports("uy.com.netlabs.luthier._",
                             "uy.com.netlabs.luthier.typelist._",
                             "scala.language._")

@@ -17,36 +17,47 @@ trait InterpretersComponent {
     @volatile private[this] var interpreters = Vector.empty[IMain]
     private[this] implicit val postInitializerExecutor = ExecutionContext.fromExecutor(java.util.concurrent.Executors.newFixedThreadPool(1))
 
+    /**
+     * Performs a bind ignoring the actual class, and then performs a cast using interpret to avoid
+     * problems with the clean classloader
+     */
+    private def bindValue(compiler: IMain, name: String, classDecl: String, obj: Any) {
+      val fn = compiler.naming.freshInternalVarName
+      require(compiler.bind(fn, "Any", obj) == IR.Success, s"Could not bind $name")
+      require(compiler.interpret(s"val $name = $fn.asInstanceOf[$classDecl]") == IR.Success, s"Could not bind $name")
+    }
+
     def bindObject(name: String, classDecl: String, obj: Any) {
       boundObjects :+= (name, classDecl, obj)
-      interpreters foreach (i => require(i.bind(name, classDecl, obj) == IR.Success))
+      interpreters foreach (i => bindValue(i, name, classDecl, obj))
     }
     def addImports(imports: String*) {
       this.imports ++= imports
       interpreters foreach (i => require(i.addImports(imports:_*) == IR.Success))
     }
 
-    def newInterpreter(name: String, exponseInterpreter: Boolean = false): IMain = {
+    def newInterpreter(name: String, exposeInterpreter: Boolean = false): Future[IMain] = {
       logger.info(s"Initializing compiler for $name")
-      val res = new IMain(compilerSettings)
+      val res = new IMain(compilerSettings) {
+        override val parentClassLoader = new ClassLoader(null) {}
+      }
       interpreters :+= res
-      val done = Promise[Unit]()
+      val done = Promise[IMain]()
       res.initialize {
-        done.success(())
+        done.success(res)
       }
-      done.future.onSuccess {case _ =>
-          Try {
-            res.beQuietDuring {
-              for (i <- imports) res.addImports(i)
-              for ((name, classDecl, obj) <- boundObjects) {
-                res.bind(name, classDecl, obj)
-              }
-              if (exponseInterpreter) res.bind("interpreter", res)
-            }
-            logger.info(s"Done initializing compiler for $name")
-          }.recover {case ex: Throwable => logger.error(s"Failed to initialize interpreter for $name", ex)}
+      done.future.map {res =>
+        res.beQuietDuring {
+          for (i <- imports) res.addImports(i)
+          for ((name, classDecl, obj) <- boundObjects) {
+            bindValue(res, name, classDecl, obj)
+          }
+          if (exposeInterpreter) {
+            bindValue(res, "interpreter", "scala.tools.nsc.interpreter.IMain", res)
+          }
+          res
+        }
       }
-      res
     }
 
     def disposeAll() {
