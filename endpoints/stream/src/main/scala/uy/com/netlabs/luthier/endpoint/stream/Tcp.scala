@@ -97,6 +97,12 @@ object Tcp extends StreamEndpointServerComponent {
   def closeClient(client: Message[SocketClient]) {
     client.payload.dispose
   }
+  def writeToClient(client: Message[SocketClient], arr: Array[Byte]) {
+    writeToClient(client, ByteBuffer.wrap(arr))
+  }
+  def writeToClient(client: Message[SocketClient], arr: ByteBuffer) {
+    client.payload.multiplexer addPending arr
+  }
 
   object Handler {
     def apply[S, P, R](message: Message[SocketClient],

@@ -171,6 +171,12 @@ object Sctp extends StreamEndpointServerComponent {
   def closeClient(client: Message[SctpClient]) {
     client.payload.dispose
   }
+  def writeToClient(client: Message[SctpClient], streamId: Int, arr: Array[Byte]) {
+    writeToClient(client, streamId, ByteBuffer.wrap(arr))
+  }
+  def writeToClient(client: Message[SctpClient], streamId: Int, arr: ByteBuffer) {
+    client.payload addPending streamId->arr
+  }
 
   object Handler {
     def apply[S, P, R](message: Message[SctpClient],
