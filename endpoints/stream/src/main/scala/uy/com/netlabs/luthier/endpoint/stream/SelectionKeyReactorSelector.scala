@@ -35,6 +35,7 @@ import java.nio.channels._
 trait SelectionKeyReactorSelector {
   val selector: Selector
   def mustStop: Boolean
+  def loopExceptionHandler: (SelectionKey, Throwable) => Unit
 
   def selectionLoop() {
     while (!mustStop) {
@@ -44,9 +45,11 @@ trait SelectionKeyReactorSelector {
         val sk = selector.selectedKeys().iterator()
         while (sk.hasNext()) {
           val k = sk.next()
-          debug(Console.GREEN + "Processing " + keyDescr(k) + Console.RESET)
-          k.attachment().asInstanceOf[SelectionKeyReactor].react(k)
-          debug(Console.GREEN + "Done with " + keyDescr(k) + Console.RESET)
+          try {
+            debug(Console.GREEN + "Processing " + keyDescr(k) + Console.RESET)
+            k.attachment().asInstanceOf[SelectionKeyReactor].react(k)
+            debug(Console.GREEN + "Done with " + keyDescr(k) + Console.RESET)
+          } catch {case ex: Throwable => loopExceptionHandler(k, ex)}
           sk.remove()
         }
       }

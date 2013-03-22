@@ -80,6 +80,13 @@ protected trait StreamEndpointServerComponent {
     }
     private var selectingFuture: Future[Unit] = _
     private var stopServer = false
+    protected lazy val reactorSelector = new SelectionKeyReactorSelector {
+      val selector = ServerComponent.this.selector
+      def mustStop = stopServer
+      val loopExceptionHandler = (key: SelectionKey, ex: Throwable) => {
+        log.error(ex, s"Uncought exception handling $key")
+      }
+    }
 
     def start() {
       val selKey = serverChannel.register(selector, SelectionKey.OP_ACCEPT, new SelectionKeyReactor)
@@ -90,10 +97,7 @@ protected trait StreamEndpointServerComponent {
           it = accept()
         }
       }
-      selectingFuture = flow blocking new SelectionKeyReactorSelector {
-        val selector = ServerComponent.this.selector
-        def mustStop = stopServer
-      }.selectionLoop
+      selectingFuture = flow blocking reactorSelector.selectionLoop
     }
     def dispose() {
       stopServer = true

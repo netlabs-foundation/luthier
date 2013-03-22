@@ -38,5 +38,8 @@ object `package` {
     println(s)
   }
 
-  private[stream] def keyDescr(k: SelectionKey) = s"Key($k),R:${k.isReadable()},W:${k.isWritable()},A:${k.isAcceptable()}. Chnl: ${k.channel()}"
+  private[stream] def keyDescr(k: SelectionKey) = {
+    if (k.isValid) s"Key($k),R:${k.isReadable()},W:${k.isWritable()},A:${k.isAcceptable()}. Chnl: ${k.channel()}"
+    else s"Invalid Key($k). Chnl: ${k.channel()}"
+  }
 }
