@@ -34,6 +34,7 @@ import scala.language._
 import language.experimental.macros
 import scala.reflect.macros.Context
 import scala.concurrent.Future
+import scala.util._
 import typelist._
 
 
@@ -136,7 +137,11 @@ trait Flows extends FlowsImplicits0 {
     }
     flow.rootEndpoint.runLogic
     val res = result.future
-    res.onComplete(_ => flow.dispose())(flow.workerActorsExecutionContext) // code already got executed, can request the flow to stop
+    res.onComplete {// code already got executed, can request the flow to stop
+      case Success(f: Future[_]) => //if whatever the result, it is another future, then we await for it to dispose the flow
+        f.onComplete(_ => flow.dispose())(flow.workerActorsExecutionContext)
+      case _ => flow.dispose() //under any other case, we dispose the flow right away.
+    }(flow.workerActorsExecutionContext)
     res
   }
 
