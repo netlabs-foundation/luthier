@@ -238,7 +238,6 @@ protected[jms] trait JmsOperations {
   def dispose() {
     val res = endpointReferenceCount.decrementAndGet
     if (res == 0) {
-      log.info("Dispoing JMS connection " + connection)
       Try(connection.close())
     }
   }
