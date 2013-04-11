@@ -59,7 +59,7 @@ private[jms] trait BaseJmsEndpoint extends endpoint.base.BaseSource with endpoin
   @volatile protected var threadLocalSession: ThreadLocal[Session] = new SessionThreadLocal
 
   private[this] val scheduledAttempt = new concurrent.SyncVar[Unit]()
-  def attemptConnection(): Boolean = {
+  def attemptConnection(): Boolean = scheduledAttempt.synchronized {
     if (scheduledAttempt.isSet) return false//if there is already an attempt scheduled, then this does nothing
     log.warning("Attempting to reestablish the JMS connection")
     try {
@@ -88,7 +88,9 @@ private[jms] trait BaseJmsEndpoint extends endpoint.base.BaseSource with endpoin
       jmsException.getCause match {
         case io: java.io.IOException =>
           log.warning("IOException found on JMS connection...")
-          try connection.close() catch {case _: Exception =>}
+          try connection.close() catch {case ex: Exception =>
+            log.error(ex, "Further exception trying to dispose broken JMS connection")
+          }
           instantiatedSessions = Vector.empty //no instantiatedSessions
           attemptConnection()
         case _ => log.error(jmsException, s"Unexpected JMS exception")
@@ -116,6 +118,7 @@ private[jms] trait BaseJmsEndpoint extends endpoint.base.BaseSource with endpoin
             }
           }
         })
+      log.info("Configured responsible consumer on destination " + destination)
     }
   }
 
@@ -207,6 +210,7 @@ extends BaseJmsEndpoint
             }
           }
         })
+      log.info("Configured responsible consumer on destination " + destination)
     }
     connection.start()
   }
