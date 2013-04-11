@@ -44,9 +44,10 @@ object JmsTest extends App {
       res.start
       res
     }
+    val Jms = new Jms(jmsConnectionFactory)
     val appContext = myApp
 
-    val askMeQueue = Jms.queue("askMe", jmsConnectionFactory)
+    val askMeQueue = Jms.queue("askMe")
 
     new Flow("say hello")(askMeQueue)(ExchangePattern.RequestResponse) {
       logic { req =>
@@ -54,21 +55,21 @@ object JmsTest extends App {
       }
     }
 
-    new Flow("logQuestion")(Jms.queue("logQuestion", jmsConnectionFactory))(ExchangePattern.OneWay) {
+    new Flow("logQuestion")(Jms.queue("logQuestion"))(ExchangePattern.OneWay) {
       logic { req =>
         askMeQueue.ask(req.as[String]) map {r =>
-          Jms.topic("result", jmsConnectionFactory).push(r.as[String])
+          Jms.topic("result").push(r.as[String])
         }
       }
     }
-    new Flow("listenResult")(Jms.topic("result", jmsConnectionFactory)) {
+    new Flow("listenResult")(Jms.topic("result")) {
       logic {req => println("Result to some request: " + req.payload)}
     }
 
     new Flow("ping")(endpoint.logical.Metronome("ping", 1 seconds)) {
       logic {m =>
         println("...pinging")
-        Jms.queue("logQuestion", jmsConnectionFactory).push(m) onComplete (t => println("Ping result " + t))
+        Jms.queue("logQuestion").push(m) onComplete (t => println("Ping result " + t))
       }
     }
 

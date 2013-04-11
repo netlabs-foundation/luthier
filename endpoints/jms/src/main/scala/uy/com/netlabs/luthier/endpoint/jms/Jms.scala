@@ -82,6 +82,7 @@ protected[jms] trait JmsOperations {
   protected val appContext: AppContext
   protected val log: LoggingAdapter = appContext.actorSystem.log
   @volatile var connection: Connection = connectionFactory.createConnection
+  connection.start()
 
   @volatile protected var instantiatedSessions = Vector.empty[Session]
   private class SessionThreadLocal extends ThreadLocal[Session] {
@@ -104,9 +105,9 @@ protected[jms] trait JmsOperations {
       newCon setExceptionListener ExceptionHandler
       connection = newCon
       log.info("JMS reconnection successful, re-registering listeners")
+      threadLocalSession = new SessionThreadLocal
       //call start again, so that Sources or Responsible may rebind themselves
       rebindMessageListeners()
-      threadLocalSession = new SessionThreadLocal
       log.info("Registration completed.")
       true
     } catch {case ex: Exception =>
@@ -222,6 +223,7 @@ protected[jms] trait JmsOperations {
       session.createConsumer(dest).setMessageListener(l)
       log.info(s"Listener for flow ${f.name} re-registered")
     }
+    if (registeredListeners.nonEmpty) connection.start()
   }
 
   private[this] val endpointReferenceCount = new java.util.concurrent.atomic.AtomicInteger(0)
