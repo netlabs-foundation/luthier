@@ -40,7 +40,7 @@ trait Endpoint {
   def dispose(): Unit
   implicit def flow: Flow
   def appContext = flow.appContext
-  def log = appContext.actorSystem.log
+  def log = flow.log
 }
 trait EndpointFactory[+E <: Endpoint] extends Equals {
   def apply(flow: Flow): E
