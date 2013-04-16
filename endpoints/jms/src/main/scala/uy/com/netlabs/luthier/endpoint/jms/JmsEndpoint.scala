@@ -46,6 +46,7 @@ private[jms] trait BaseJmsEndpoint extends endpoint.base.BaseSource with endpoin
   val jmsOperations: JmsOperations
   val messageSelector: String
   val ioThreads: Int
+  val autoHandleExceptions: Boolean
 
   /* Supported types on writing */
   type SupportedTypes = String :: Array[Byte] :: java.io.Serializable :: TypeNil
@@ -61,7 +62,16 @@ private[jms] trait BaseJmsEndpoint extends endpoint.base.BaseSource with endpoin
     if (onEventHandler != null) {
       jmsOperations.registerMessageListener(destination, new MessageListener {
           def onMessage(m: jmsMessage) {
-            Try(messageArrived(jmsOperations.jmsMessageToEsbMessage(newReceviedMessage, m))) match {
+            val mappedValue = try jmsOperations.jmsMessageToEsbMessage(newReceviedMessage, m)
+            catch {
+              case ex: Exception =>
+                if (autoHandleExceptions) {
+                  log.error(ex, "Failed reading JMS Message")
+                  return
+                }
+                newReceviedMessage(ex)
+            }
+            Try(messageArrived(mappedValue)) match {
               case Failure(ex) => log.error(ex, "Failed deliverying event")
               case _           =>
             }
@@ -85,7 +95,8 @@ class JmsQueueEndpoint(val flow: Flow,
                        queue: String,
                        val jmsOperations: JmsOperations,
                        val messageSelector: String,
-                       val ioThreads: Int)
+                       val ioThreads: Int,
+                       val autoHandleExceptions: Boolean)
 extends BaseJmsEndpoint
    with endpoint.base.BaseResponsible
    with Askable {
@@ -98,7 +109,17 @@ extends BaseJmsEndpoint
     if (onRequestHandler != null) {
       jmsOperations.registerMessageListener(destination, new MessageListener {
           def onMessage(m: jmsMessage) {
-            Try(requestArrived(jmsOperations.jmsMessageToEsbMessage(newReceviedMessage, m), sendMessage(_, m.getJMSReplyTo))) match {
+            val esbMessage = try jmsOperations.jmsMessageToEsbMessage(newReceviedMessage, m)
+            catch {
+              case ex: Exception =>
+                if (autoHandleExceptions) {
+                  log.error(ex, "Failed reading JMS Message")
+                  jmsOperations.sendMessage(ex, m.getJMSReplyTo)
+                  return
+                }
+                newReceviedMessage(ex)
+            }
+            Try(requestArrived(esbMessage, sendMessage(_, m.getJMSReplyTo))) match {
               case Failure(ex) => log.error(ex, "Failed delivering request")
               case _           =>
             }
@@ -123,7 +144,8 @@ class JmsTopicEndpoint(val flow: Flow,
                        topic: String,
                        val jmsOperations: JmsOperations,
                        val messageSelector: String,
-                       val ioThreads: Int)
+                       val ioThreads: Int,
+                       val autoHandleExceptions: Boolean)
 extends BaseJmsEndpoint {
 
   def createDestination(): javax.jms.Destination = jmsOperations.createTopic(topic)

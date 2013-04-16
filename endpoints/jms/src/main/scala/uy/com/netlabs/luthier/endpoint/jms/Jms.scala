@@ -62,14 +62,14 @@ class Jms(connectionFactory: ConnectionFactory) {
 //    }
   }
 
-  private case class EFQ(queue: String, messageSelector: String, ioThreads: Int) extends EndpointFactory[JmsQueueEndpoint] {
-    def apply(f: Flow) = new JmsQueueEndpoint(f, queue, jmsOperations(f.appContext), messageSelector, ioThreads)
+  private case class EFQ(queue: String, messageSelector: String, ioThreads: Int, autoHandleExceptions: Boolean) extends EndpointFactory[JmsQueueEndpoint] {
+    def apply(f: Flow) = new JmsQueueEndpoint(f, queue, jmsOperations(f.appContext), messageSelector, ioThreads, autoHandleExceptions)
   }
-  def queue(queue: String, messageSelector: String = null, ioThreads: Int = 4): EndpointFactory[JmsQueueEndpoint] = EFQ(queue, messageSelector, ioThreads)
-  private case class EFT(topic: String, messageSelector: String, ioThreads: Int) extends EndpointFactory[JmsTopicEndpoint] {
-    def apply(f: Flow) = new JmsTopicEndpoint(f, topic, jmsOperations(f.appContext), messageSelector, ioThreads)
+  def queue(queue: String, messageSelector: String = null, ioThreads: Int = 4, autoHandleExceptions: Boolean = true): EndpointFactory[JmsQueueEndpoint] = EFQ(queue, messageSelector, ioThreads, autoHandleExceptions)
+  private case class EFT(topic: String, messageSelector: String, ioThreads: Int, autoHandleExceptions: Boolean) extends EndpointFactory[JmsTopicEndpoint] {
+    def apply(f: Flow) = new JmsTopicEndpoint(f, topic, jmsOperations(f.appContext), messageSelector, ioThreads, autoHandleExceptions)
   }
-  def topic(topic: String, messageSelector: String = null, ioThreads: Int = 4): EndpointFactory[JmsTopicEndpoint] = EFT(topic, messageSelector, ioThreads)
+  def topic(topic: String, messageSelector: String = null, ioThreads: Int = 4, autoHandleExceptions: Boolean = true): EndpointFactory[JmsTopicEndpoint] = EFT(topic, messageSelector, ioThreads, autoHandleExceptions)
 }
 
 /**
