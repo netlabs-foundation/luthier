@@ -173,7 +173,7 @@ trait Flow extends FlowPatterns with Disposable {
             }
             scala.concurrent.BlockContext.withBlockContext(bc) {
               try w.promise.complete(Success(w.task()))
-              catch { case ex => w.promise.complete(Failure(ex)) }
+              catch { case ex: Exception => w.promise.complete(Failure(ex)) }
             }
         }
       }).withRouter(RoundRobinRouter(nrOfInstances = workers)), name.replace(' ', '-') + "-actors")
