@@ -67,13 +67,13 @@ class Jms(connectionFactory: ConnectionFactory) {
     def apply(f: Flow) = new JmsQueueEndpoint(f, queue, jmsOperations(f.appContext), messageSelector, ioThreads, autoHandleExceptions, deliveryMode)
   }
   def queue(queue: String, messageSelector: String = null, ioThreads: Int = 4,
-            autoHandleExceptions: Boolean = true, deliveryMode: Int = DeliveryMode.PERSISTENT): EndpointFactory[JmsQueueEndpoint] =
+            autoHandleExceptions: Boolean = true, deliveryMode: Int = jmsMessage.DEFAULT_DELIVERY_MODE): EndpointFactory[JmsQueueEndpoint] =
               EFQ(queue, messageSelector, ioThreads, autoHandleExceptions, deliveryMode)
   private case class EFT(topic: String, messageSelector: String, ioThreads: Int, autoHandleExceptions: Boolean, deliveryMode: Int) extends EndpointFactory[JmsTopicEndpoint] {
     def apply(f: Flow) = new JmsTopicEndpoint(f, topic, jmsOperations(f.appContext), messageSelector, ioThreads, autoHandleExceptions, deliveryMode)
   }
   def topic(topic: String, messageSelector: String = null, ioThreads: Int = 4,
-            autoHandleExceptions: Boolean = true, deliveryMode: Int = DeliveryMode.PERSISTENT): EndpointFactory[JmsTopicEndpoint] =
+            autoHandleExceptions: Boolean = true, deliveryMode: Int = jmsMessage.DEFAULT_DELIVERY_MODE): EndpointFactory[JmsTopicEndpoint] =
               EFT(topic, messageSelector, ioThreads, autoHandleExceptions, deliveryMode)
 }
 
