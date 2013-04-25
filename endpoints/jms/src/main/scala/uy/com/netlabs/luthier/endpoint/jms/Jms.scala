@@ -74,7 +74,7 @@ class Jms(connectionFactory: ConnectionFactory) {
 
 /**
  * This interfaces represents JMS doable JMS operations, abstracted from the actual implementation, so that we can
- * provide them resiliently, handling connection problems and stuf.
+ * provide them resiliently, handling connection problems and stuff.
  */
 protected[jms] trait JmsOperations {
 
@@ -198,8 +198,12 @@ protected[jms] trait JmsOperations {
         consumer setMessageListener new MessageListener {
           def onMessage(m) {
             consumer.close()
-            jmsResponse success jmsMessageToEsbMessage(p => msg.map(_ => p), m)
+            jmsResponse trySuccess jmsMessageToEsbMessage(p => msg.map(_ => p), m)
           }
+        }
+        appContext.actorSystem.scheduler.scheduleOnce(timeOut) {
+          try consumer.close() catch {case _: Exception =>}
+          jmsResponse tryFailure new java.util.concurrent.TimeoutException(s"$timeOut ellapsed")
         }
         jmsResponse.future
       }
