@@ -47,6 +47,7 @@ private[jms] trait BaseJmsEndpoint extends endpoint.base.BaseSource with endpoin
   val messageSelector: String
   val ioThreads: Int
   val autoHandleExceptions: Boolean
+  val deliveryMode: Int
 
   /* Supported types on writing */
   type SupportedTypes = String :: Array[Byte] :: java.io.Serializable :: TypeNil
@@ -87,7 +88,7 @@ private[jms] trait BaseJmsEndpoint extends endpoint.base.BaseSource with endpoin
   }
 
   protected def pushMessage[Payload: SupportedType](msg: Message[Payload]) {
-    jmsOperations.sendMessage(msg, createDestination())
+    jmsOperations.sendMessage(msg, createDestination(), deliveryMode)
   }
 }
 
@@ -96,7 +97,8 @@ class JmsQueueEndpoint(val flow: Flow,
                        val jmsOperations: JmsOperations,
                        val messageSelector: String,
                        val ioThreads: Int,
-                       val autoHandleExceptions: Boolean)
+                       val autoHandleExceptions: Boolean,
+                       val deliveryMode: Int)
 extends BaseJmsEndpoint
    with endpoint.base.BaseResponsible
    with Askable {
@@ -114,7 +116,7 @@ extends BaseJmsEndpoint
               case ex: Exception =>
                 if (autoHandleExceptions) {
                   log.error(ex, "Failed reading JMS Message")
-                  jmsOperations.sendMessage(ex, m.getJMSReplyTo)
+                  jmsOperations.sendMessage(ex, m.getJMSReplyTo, deliveryMode)
                   return
                 }
                 newReceviedMessage(ex)
@@ -130,13 +132,13 @@ extends BaseJmsEndpoint
   }
 
   def ask[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
-    jmsOperations.ask(msg, timeOut, createDestination())
+    jmsOperations.ask(msg, timeOut, createDestination(), deliveryMode)
   }
 
   protected def sendMessage(msg: Try[Message[OneOf[_, SupportedResponseTypes]]], dest: javax.jms.Destination) {
     msg match {
-      case Success(m) => jmsOperations.sendMessage(m.map(_.value), dest)(null) //force the evidence..
-      case Failure(ex) => jmsOperations.sendMessage(ex, dest)
+      case Success(m) => jmsOperations.sendMessage(m.map(_.value), dest, deliveryMode)(null) //force the evidence..
+      case Failure(ex) => jmsOperations.sendMessage(ex, dest, deliveryMode)
     }
   }
 }
@@ -145,7 +147,8 @@ class JmsTopicEndpoint(val flow: Flow,
                        val jmsOperations: JmsOperations,
                        val messageSelector: String,
                        val ioThreads: Int,
-                       val autoHandleExceptions: Boolean)
+                       val autoHandleExceptions: Boolean,
+                       val deliveryMode: Int)
 extends BaseJmsEndpoint {
 
   def createDestination(): javax.jms.Destination = jmsOperations.createTopic(topic)

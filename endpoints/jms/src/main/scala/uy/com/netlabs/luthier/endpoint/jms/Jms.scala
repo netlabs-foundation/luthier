@@ -36,7 +36,8 @@ import typelist._
 import akka.event.LoggingAdapter
 import javax.jms.{ ConnectionFactory, Connection, Queue, MessageListener,
                   ExceptionListener, Session, Message => jmsMessage,
-                  TextMessage, ObjectMessage, BytesMessage, IllegalStateException }
+                  TextMessage, ObjectMessage, BytesMessage, IllegalStateException,
+                  DeliveryMode}
 import scala.concurrent.{ ExecutionContext, Future, Promise }
 import scala.concurrent.duration._
 import scala.util.{ Try, Success, Failure }
@@ -62,14 +63,18 @@ class Jms(connectionFactory: ConnectionFactory) {
 //    }
   }
 
-  private case class EFQ(queue: String, messageSelector: String, ioThreads: Int, autoHandleExceptions: Boolean) extends EndpointFactory[JmsQueueEndpoint] {
-    def apply(f: Flow) = new JmsQueueEndpoint(f, queue, jmsOperations(f.appContext), messageSelector, ioThreads, autoHandleExceptions)
+  private case class EFQ(queue: String, messageSelector: String, ioThreads: Int, autoHandleExceptions: Boolean, deliveryMode: Int) extends EndpointFactory[JmsQueueEndpoint] {
+    def apply(f: Flow) = new JmsQueueEndpoint(f, queue, jmsOperations(f.appContext), messageSelector, ioThreads, autoHandleExceptions, deliveryMode)
   }
-  def queue(queue: String, messageSelector: String = null, ioThreads: Int = 4, autoHandleExceptions: Boolean = true): EndpointFactory[JmsQueueEndpoint] = EFQ(queue, messageSelector, ioThreads, autoHandleExceptions)
-  private case class EFT(topic: String, messageSelector: String, ioThreads: Int, autoHandleExceptions: Boolean) extends EndpointFactory[JmsTopicEndpoint] {
-    def apply(f: Flow) = new JmsTopicEndpoint(f, topic, jmsOperations(f.appContext), messageSelector, ioThreads, autoHandleExceptions)
+  def queue(queue: String, messageSelector: String = null, ioThreads: Int = 4,
+            autoHandleExceptions: Boolean = true, deliveryMode: Int = DeliveryMode.PERSISTENT): EndpointFactory[JmsQueueEndpoint] =
+              EFQ(queue, messageSelector, ioThreads, autoHandleExceptions, deliveryMode)
+  private case class EFT(topic: String, messageSelector: String, ioThreads: Int, autoHandleExceptions: Boolean, deliveryMode: Int) extends EndpointFactory[JmsTopicEndpoint] {
+    def apply(f: Flow) = new JmsTopicEndpoint(f, topic, jmsOperations(f.appContext), messageSelector, ioThreads, autoHandleExceptions, deliveryMode)
   }
-  def topic(topic: String, messageSelector: String = null, ioThreads: Int = 4, autoHandleExceptions: Boolean = true): EndpointFactory[JmsTopicEndpoint] = EFT(topic, messageSelector, ioThreads, autoHandleExceptions)
+  def topic(topic: String, messageSelector: String = null, ioThreads: Int = 4,
+            autoHandleExceptions: Boolean = true, deliveryMode: Int = DeliveryMode.PERSISTENT): EndpointFactory[JmsTopicEndpoint] =
+              EFT(topic, messageSelector, ioThreads, autoHandleExceptions, deliveryMode)
 }
 
 /**
@@ -154,11 +159,12 @@ protected[jms] trait JmsOperations {
    * Synchronously sends a message using a JMS producer.
    * If it is unable to send the message, it will throw an exception.
    */
-  def sendMessage[Payload](msg: Message[Payload], destination: javax.jms.Destination)
+  def sendMessage[Payload](msg: Message[Payload], destination: javax.jms.Destination, deliveryMode: Int)
   (implicit typeSupportedEv: TypeSupportedByTransport[String :: Array[Byte] :: java.io.Serializable :: TypeNil, Payload]) {
     implicit val session = threadLocalSession.get()
     handlingSessionClosed {
       val producer = session.createProducer(destination)
+      producer.setDeliveryMode(deliveryMode)
       producer.send(msg)
       producer.close()
     }
@@ -167,11 +173,12 @@ protected[jms] trait JmsOperations {
    * Synchronously sends a payload using a JMS producer.
    * If it is unable to send the message, it will throw an exception.
    */
-  def sendMessage[Payload](msg: Payload, destination: javax.jms.Destination)
+  def sendMessage[Payload](msg: Payload, destination: javax.jms.Destination, deliveryMode: Int)
   (implicit containedEv: Contained[String :: Array[Byte] :: java.io.Serializable :: TypeNil, Payload]) {
     implicit val session = threadLocalSession.get()
     handlingSessionClosed {
       val producer = session.createProducer(destination)
+      producer.setDeliveryMode(deliveryMode)
       producer.send(payloadToJmsMessage(msg, session))
       producer.close()
     }
@@ -181,12 +188,13 @@ protected[jms] trait JmsOperations {
    * Performs a JMS ask, which implies sending a message and asynchronously listening for the response
    * on an temporary queue.
    */
-  def ask[Payload](msg: Message[Payload], timeOut: FiniteDuration, destination: javax.jms.Destination)
+  def ask[Payload](msg: Message[Payload], timeOut: FiniteDuration, destination: javax.jms.Destination, deliveryMode: Int)
   (implicit typeSupportedEv: TypeSupportedByTransport[String :: Array[Byte] :: java.io.Serializable :: TypeNil, Payload],
    executionContext: ExecutionContext): Future[Message[Any]] = {
     implicit val session = threadLocalSession.get()
     handlingSessionClosed {
       val producer = session.createProducer(destination)
+      producer.setDeliveryMode(deliveryMode)
       val tempQueue = session.createTemporaryQueue
       val m = msg: jmsMessage
       m.setJMSReplyTo(tempQueue)
