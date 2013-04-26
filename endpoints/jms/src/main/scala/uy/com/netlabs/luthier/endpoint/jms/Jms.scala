@@ -210,7 +210,8 @@ protected[jms] trait JmsOperations {
           }
         }
         appContext.actorSystem.scheduler.scheduleOnce(timeOut) {
-          try consumer.close() catch {case _: Exception =>}
+          try consumer.close() catch {case ex: Exception => log.error(ex, "Could not dispose consumer")}
+          try tempQueue.delete() catch {case ex: Exception => log.error(ex, "Could not delete temporary queue " + tempQueue)}
           jmsResponse tryFailure new java.util.concurrent.TimeoutException(s"$timeOut ellapsed")
         }
         jmsResponse.future
