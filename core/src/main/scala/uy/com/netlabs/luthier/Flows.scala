@@ -96,6 +96,17 @@ trait Flows extends FlowsImplicits0 {
   }
 
   private[this] val anonFlowsIncId = new java.util.concurrent.atomic.AtomicLong()
+  private[this] val anonFlowsDisposer = {
+    import java.util.concurrent._
+    val res = Executors.newSingleThreadScheduledExecutor(new ThreadFactory {
+        def newThread(r: Runnable) = {
+          val res = new Thread(r, "Temporal flows disposer")
+          res setDaemon true
+          res
+        }
+      })
+    scala.concurrent.ExecutionContext.fromExecutor(res)
+  }
   /**
    * Convenient method to execute a code in a flow run context.
    * A special flow will be constructed for the passed code, it will run it immediately, and the be disposed.
@@ -139,9 +150,9 @@ trait Flows extends FlowsImplicits0 {
     val res = result.future
     res.onComplete {// code already got executed, can request the flow to stop
       case Success(f: Future[_]) => //if whatever the result, it is another future, then we await for it to dispose the flow
-        f.onComplete(_ => flow.dispose())(flow.workerActorsExecutionContext)
+        f.onComplete(_ => flow.dispose())(anonFlowsDisposer)
       case _ => flow.dispose() //under any other case, we dispose the flow right away.
-    }(flow.workerActorsExecutionContext)
+    }(anonFlowsDisposer)
     res
   }
 
