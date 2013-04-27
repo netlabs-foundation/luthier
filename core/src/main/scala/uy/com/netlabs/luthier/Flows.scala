@@ -84,7 +84,8 @@ trait Flows extends FlowsImplicits0 {
   }
 
   abstract class Flow[E <: InboundEndpoint, ResponseType](val name: String)(endpoint: EndpointFactory[E])(implicit val exchangePattern: ExchangePattern[E, ResponseType]) extends GFlow {
-    registeredFlows += this
+    protected def registerInParentFlows = true
+    if (registerInParentFlows) registeredFlows += this
     type InboundEndpointTpe = E
     type Logic = RootMessage[this.type] => ResponseType
     type LogicResult = ResponseType
@@ -95,6 +96,18 @@ trait Flows extends FlowsImplicits0 {
     exchangePattern.setup(rootEndpoint, this)
   }
 
+  private[this] val anonFlowsDiposer = new scala.concurrent.ExecutionContext {
+    import java.util.concurrent._
+    val executor = Executors.newFixedThreadPool(1, new ThreadFactory {
+        def newThread(r) = {
+          val t = new Thread(r, "Anonymous flows disposer")
+          t setDaemon true
+          t
+        }
+      })
+    def execute(r) = {executor.execute(r)}
+    def reportFailure(t) = appContext.actorSystem.log.error(t, "Error disposing anonymous flow")
+  }
   private[this] val anonFlowsIncId = new java.util.concurrent.atomic.AtomicLong()
   /**
    * Convenient method to execute a code in a flow run context.
@@ -129,6 +142,7 @@ trait Flows extends FlowsImplicits0 {
     val flowName = ("anon" + anonFlowsIncId.incrementAndGet + "@" + new Exception().getStackTrace()(2)).replace("$", "_").replaceAll("[()<>]", ";")
     val flow = new Flow(flowName)(new endpoint.base.DummySource) {
       logLifecycle = false
+      override def registerInParentFlows = false
       workers = 1 //it doesn't make sense to allocate more actors
       logic {m =>
         try result.success(code(this, m))
@@ -139,9 +153,9 @@ trait Flows extends FlowsImplicits0 {
     val res = result.future
     res.onComplete {// code already got executed, can request the flow to stop
       case Success(f: Future[_]) => //if whatever the result, it is another future, then we await for it to dispose the flow
-        f.onComplete(_ => flow.dispose())(flow.workerActorsExecutionContext)
+        f.onComplete{_ => flow.dispose()}(anonFlowsDiposer)
       case _ => flow.dispose() //under any other case, we dispose the flow right away.
-    }(flow.workerActorsExecutionContext)
+    }(anonFlowsDiposer)
     res
   }
 
