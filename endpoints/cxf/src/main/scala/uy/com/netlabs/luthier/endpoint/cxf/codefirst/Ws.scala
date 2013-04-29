@@ -61,7 +61,7 @@ object Ws {
       ioProfile.dispose()
     }
 
-    val ioProfile = base.IoProfile.threadPool(ioWorkers)
+    val ioProfile = base.IoProfile.threadPool(ioWorkers, flow.name + "-ws-ep")
 
     sei.InterfaceImplementor.methodImplementors += methodRef.method -> { args =>
       val payload = args match { //map from array to tuple

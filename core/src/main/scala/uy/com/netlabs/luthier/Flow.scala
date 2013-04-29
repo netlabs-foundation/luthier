@@ -91,7 +91,7 @@ trait Flow extends FlowPatterns with Disposable {
   val rootEndpoint: InboundEndpointTpe
   val log: LoggingAdapter
   var logLifecycle = true
-  private[this] var instantiatedEndpoints = Map.empty[EndpointFactory[_], Endpoint]
+  @volatile private[this] var instantiatedEndpoints = Map.empty[EndpointFactory[_], Endpoint]
 
   def start() {
     rootEndpoint.start()

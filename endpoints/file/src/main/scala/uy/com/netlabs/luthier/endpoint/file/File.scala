@@ -50,7 +50,7 @@ class FileEndpoint(f: Flow, path: Path, charset: String, ioThreads: Int) extends
 
   implicit val flow = f
 
-  val ioProfile = endpoint.base.IoProfile.threadPool(ioThreads)
+  val ioProfile = endpoint.base.IoProfile.threadPool(ioThreads, flow.name + "-file-ep")
 
   protected def pushMessage[Payload: SupportedType](msg: Message[Payload]) {
     msg.payload match {

@@ -51,7 +51,7 @@ object Syslog {
     type SupportedTypes = (Int, String) :: String :: SyslogMessageIF :: (Int, SyslogMessageIF) :: TypeNil
 
     var syslogInstance: SyslogIF = _
-    lazy val ioProfile = base.IoProfile.threadPool(ioWorkers)
+    lazy val ioProfile = base.IoProfile.threadPool(ioWorkers, flow.name + "-syslog-ep")
     val appName = flow.appContext.name
 
     def pushMessage[Payload: SupportedType](m) = {

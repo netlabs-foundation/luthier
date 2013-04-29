@@ -56,7 +56,7 @@ private[jms] trait BaseJmsEndpoint extends endpoint.base.BaseSource with endpoin
   type Payload = Any
   type Response = Any
 
-  val ioProfile = endpoint.base.IoProfile.threadPool(ioThreads)
+  val ioProfile = endpoint.base.IoProfile.threadPool(ioThreads, flow.name + "-jms-ep")
 
   protected def configureSourceOnStart(destination: javax.jms.Destination) {
     jmsOperations.start()

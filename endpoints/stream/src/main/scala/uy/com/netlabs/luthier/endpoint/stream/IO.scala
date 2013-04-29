@@ -114,7 +114,7 @@ object IO {
     type SupportedTypes = OutPayload :: TypeNil
 
     val ioWorkers: Int
-    val ioProfile = base.IoProfile.threadPool(ioWorkers)
+    val ioProfile = base.IoProfile.threadPool(ioWorkers, flow.name + "-outputstream-ep")
 
     def send(message: Message[OutPayload])
     protected def pushMessage[MT: SupportedType](msg): Unit = {
@@ -171,7 +171,7 @@ object IO {
     type ConsumerState = S
     type ConsumerProd = P
 
-    val ioProfile = base.IoProfile.threadPool(ioWorkers)
+    val ioProfile = base.IoProfile.threadPool(ioWorkers, flow.name + "-inputstream-ep")
     protected def retrieveMessage(mf) = mf(syncConsumer.consume(channel.read).get)
   }
 

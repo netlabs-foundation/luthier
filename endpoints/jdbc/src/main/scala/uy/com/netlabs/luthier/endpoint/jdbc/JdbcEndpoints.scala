@@ -60,7 +60,7 @@ class JdbcPull[R](val flow: Flow,
     }
   }
 
-  lazy val ioProfile = endpoint.base.IoProfile.threadPool(ioThreads)
+  lazy val ioProfile = endpoint.base.IoProfile.threadPool(ioThreads, flow.name + "-jdbc-ep")
 
   protected def retrieveMessage(mf): uy.com.netlabs.luthier.Message[Payload] = {
     val res = Try {
@@ -92,7 +92,7 @@ class JdbcAskable[R](val flow: Flow,
     connection = dataSource.getConnection()
   }
 
-  private[this] val ioProfile = endpoint.base.IoProfile.threadPool(ioThreads)
+  private[this] val ioProfile = endpoint.base.IoProfile.threadPool(ioThreads, flow.name)
 
   //TODO: Honor the timeout
   def ask[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {

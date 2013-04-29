@@ -42,7 +42,7 @@ object Function {
     type Response = R
     type SupportedTypes = Function0[R] :: TypeNil
 
-    val ioProfile = base.IoProfile.threadPool(ioThreads)
+    val ioProfile = base.IoProfile.threadPool(ioThreads, flow.name + "-function-ep")
     protected def retrieveMessage(mf): Message[Payload] = mf(function())
 
     def ask[Payload: SupportedType](msg, timeOut): Future[Message[Response]] = {
