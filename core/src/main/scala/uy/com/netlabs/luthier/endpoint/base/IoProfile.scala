@@ -38,8 +38,14 @@ trait IoProfile {
   def dispose(): Unit
 }
 object IoProfile {
-  def threadPool(threads: Int) = new IoProfile {
-    val executor = Executors.newFixedThreadPool(threads)
+  def threadPool(threads: Int, poolName: String) = new IoProfile {
+    val executor = Executors.newFixedThreadPool(threads, new java.util.concurrent.ThreadFactory {
+        val num = new java.util.concurrent.atomic.AtomicInteger
+        def newThread(r: Runnable) = {
+          new Thread(r, poolName + "-" + num.incrementAndGet)
+        }
+      })
+    executor.asInstanceOf[java.util.concurrent.ThreadPoolExecutor].prestartAllCoreThreads
     val executionContext = ExecutionContext.fromExecutor(executor)
     def dispose() {executor.shutdown()}
   }
