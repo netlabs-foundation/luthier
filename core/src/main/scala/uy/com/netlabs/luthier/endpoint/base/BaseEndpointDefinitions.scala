@@ -124,35 +124,3 @@ trait BaseSink extends Sink with IoExecutionContext {
 
   protected def pushMessage[Payload: SupportedType](msg: Message[Payload])
 }
-
-//VMEndpoints are meant to be called via runFlow, since they will generate no messages.
-/**
- * VM objects contains two definitions of endpoint factories, source and responsible.
- * They are both VM endpoints which dont actually generate any Message. Their intended
- * usage is to have typed flows to be used internally by reference with runFlow.
- */
-object VM {
-
-  class VMSourceEndpoint[ExpectedType] private[VM](val flow: Flow) extends BaseSource {
-    type Payload = ExpectedType
-    def start() {}
-    def dispose() {}
-  }
-  case class SourceEndpointFactory[ExpectedType] private[VM]() extends EndpointFactory[VMSourceEndpoint[ExpectedType]] {
-    def apply(f) = new VMSourceEndpoint[ExpectedType](f)
-  }
-
-  def source[ExpectedType] = SourceEndpointFactory[ExpectedType]()
-
-  class VMResponsibleEndpoint[ReqType, ResponseType <: TypeList] private[VM](val flow: Flow) extends Responsible {
-    type Payload = ReqType
-    type SupportedResponseTypes <: ResponseType
-    def start() {}
-    def dispose() {}
-  }
-  case class ResponsibleEndpointFactory[ReqType, ResponseType <: TypeList] private[VM]() extends EndpointFactory[VMResponsibleEndpoint[ReqType, ResponseType]] {
-    def apply(f) = new VMResponsibleEndpoint[ReqType, ResponseType](f)
-  }
-
-  def responsible[ReqType, ResponseType <: TypeList] = ResponsibleEndpointFactory[ReqType, ResponseType]()
-}
