@@ -40,8 +40,9 @@ class VmEndpointTest extends BaseFlowsTest {
     they("shuold successfully ignore messages of invalid types") {
       new Flows {
         val appContext = testApp
+        val Vm = VM.forAppContext(appContext)
         val p = Promise[Unit]()
-        new Flow("source")(VM.source[String]("the-test-actor")) {
+        new Flow("source")(Vm.source[String]("the-test-actor")) {
           logic {msg =>
             if (msg.payload == 42) {println("Error, 42 this should never happen!"); sys.exit(5)}
             println("Message " + msg.payload + " arrived")
@@ -50,7 +51,7 @@ class VmEndpointTest extends BaseFlowsTest {
         }.start()
         inFlow {(f, msg) =>
           import f._
-          val dest = VM.sink[Any]("user/the-test-actor")
+          val dest = Vm.sink[Any]("user/VM/the-test-actor")
           dest.push(msg.map(_ => 42)) //wrong message
           dest.push(msg.map(_ => "42 - hellooooooo")) //wrong message
         }
@@ -60,13 +61,14 @@ class VmEndpointTest extends BaseFlowsTest {
     they("shuold support responsible") {
       new Flows {
         val appContext = testApp
+        val Vm = VM.forAppContext(appContext)
         val p = Promise[String]()
-        new Flow("responsible")(VM.responsible[String, String :: TypeNil]("the-test-actor")) {
+        new Flow("responsible")(Vm.responsible[String, String :: TypeNil]("the-test-actor")) {
           logic {msg => msg.map(m => "Hello " + m)}
         }.start()
         inFlow {(f, msg) =>
           import f._
-          val dest = VM.ref[String, String]("user/the-test-actor")
+          val dest = Vm.ref[String, String]("user/VM/the-test-actor")
           val q = dest.ask(msg.map(_ => "world")) //wrong message
           q.onSuccess {case resp => p.trySuccess(resp.payload)}
           q

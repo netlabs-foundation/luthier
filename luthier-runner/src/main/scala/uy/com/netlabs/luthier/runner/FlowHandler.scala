@@ -40,7 +40,7 @@ import akka.event.LoggingAdapter
 
 import language._
 
-class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
+class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String, shareGlobalActorContext: Boolean = false) {
   private lazy val compilerLazy = compiler
   val filePath = Paths.get(file)
   @volatile var lastUpdate: Long = 0
@@ -63,15 +63,18 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
                   val instantiate = load(runnerFlows.appContext)
                   if (_theFlows != null) {
                     logger.info(Console.MAGENTA + s"Stoping previous incarnation" + Console.RESET)
-                    _theFlows foreach (_.registeredFlows foreach (_.dispose()))
-                    _theFlows.head.appContext.actorSystem.shutdown() //they share appcontext, so stopping the head is enough
+                    _theFlows
+                    _theFlows foreach (_.stopAllFlows)
+                    if (!shareGlobalActorContext) {
+                      _theFlows.head.appContext.actorSystem.shutdown() //all the flowss share the same appContext, so stopping the head is enough.
+                    }
                     logger.info(Console.MAGENTA + s"Done" + Console.RESET)
                   }
                   instantiate()
                 } else logger.info(Console.MAGENTA + s"Flow does not compile" + Console.RESET)
               }
             }
-          } catch { case ex: Throwable => logger.warning("Error while loading flow " + file, ex) }
+          } catch { case ex: Throwable => logger.error(ex, "Error while loading flow " + file) }
         }
       })
     _watcherFlow.get.start()
@@ -85,9 +88,9 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
           val content = Files.readAllLines(filePath, java.nio.charset.Charset.forName("utf8")).toSeq
           compilerLazy.compileString(content.mkString("\n"))
         case _ if filePath.toString endsWith ".flow"  =>
-          val script = "object script {\n" + 
-          "  val args: Seq[String] = null\n" + 
-          "  val interpreter: scala.tools.nsc.interpreter.IMain = null\n" + 
+          val script = "object script {\n" +
+          "  val args: Seq[String] = null\n" +
+          "  val interpreter: scala.tools.nsc.interpreter.IMain = null\n" +
           "  val config = com.typesafe.config.ConfigFactory.load()\n" + //have to simulate a valid config
           flowScript + "\n}"
           compilerLazy.compileString(script)
@@ -116,7 +119,11 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
   }
   private[this] def loadFlow(parentAppContext: AppContext, filePath: Path): () => Unit = {
     val script = flowScript
-    require(compilerLazy.bind("config", parentAppContext.actorSystem.settings.config) == IR.Success, "Failed compiling flow " + file)
+    if (shareGlobalActorContext) {
+      require(compilerLazy.bind("sharedAppContext", parentAppContext) == IR.Success, "Failed compiling flow " + file)
+    } else {
+      require(compilerLazy.bind("config", parentAppContext.actorSystem.settings.config) == IR.Success, "Failed compiling flow " + file)
+    }
     require(compilerLazy.interpret(script) == IR.Success, "Failed compiling flow " + file)
     val flows = compilerLazy.lastRequest.getEvalTyped[Flows].getOrElse(throw new IllegalStateException("Could not load flow " + file))
     () => {
@@ -140,7 +147,7 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
       import uy.com.netlabs.luthier._
       import uy.com.netlabs.luthier.typelist._
       import scala.language._
-      val app = AppContext.build("${appName}", java.nio.file.Paths.get("$file"), config)
+      val app = ${if (shareGlobalActorContext) "sharedAppContext" else """AppContext.build("${appName}", java.nio.file.Paths.get("$file"), config)"""}
       val flow = new Flows {
         val appContext = app
 
@@ -195,7 +202,7 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String) {
             val r = file.stripSuffix(".fflow").stripSuffix(".scala").replace('/', '-')
             if (r.charAt(0) == '-') r.drop(1) else r
           }
-          val appContext = AppContext.build(appName, filePath, parentAppContext.actorSystem.settings.config)
+          val appContext = if (shareGlobalActorContext) parentAppContext else AppContext.build(appName, filePath, parentAppContext.actorSystem.settings.config)
           val flowss = possibleFlows map {
             case Right((flowsSymbol, argumentsSymbols)) =>
               def loadClass(c: String) = compilerLazy.getInterpreterClassLoader.loadClass(c)

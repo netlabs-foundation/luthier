@@ -41,7 +41,7 @@ import java.nio.file._
 import org.slf4j._
 import scala.annotation.varargs
 
-class FlowsRunner(val appContext: AppContext,
+class FlowsRunner(val appContext: AppContext, shareGlobalAppContext: Boolean,
                   compilerSettings: Settings, classLoader: ClassLoader) {
   import FlowsRunner._
 
@@ -67,9 +67,10 @@ class FlowsRunner(val appContext: AppContext,
     compiler
   }
 
-  def this(appContextName: String, classLoader: ClassLoader) = this(AppContext.build(appContextName, Paths.get("")),
-                                                                    FlowsRunner.defaultCompilerSettings(classLoader), classLoader)
-  def this(classLoader: ClassLoader) = this("Runner", classLoader)
+  def this(appContextName: String, shareGlobalAppContext: Boolean, classLoader: ClassLoader) =
+    this(AppContext.build(appContextName, Paths.get("")), shareGlobalAppContext,
+         FlowsRunner.defaultCompilerSettings(classLoader), classLoader)
+  def this(classLoader: ClassLoader, shareGlobalAppContext: Boolean) = this("Runner", shareGlobalAppContext, classLoader)
 
   /**
    * Binds the given object into the compiler instance, so its accessible as a global variable from the
@@ -84,7 +85,7 @@ class FlowsRunner(val appContext: AppContext,
   }
 
   @varargs def load(flows: Path*) = flows.map { path =>
-    val h = new FlowHandler(lazyCompiler, appContext.actorSystem.log, path.toAbsolutePath().toString)
+    val h = new FlowHandler(lazyCompiler, appContext.actorSystem.log, path.toAbsolutePath().toString, shareGlobalAppContext)
     h.load(runnerFlows.appContext)() //attempt to initialize it synchronously
     h.startWatching(runnerFlows)
     h

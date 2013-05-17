@@ -40,7 +40,26 @@ import scala.reflect.{ClassTag, classTag}
 /**
  * TODO: document
  */
-object VM {
+class VM private[VM](val appContext: AppContext) {
+
+  //Supervisor of all instantiated endpoints
+  private[VM] class SetupEndpoint(val actorFactory: () => Actor, val actorName: String)
+  private[VM] class KillEndpoint(val ref: ActorRef)
+  private[VM] val endpointsSupervisor = try {
+    appContext.actorSystem.actorOf(Props(new Actor {
+          def receive = {
+            case s: SetupEndpoint =>
+              val ref = context.actorOf(Props(s.actorFactory()), s.actorName)
+              println(ref + " created")
+              sender ! ref
+            case k: KillEndpoint =>
+              sender ! context.stop(k.ref)
+          }
+        }), "VM")
+  } catch {case e: InvalidActorNameException =>
+      //the supervisor is already there, so just reference it
+      appContext.actorSystem.actorFor("user/VM")
+  }
 
   //////////////////////////////////////////////////////////////////////
   // Inbound endpoints
@@ -52,15 +71,19 @@ object VM {
      */
     def actorPath: String
 
-    @volatile private[this] var endpointActor: ActorRef = _
+    @volatile private[this] var _endpointActor: ActorRef = _
+    def endpointActor = _endpointActor
 
     protected def newReceiverActor: Actor
 
     def start() {
-      endpointActor = appContext.actorSystem.actorOf(Props(newReceiverActor), actorPath)
+      val creationFuture = akka.pattern.ask(endpointsSupervisor).ask(new SetupEndpoint(() => newReceiverActor, actorPath))(500.millis).
+      map(e => e.asInstanceOf[ActorRef])(appContext.actorSystem.dispatcher)
+      _endpointActor = Await.result(creationFuture, 500.millis)
     }
     def dispose() {
-      appContext.actorSystem.stop(endpointActor)
+      val killFuture = akka.pattern.ask(endpointsSupervisor).ask(new KillEndpoint(_endpointActor))(500.millis)
+      Await.result(killFuture, 500.millis)
     }
   }
 
@@ -141,4 +164,7 @@ object VM {
 
   def sink[Out](actorPath: String) = VmOutboundEndpointFactory[Out :: TypeNil, Any](actorPath)
   def ref[Out, ExpectedResponse](actorPath: String) = VmOutboundEndpointFactory[Out :: TypeNil, ExpectedResponse](actorPath)
+}
+object VM {
+  def forAppContext(ac: AppContext) = new VM(ac)
 }
