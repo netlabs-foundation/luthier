@@ -128,7 +128,7 @@ class VM private[VM](val appContext: AppContext) {
       implicit val ec = appContext.actorSystem.dispatcher
       val f = onRequestHandler(m)
       f.onComplete {
-        case Success(msg) => requestor.tell(msg, self)
+        case Success(msg) => requestor.tell(msg.payload.value, self)
         case Failure(err) => requestor.tell(err, self)
       }
       f onFailure { case ex => appContext.actorSystem.log.error(ex, "Error on flow " + flow) }
