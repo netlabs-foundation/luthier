@@ -41,7 +41,7 @@ import typelist._
 /**
  * This class defines a scope where flows can be defined.
  */
-trait Flows extends FlowsImplicits0 {
+trait Flows {
   import uy.com.netlabs.luthier.{ Flow => GFlow }
   def appContext: AppContext
   /**
@@ -49,14 +49,6 @@ trait Flows extends FlowsImplicits0 {
    * on implementation.
    */
   protected implicit def flowsAppContext = appContext
-  //from message stright to future
-  implicit def message2FutureOneOf[MT, TL <: TypeList](m: Message[MT])(implicit contained: Contained[TL, MT]): Future[Message[OneOf[_, TL]]] = {
-    Future.successful(m map (p =>  new OneOf[MT, TL](p)))
-  }
-  //future to future
-  implicit def futureMessage2FutureOneOf[MT, TL <: TypeList](f: Future[Message[MT]])(implicit contained: Contained[TL, MT]): Future[Message[OneOf[_, TL]]] = {
-    f.map (m => m.map (p => new OneOf(p): OneOf[_, TL]))(appContext.actorSystem.dispatcher)
-  }
   implicit val flowLogSource = new akka.event.LogSource[GFlow] {
     def genString(f) = f.appContext.name + ":" + f.name
   }
@@ -178,24 +170,4 @@ trait Flows extends FlowsImplicits0 {
    * Helper method that stops all the flows registered in this container
    */
   def stopAllFlows() {registeredFlows foreach (_.dispose())}
-}
-object Flows {
-
-  def genericInvalidResponseImpl[V, TL <: TypeList](c: Context)(value: c.Expr[V])(implicit valueEv: c.WeakTypeTag[V], tlEv: c.WeakTypeTag[TL]): c.Expr[Future[Message[OneOf[_, TL]]]] = {
-    val expectedTypes = TypeList.describe(tlEv)
-    c.abort(c.enclosingPosition, "\nInvalid response found: " + valueEv.tpe + ".\n" +
-            "Expected a Message[T] or a Future[Message[T]] where T could be any of [" + expectedTypes.mkString("\n    ", "\n    ", "\n]"))
-  }
-}
-
-/**
- * Trait to be mixed in Flows which provides with implicits for error reporting
- */
-private[luthier] sealed trait FlowsImplicits0 extends FlowsImplicits1 {
-}
-/**
- * Even lower implicits
- */
-private[luthier] sealed trait FlowsImplicits1 {
-  implicit def genericInvalidResponse[V, TL <: TypeList](value: V): Future[Message[OneOf[_, TL]]] = macro Flows.genericInvalidResponseImpl[V, TL]
 }

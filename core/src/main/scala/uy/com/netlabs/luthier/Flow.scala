@@ -37,6 +37,7 @@ import akka.routing.RoundRobinRouter
 import akka.event.LoggingAdapter
 import scala.concurrent.{ ExecutionContext, Promise, Future, duration }, duration._
 import scala.util._
+import typelist._
 
 /**
  * The base definition of everything a flow needs to works. A flow is associated to an AppContext, from which
@@ -83,7 +84,7 @@ import scala.util._
  *   }
  * }}}
  */
-trait Flow extends FlowPatterns with Disposable {
+trait Flow extends FlowPatterns with Disposable with LowPriorityImplicits {
   type InboundEndpointTpe <: InboundEndpoint
 
   def name: String
@@ -112,6 +113,11 @@ trait Flow extends FlowPatterns with Disposable {
     d.onDispose(_ => dispose())
     this
   }
+
+
+//  implicit def genericInvalidMessage[V <: Message[_], TL <: TypeList](value: V): Future[Message[OneOf[_, TL]]] = macro Flow.genericInvalidMessageImpl[V, TL]
+//  implicit def genericInvalidFutureMessage[V <: Future[Message[_]], TL <: TypeList](value: V): Future[Message[OneOf[_, TL]]] = macro Flow.genericInvalidFutureMessageImpl[V, TL]
+//  implicit def genericInvalidResponse[V, TL <: TypeList](value: V): Future[Message[OneOf[_, TL]]] = macro Flow.genericInvalidResponseImpl[V, TL]
 
   type Logic <: RootMessage[this.type] => LogicResult
   type LogicResult
@@ -234,6 +240,20 @@ trait Flow extends FlowPatterns with Disposable {
     Future(code)(blockingExecutorContext)
   }
 }
+/**
+ * Trait to be mixed into Flow to provide generic error message
+ */
+private[luthier] trait LowPriorityImplicits {
+  def appContext: AppContext
+
+  implicit def message2FutureOneOf[MT, TL <: TypeList](m: Message[MT]): Future[Message[OneOf[_, TL]]] =
+    macro Flow.message2FutureOneOfImpl[MT, TL]
+  implicit def futureMessage2FutureOneOf[MT, TL <: TypeList](f: Future[Message[MT]]): Future[Message[OneOf[_, TL]]] =
+    macro Flow.futureMessage2FutureOneOfImpl[MT, TL]
+  implicit def payload2OneOf[MT, TL <: TypeList](v: MT): OneOf[MT, TL] = macro Flow.payload2OneOfImpl[MT, TL]
+  implicit def genericInvalidResponse[MT, TL <: TypeList](v: MT): Future[Message[OneOf[_, TL]]] =
+    macro Flow.genericInvalidResponseImpl[MT, TL]
+}
 object Flow {
   class Work[R](val task: () => R) {
     protected[Flow] val promise = Promise[R]()
@@ -250,6 +270,56 @@ object Flow {
     }.head
     val selectMessage = c.Expr(c.parse(collected.encoded))
     reify(selectMessage.splice)
+  }
+
+  def message2FutureOneOfImpl[MT, TL <: TypeList](c: Context)(m: c.Expr[Message[MT]])
+  (implicit valueEv: c.WeakTypeTag[MT], tlEv: c.WeakTypeTag[TL]): c.Expr[Future[Message[OneOf[_, TL]]]] = {
+    val containedTree = c.inferImplicitValue(c.weakTypeOf[Contained[TL, MT]], true, true, c.enclosingPosition)
+    val contained = c.Expr[Contained[TL, MT]](containedTree)
+    if (containedTree == c.universe.EmptyTree) {
+      val expectedTypes = TypeList.describe(tlEv)
+      c.abort(m.tree.pos, "\nInvalid type of response found in message: " + valueEv.tpe + ".\n" +
+              "Expected a Message[T] or a Future[Message[T]] where T could be any of [" + expectedTypes.mkString("\n    ", "\n    ", "\n]"))
+    } else {
+      c.universe.reify {
+        Future.successful(m.splice map (p =>  new OneOf[MT, TL](p)(contained.splice)))
+      }
+    }
+  }
+  def futureMessage2FutureOneOfImpl[MT, TL <: TypeList](c: Context {type PrefixType = Flow})(f: c.Expr[Future[Message[MT]]])
+  (implicit valueEv: c.WeakTypeTag[MT], tlEv: c.WeakTypeTag[TL]): c.Expr[Future[Message[OneOf[_, TL]]]] = {
+    val containedTree = c.inferImplicitValue(c.weakTypeOf[Contained[TL, MT]], true, true, c.enclosingPosition)
+    val contained = c.Expr[Contained[TL, MT]](containedTree)
+    if (containedTree == c.universe.EmptyTree) {
+      val expectedTypes = TypeList.describe(tlEv)
+      c.abort(f.tree.pos, "\nInvalid type of response found in future of message: " + valueEv.tpe + ".\n" +
+              "Expected a Message[T] or a Future[Message[T]] where T could be any of [" + expectedTypes.mkString("\n    ", "\n    ", "\n]"))
+    } else {
+      c.universe.reify {
+        f.splice.map (m => m.map (p => new OneOf(p)(contained.splice): OneOf[_, TL]))(c.prefix.splice.appContext.actorSystem.dispatcher)
+      }
+    }
+  }
+  def payload2OneOfImpl[MT, TL <: TypeList](c: Context)(v: c.Expr[MT])
+  (implicit valueEv: c.WeakTypeTag[MT], tlEv: c.WeakTypeTag[TL]): c.Expr[OneOf[MT, TL]] = {
+    val containedTree = c.inferImplicitValue(c.weakTypeOf[Contained[TL, MT]], true, true, c.enclosingPosition)
+    val contained = c.Expr[Contained[TL, MT]](containedTree)
+    if (containedTree == c.universe.EmptyTree) {
+      val expectedTypes = TypeList.describe(tlEv)
+      c.abort(v.tree.pos, "\nInvalid type of response found in message mapping " + valueEv.tpe + ".\n" +
+              "Expected a type that is any of [" + expectedTypes.mkString("\n    ", "\n    ", "\n]"))
+    } else {
+      c.universe.reify {
+        new OneOf[MT, TL](v.splice)(contained.splice)
+      }
+    }
+  }
+
+  def genericInvalidResponseImpl[MT, TL <: TypeList](c: Context)(v: c.Expr[MT])
+  (implicit valueEv: c.WeakTypeTag[MT], tlEv: c.WeakTypeTag[TL]): c.Expr[Future[Message[OneOf[_, TL]]]] = {
+    val expectedTypes = TypeList.describe(tlEv)
+    c.abort(c.enclosingPosition, "\nInvalid response found: " + valueEv.tpe + ".\n" +
+            "Expected a Message[T] or a Future[Message[T]] where T could be any of [" + expectedTypes.mkString("\n    ", "\n    ", "\n]"))
   }
 
 }

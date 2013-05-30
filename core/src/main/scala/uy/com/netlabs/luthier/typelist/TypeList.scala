@@ -87,10 +87,10 @@ final class TypeNil extends TypeList {
   type Tail = TypeNil
 }
 
-sealed trait ErrorSelectorImplicits[Selector[TL <: TypeList, A]] {
-  self: TypeSelectorImplicits[Selector] =>
-  implicit def noContains[H, T <: TypeList, A]: Selector[H :: T, A] = macro TypeSelectorImplicits.noSelectorErrorImpl[Selector, H :: T, A]
-}
+//sealed trait ErrorSelectorImplicits[Selector[TL <: TypeList, A]] {
+//  self: TypeSelectorImplicits[Selector] =>
+////  implicit def noContains[H, T <: TypeList, A]: Selector[H :: T, A] = macro TypeSelectorImplicits.noSelectorErrorImpl[Selector, H :: T, A]
+//}
 sealed trait LowPrioritySelectorImplicits[Selector[TL <: TypeList, A]] {
   self: TypeSelectorImplicits[Selector] =>
   implicit def tailContains[H, T <: TypeList, A](implicit c: Selector[T, A]): Selector[H :: T, A] = impl
@@ -100,10 +100,10 @@ trait TypeSelectorImplicits[Selector[TL <: TypeList, A]] extends LowPrioritySele
   def impl[H <: TypeList, A]: Selector[H, A] = null.asInstanceOf[Selector[H, A]]
 }
 object TypeSelectorImplicits {
-  import scala.reflect.macros.Context
-  def noSelectorErrorImpl[Selector[_ <: TypeList, _], T <: TypeList: c.WeakTypeTag, A: c.WeakTypeTag](c: Context): c.Expr[Selector[T, A]] = {
-    c.abort(c.enclosingPosition, "EEEXXXPLOOOOOOOOOTIOOON!")
-  }
+//  import scala.reflect.macros.Context
+//  def noSelectorErrorImpl[Selector[_ <: TypeList, _], T <: TypeList: c.WeakTypeTag, A: c.WeakTypeTag](c: Context): c.Expr[Selector[T, A]] = {
+//    c.abort(c.enclosingPosition, "EEEXXXPLOOOOOOOOOTIOOON!")
+//  }
 }
 
 @annotation.implicitNotFound("${E} is not contained in ${TL}")
@@ -115,5 +115,5 @@ class OneOf[+E, TL <: TypeList](val value: E)(implicit contained: Contained[TL, 
   def valueAs[T](implicit contained: Contained[TL, T]) = value.asInstanceOf[T]
 }
 object OneOf {
-  implicit def anyToOneOf[E, TL <: TypeList](e: E)(implicit contained: Contained[TL, E]) = new OneOf[E, TL](e)
+//  implicit def anyToOneOf[E, TL <: TypeList](e: E)(implicit contained: Contained[TL, E]) = new OneOf[E, TL](e)
 }

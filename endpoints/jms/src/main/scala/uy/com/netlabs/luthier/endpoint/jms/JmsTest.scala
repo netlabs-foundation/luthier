@@ -31,6 +31,7 @@
 package uy.com.netlabs.luthier
 package endpoint.jms
 
+import scala.concurrent._
 import scala.concurrent.duration._
 import language._
 
