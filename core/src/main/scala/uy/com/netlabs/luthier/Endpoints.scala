@@ -100,8 +100,8 @@ object OutboundEndpoint {
   (implicit pEv: c.WeakTypeTag[Payload]): c.Expr[Future[Unit]] = {
     import c.universe._
     type ST = c.prefix.value.SupportedTypes
-    val supportedTypesType = c.prefix.tree.tpe.member(newTypeName("SupportedTypes")).asType.typeSignature
-    implicit val etEv = c.TypeTag[ST](supportedTypesType)
+    val supportedTypesType = c.prefix.actualType.member(newTypeName("SupportedTypes")).typeSignature
+    implicit val etEv = c.TypeTag[ST](supportedTypesType.asSeenFrom(c.prefix.actualType, c.prefix.actualType.typeSymbol.asClass))
     val supportedTree = c.inferImplicitValue(c.weakTypeOf[TypeSupportedByTransport[ST, Payload]], true, true, c.enclosingPosition)
     val supported = c.Expr[TypeSupportedByTransport[ST, Payload]](supportedTree)
     if (supportedTree == c.universe.EmptyTree) {
@@ -111,7 +111,7 @@ object OutboundEndpoint {
     } else {
       reify {
         val p = c.prefix.splice
-        p.push(msg.splice)(supported.splice.asInstanceOf[p.SupportedType[Payload]])
+        p.pushImpl(msg.splice)(supported.splice.asInstanceOf[p.SupportedType[Payload]])
       }
     }
   }
@@ -123,8 +123,8 @@ object OutboundEndpoint {
   (implicit pEv: c.WeakTypeTag[Payload]): c.Expr[Future[Message[c.prefix.value.Response]]] = {
     import c.universe._
     type ST = c.prefix.value.SupportedTypes
-    val supportedTypesType = c.prefix.tree.tpe.member(newTypeName("SupportedTypes")).asType.typeSignature
-    implicit val etEv = c.TypeTag[ST](supportedTypesType)
+    val supportedTypesType = c.prefix.actualType.member(newTypeName("SupportedTypes")).typeSignature
+    implicit val etEv = c.TypeTag[ST](supportedTypesType.asSeenFrom(c.prefix.actualType, c.prefix.actualType.typeSymbol.asClass))
     val supportedTree = c.inferImplicitValue(c.weakTypeOf[TypeSupportedByTransport[ST, Payload]], true, true, c.enclosingPosition)
     val supported = c.Expr[TypeSupportedByTransport[ST, Payload]](supportedTree)
     if (supportedTree == c.universe.EmptyTree) {
@@ -134,7 +134,7 @@ object OutboundEndpoint {
     } else {
       val r = reify {
         def casted[R](a: Any) = a.asInstanceOf[R]
-        c.prefix.splice.ask(msg.splice, timeOut.splice)(casted(supported.splice))
+        c.prefix.splice.askImpl(msg.splice, timeOut.splice)(casted(supported.splice))
       }
       r.asInstanceOf[Expr[Future[Message[c.prefix.value.Response]]]]
     }
@@ -142,15 +142,30 @@ object OutboundEndpoint {
 }
 
 trait Sink extends OutboundEndpoint {
-  def push[Payload: SupportedType](msg: Message[Payload]): Future[Unit]
-  def pushImpl[Payload](msg: Message[Payload]): Future[Unit] = macro OutboundEndpoint.pushMacroImpl[Payload]
+  /**
+   * Macro definition for pushImpl that provides nicer error reporting, but in case it succeedes, its equivalent to just call pushImpl
+   */
+  def pushImpl[Payload: SupportedType](msg: Message[Payload]): Future[Unit]
+  /**
+   * Actual implementation for the push method of the Askable endpoint.
+   */
+  def push[Payload](msg: Message[Payload]): Future[Unit] = macro OutboundEndpoint.pushMacroImpl[Payload]
 }
 
 trait Askable extends OutboundEndpoint {
   type Response <: Any
-  def ask[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration = 10.seconds): Future[Message[Response]]
-  def askImpl[Payload](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = macro OutboundEndpoint.askMacroImplWithTimeout[Payload]
-  def askImpl[Payload](msg: Message[Payload]): Future[Message[Response]] = macro OutboundEndpoint.askMacroImpl[Payload]
+  /**
+   * Actual implementation for the ask method of the Askable endpoint.
+   */
+  def askImpl[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration = 10.seconds): Future[Message[Response]]
+  /**
+   * Macro definition for askImpl that provides nicer error reporting, but in case it succeedes, its equivalent to just call askImpl
+   */
+  def ask[Payload](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = macro OutboundEndpoint.askMacroImplWithTimeout[Payload]
+  /**
+   * Macro definition for askImpl that provides nicer error reporting, but in case it succeedes, its equivalent to just call askImpl
+   */
+  def ask[Payload](msg: Message[Payload]): Future[Message[Response]] = macro OutboundEndpoint.askMacroImpl[Payload]
 }
 object Askable {
   implicit class SourceAndSink2Askable[In <: Source, Out <: Sink](t: (In, Out)) extends Askable {
@@ -158,8 +173,8 @@ object Askable {
     val in = t._1
     type Response = in.Payload
     type SupportedTypes = out.SupportedTypes
-    def ask[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration) = {
-      out.push(msg)
+    def askImpl[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration) = {
+      out.pushImpl(msg)
       val resp = Promise[Message[Response]]()
       flow.scheduleOnce(timeOut)(resp.tryFailure(new TimeoutException()))
       in onEvent resp.trySuccess
