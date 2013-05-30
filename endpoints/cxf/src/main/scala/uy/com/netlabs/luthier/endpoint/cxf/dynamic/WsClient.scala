@@ -85,7 +85,7 @@ object WsInvoker {
   class DynamicWsClient[Result] private[WsInvoker] (val flow: Flow, client: WsClient, operation: String, shutDownClientOnEndpointDispose: Boolean) extends Askable {
     type SupportedTypes = Seq[_] :: Product :: TypeNil
     type Response = Result
-    def ask[Payload: SupportedType](msg, timeout) = {
+    def askImpl[Payload: SupportedType](msg, timeout) = {
       flow.blocking {
         val res = msg.payload match {
           case traversable: Seq[Any] => client.dynamicClient.invoke(operation, traversable.asInstanceOf[Seq[AnyRef]].toArray: _*)

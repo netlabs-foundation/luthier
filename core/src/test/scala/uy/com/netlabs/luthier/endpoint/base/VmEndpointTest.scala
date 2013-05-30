@@ -53,7 +53,7 @@ class VmEndpointTest extends BaseFlowsTest {
           import f._
           val dest = Vm.sink[Any]("user/VM/the-test-actor")
           dest.push(msg.map(_ => 42)) //wrong message
-          dest.push(msg.map(_ => "42 - hellooooooo")) //wrong message
+          dest.push(msg.map(_ => "42 - hellooooooo"))
         }
         Await.ready(p.future, 1.second) //the first one must be ignored, the second one succeed
       }
@@ -69,7 +69,7 @@ class VmEndpointTest extends BaseFlowsTest {
         inFlow {(f, msg) =>
           import f._
           val dest = Vm.ref[String, String]("user/VM/the-test-actor")
-          val q = dest.ask(msg.map(_ => "world")) //wrong message
+          val q = dest.ask(msg.map(_ => "world"))
           q.onSuccess {case resp => p.trySuccess(resp.payload)}
           q
         }

@@ -118,7 +118,7 @@ trait BasePullEndpoint extends PullEndpoint with IoExecutionContext {
  *
  */
 trait BaseSink extends Sink with IoExecutionContext {
-  def push[Payload: SupportedType](msg: Message[Payload]): Future[Unit] = {
+  def pushImpl[Payload: SupportedType](msg: Message[Payload]): Future[Unit] = {
     Future { pushMessage(msg) }
   }
 

@@ -131,7 +131,7 @@ extends BaseJmsEndpoint
     }
   }
 
-  def ask[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
+  def askImpl[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
     jmsOperations.ask(msg, timeOut, createDestination(), deliveryMode)
   }
 

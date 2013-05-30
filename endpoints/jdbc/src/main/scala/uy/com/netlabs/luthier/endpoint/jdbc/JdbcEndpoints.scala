@@ -95,7 +95,7 @@ class JdbcAskable[R](val flow: Flow,
   private[this] val ioProfile = endpoint.base.IoProfile.threadPool(ioThreads, flow.name)
 
   //TODO: Honor the timeout
-  def ask[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
+  def askImpl[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
     Future {
       val args = {
         msg.payload match {
