@@ -89,7 +89,7 @@ final class TypeNil extends TypeList {
 
 //sealed trait ErrorSelectorImplicits[Selector[TL <: TypeList, A]] {
 //  self: TypeSelectorImplicits[Selector] =>
-////  implicit def noContains[H, T <: TypeList, A]: Selector[H :: T, A] = macro TypeSelectorImplicits.noSelectorErrorImpl[Selector, H :: T, A]
+//  implicit def noContains[H, T <: TypeList, A]: Selector[H :: T, A] = macro TypeSelectorImplicits.noSelectorErrorImpl[Selector, H :: T, A]
 //}
 sealed trait LowPrioritySelectorImplicits[Selector[TL <: TypeList, A]] {
   self: TypeSelectorImplicits[Selector] =>

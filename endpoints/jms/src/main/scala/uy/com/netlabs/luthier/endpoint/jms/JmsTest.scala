@@ -58,8 +58,8 @@ object JmsTest extends App {
 
     new Flow("logQuestion")(Jms.queue("logQuestion"))(ExchangePattern.OneWay) {
       logic { req =>
-        askMeQueue.ask(req.as[String]) map {r =>
-          Jms.topic("result").push(r.as[String])
+        askMeQueue.ask(req.as[String], 5.seconds) map {r =>
+          Jms.topic("result").pushImpl(r.as[String])
         }
       }
     }
