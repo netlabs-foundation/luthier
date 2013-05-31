@@ -107,7 +107,7 @@ object TypeSelectorImplicits {
 }
 
 @annotation.implicitNotFound("${E} is not contained in ${TL}")
-trait Contained[-TL <: TypeList, E] //declared TL as contravariant, to deal with java generics.
+trait Contained[-TL <: TypeList, -E] //declared TL as contravariant, to deal with java generics. E is contravariant because it makes sense.
 object Contained extends TypeSelectorImplicits[Contained]
 
 class OneOf[+E, TL <: TypeList](val value: E)(implicit contained: Contained[TL, E]) {
