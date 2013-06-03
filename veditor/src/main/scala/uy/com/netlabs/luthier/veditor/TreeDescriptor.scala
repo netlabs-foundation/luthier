@@ -61,7 +61,7 @@ object TreeDescriptor {
   private[this] val rootStage = new scala.concurrent.SyncVar[Stage]()
 
   def LazyTreeItem(value: Any, children: => Iterable[scene.control.TreeItem[_]]) = new scene.control.TreeItem[Any](value) {
-    lazy val childrenEval = Try { //since this happens in the jfx thread, we must never throw exception
+    def childrenEval = Try { //since this happens in the jfx thread, we must never throw exception
       val res = children.toSeq
       super.getChildren().setAll(res.asInstanceOf[Seq[scene.control.TreeItem[Any]]]: _*);
       res
@@ -290,6 +290,7 @@ object TreeDescriptor {
       def run {
         val s = new stage.Stage()
         s.setScene(new scene.Scene(new RootNode(root)))
+        application.Platform.setImplicitExit(true)
         s.show()
       }
     })

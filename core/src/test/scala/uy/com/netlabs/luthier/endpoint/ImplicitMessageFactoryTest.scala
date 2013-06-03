@@ -50,6 +50,9 @@ class ImplicitMessageFactoryTest extends BaseFlowsTest {
             val mf2: MessageFactory = m2
             m2
           }
+          logicMacro {m => 
+            "hola"
+          }
         }
       }
       new Flows {

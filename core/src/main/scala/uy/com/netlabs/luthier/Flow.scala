@@ -125,6 +125,7 @@ trait Flow extends FlowPatterns with Disposable with LowPriorityImplicits {
   def logic(l: Logic) {
     logic = l
   }
+  def logicMacro[R](l: RootMessage[this.type] => R) = macro Flow.logicMacroImpl[R, this.type]
 
   def runFlow(payload: InboundEndpointTpe#Payload): Future[LogicResult] = runFlow(Message(payload))
   def runFlow(rootMessage: Message[InboundEndpointTpe#Payload]): Future[LogicResult] = {
@@ -270,6 +271,43 @@ object Flow {
     }.head
     val selectMessage = c.Expr(c.parse(collected.encoded))
     reify(selectMessage.splice)
+  }
+  
+  
+  //FIXE: this code is in a broken state, do not use.
+  def logicMacroImpl[R, F <: Flow](c: Context {type PrefixType = F})(l: c.Expr[RootMessage[F] => R])
+  (implicit rEv: c.WeakTypeTag[R], fEv: c.WeakTypeTag[F]): c.Expr[Unit] = {
+    def subType(t: c.universe.Type, tName: String) = {
+      val ts = t.member(c.universe.newTypeName(tName))
+      ts.typeSignature.asSeenFrom(t, t.typeSymbol.asClass)
+    }
+    println("Prefix type is " + fEv.tpe)
+    //if the flow is oneway we always succeed:
+    val logicResultType = subType(c.prefix.actualType, "LogicResult")
+    println("Logic result is " + logicResultType)
+    if (logicResultType =:= c.typeOf[Unit]) {
+      println("flow is oneway")
+      c.universe.reify {
+        val flow = c.prefix.splice
+        flow.logic(l.splice.asInstanceOf[flow.Logic]) 
+      }
+    } else { //its a request response flow, so we must analyse the result
+      println("flow is request-response")
+      //calculate the valid responses typelist
+      val rootEndpointSymbol = c.prefix.actualType.member(c.universe.newTermName("rootEndpoint"))
+      val supportedResponsesTypeListSymbol = 
+        rootEndpointSymbol.typeSignature.member(c.universe.newTypeName("SupportedResponseTypes"))
+      println("Possible responses are: " + TypeList.describe(c.WeakTypeTag(rootEndpointSymbol.typeSignature)))
+      if (rEv.tpe <:< c.typeOf[Future[Message[_]]]) {
+      
+      } else if (rEv.tpe <:< c.typeOf[Message[_]]) {
+      
+      } else {
+      
+      }
+    }
+    
+    c.literalUnit
   }
 
   def message2FutureOneOfImpl[MT, TL <: TypeList](c: Context)(m: c.Expr[Message[MT]])
