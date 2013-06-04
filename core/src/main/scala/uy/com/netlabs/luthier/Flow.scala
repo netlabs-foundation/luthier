@@ -272,41 +272,39 @@ object Flow {
     val selectMessage = c.Expr(c.parse(collected.encoded))
     reify(selectMessage.splice)
   }
-  
-  
+
+
   //FIXE: this code is in a broken state, do not use.
   def logicMacroImpl[R, F <: Flow](c: Context {type PrefixType = F})(l: c.Expr[RootMessage[F] => R])
   (implicit rEv: c.WeakTypeTag[R], fEv: c.WeakTypeTag[F]): c.Expr[Unit] = {
-    def subType(t: c.universe.Type, tName: String) = {
-      val ts = t.member(c.universe.newTypeName(tName))
-      ts.typeSignature.asSeenFrom(t, t.typeSymbol.asClass)
+    def subType(t: c.universe.Type, tName: c.universe.Name, inClass: c.universe.Type) = {
+      val ts = t.member(tName)
+      ts.typeSignature.asSeenFrom(t, inClass.typeSymbol.asClass)
     }
-    println("Prefix type is " + fEv.tpe)
     //if the flow is oneway we always succeed:
-    val logicResultType = subType(c.prefix.actualType, "LogicResult")
-    println("Logic result is " + logicResultType)
+    val logicResultType = subType(c.prefix.actualType, c.universe.newTypeName("LogicResult"), c.typeOf[Flows#Flow[_, _]])
     if (logicResultType =:= c.typeOf[Unit]) {
-      println("flow is oneway")
+//      println("flow is oneway")
       c.universe.reify {
         val flow = c.prefix.splice
-        flow.logic(l.splice.asInstanceOf[flow.Logic]) 
+        flow.logic(l.splice.asInstanceOf[flow.Logic])
       }
     } else { //its a request response flow, so we must analyse the result
       println("flow is request-response")
       //calculate the valid responses typelist
-      val rootEndpointSymbol = c.prefix.actualType.member(c.universe.newTermName("rootEndpoint"))
-      val supportedResponsesTypeListSymbol = 
-        rootEndpointSymbol.typeSignature.member(c.universe.newTypeName("SupportedResponseTypes"))
-      println("Possible responses are: " + TypeList.describe(c.WeakTypeTag(rootEndpointSymbol.typeSignature)))
+      val rootEndpointType = subType(c.prefix.actualType, c.universe.newTermName("rootEndpoint"), c.typeOf[Flows#Flow[_, _]])
+      println("rootEndpoint is " + rootEndpointType)
+      val supportedResponsesTypeListType = subType(rootEndpointType, c.universe.newTypeName("SupportedResponseTypes"), rootEndpointType)
+      println("Possible responses are: " + TypeList.describe(c.WeakTypeTag(supportedResponsesTypeListType.widen)))
       if (rEv.tpe <:< c.typeOf[Future[Message[_]]]) {
-      
+
       } else if (rEv.tpe <:< c.typeOf[Message[_]]) {
-      
+
       } else {
-      
+
       }
     }
-    
+
     c.literalUnit
   }
 

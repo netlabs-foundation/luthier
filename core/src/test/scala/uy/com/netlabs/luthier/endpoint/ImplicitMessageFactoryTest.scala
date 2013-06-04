@@ -33,6 +33,7 @@ package endpoint
 
 import org.scalatest.{ BeforeAndAfter, FunSpec }
 import scala.concurrent.duration._
+import typelist._
 
 class ImplicitMessageFactoryTest extends BaseFlowsTest {
   describe("An implicit request of MessageFactory inside the logic block") {
@@ -50,8 +51,14 @@ class ImplicitMessageFactoryTest extends BaseFlowsTest {
             val mf2: MessageFactory = m2
             m2
           }
-          logicMacro {m => 
+          logicMacro {m =>
             "hola"
+          }
+        }
+        val VM = base.VM.forAppContext(appContext)
+        new Flow("test2")(VM.responsible[String, Int :: Float :: String :: TypeNil]("test-endpoint")) {
+          logicMacro {m =>
+            "hola2"
           }
         }
       }
