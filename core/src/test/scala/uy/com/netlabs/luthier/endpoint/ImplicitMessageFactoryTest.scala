@@ -58,7 +58,7 @@ class ImplicitMessageFactoryTest extends BaseFlowsTest {
         val VM = base.VM.forAppContext(appContext)
         new Flow("test2")(VM.responsible[String, Int :: Float :: String :: TypeNil]("test-endpoint")) {
           logicMacro {m =>
-            "hola2"
+            m.map(_ => "hola2")
           }
         }
       }

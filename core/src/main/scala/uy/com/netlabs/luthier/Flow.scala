@@ -277,35 +277,67 @@ object Flow {
   //FIXE: this code is in a broken state, do not use.
   def logicMacroImpl[R, F <: Flow](c: Context {type PrefixType = F})(l: c.Expr[RootMessage[F] => R])
   (implicit rEv: c.WeakTypeTag[R], fEv: c.WeakTypeTag[F]): c.Expr[Unit] = {
-    def subType(t: c.universe.Type, tName: c.universe.Name, inClass: c.universe.Type) = {
+    import c.universe._
+    def subType(t: Type, tName: Name, inClass: Type) = {
       val ts = t.member(tName)
       ts.typeSignature.asSeenFrom(t, inClass.typeSymbol.asClass)
     }
     //if the flow is oneway we always succeed:
-    val logicResultType = subType(c.prefix.actualType, c.universe.newTypeName("LogicResult"), c.typeOf[Flows#Flow[_, _]])
-    if (logicResultType =:= c.typeOf[Unit]) {
+    val logicResultType = subType(c.prefix.actualType, newTypeName("LogicResult"), c.typeOf[Flows#Flow[_, _]])
+    if (logicResultType =:= c.TypeTag.Unit.tpe) {
 //      println("flow is oneway")
-      c.universe.reify {
+      reify {
         val flow = c.prefix.splice
         flow.logic(l.splice.asInstanceOf[flow.Logic])
       }
     } else { //its a request response flow, so we must analyse the result
-      println("flow is request-response")
+//      println("flow is request-response")
       //calculate the valid responses typelist
-      val rootEndpointType = subType(c.prefix.actualType, c.universe.newTermName("rootEndpoint"), c.typeOf[Flows#Flow[_, _]])
-      println("rootEndpoint is " + rootEndpointType)
-      val supportedResponsesTypeListType = subType(rootEndpointType, c.universe.newTypeName("SupportedResponseTypes"), rootEndpointType)
-      println("Possible responses are: " + TypeList.describe(c.WeakTypeTag(supportedResponsesTypeListType.widen)))
+      val rootEndpointType = subType(c.prefix.actualType, newTermName("rootEndpoint"), c.typeOf[Flows#Flow[_, _]])
+//      println("rootEndpoint is " + rootEndpointType)
+      val supportedResponsesTypeListType = 
+        subType(rootEndpointType, newTypeName("SupportedResponseTypes"),
+                rootEndpointType) match {
+          case TypeBounds(lo, hi) => hi //in some case with generics, I might get the typelist like this
+          case other => other
+        }
+      val containedT = typeOf[Contained[String :: TypeNil, String]].asInstanceOf[TypeRef] //obtain a sample typeRef to use its parts
+      implicit val possibleTypesTag = c.TypeTag(supportedResponsesTypeListType)
+      val possibleTypesList = TypeList.describe(possibleTypesTag)
+//      println("Possible responses are: " + possibleTypes)
       if (rEv.tpe <:< c.typeOf[Future[Message[_]]]) {
-
+        println("result is a type of future message")
+        c.literalUnit
       } else if (rEv.tpe <:< c.typeOf[Message[_]]) {
-
+        println("result is a type of message")
+        val messageSubType = rEv.tpe.asInstanceOf[TypeRef].args(0)
+        val containedType = typeRef(
+          containedT.pre, containedT.sym, 
+          List(supportedResponsesTypeListType, messageSubType))
+        val containedTree = c.inferImplicitValue(containedType, true, true, l.tree.pos)
+        if (containedTree != EmptyTree) {
+          //reifiy a call to logic mapping the result
+          val containedExr = c.Expr[Contained[_, _]](containedTree)
+          val r = reify {
+            val flow = c.prefix.splice
+            def casted[R](a: Any) = a.asInstanceOf[R]
+            val mf = l.splice.andThen(r => Future.successful(
+                r.asInstanceOf[Message[_]].map(p => new OneOf(p)(casted(containedExr.splice)))
+              ))
+            flow.logic(mf.asInstanceOf[flow.Logic])
+          }
+          r
+        } else {
+          c.abort(c.enclosingPosition, "Found flow's resulting message of type: " + messageSubType + "\n" +
+                  "Expected a Message[T] or Future[Message[T]] where T can be any of [\n    " +
+                  possibleTypesList.mkString("\n    ") + "\n]")
+        }
       } else {
-
+        c.abort(c.enclosingPosition, "Found flow's result of type: " + rEv.tpe + "\n" +
+                "Expected a Message[T] or Future[Message[T]] where T can be any of [\n    " +
+                possibleTypesList.mkString("\n    ") + "\n]")
       }
     }
-
-    c.literalUnit
   }
 
   def message2FutureOneOfImpl[MT, TL <: TypeList](c: Context)(m: c.Expr[Message[MT]])
