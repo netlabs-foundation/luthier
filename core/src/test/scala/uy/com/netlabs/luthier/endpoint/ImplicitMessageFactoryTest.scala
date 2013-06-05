@@ -32,7 +32,7 @@ package uy.com.netlabs.luthier
 package endpoint
 
 import org.scalatest.{ BeforeAndAfter, FunSpec }
-import scala.concurrent.duration._
+import scala.concurrent._, duration._
 import typelist._
 
 class ImplicitMessageFactoryTest extends BaseFlowsTest {
@@ -58,7 +58,7 @@ class ImplicitMessageFactoryTest extends BaseFlowsTest {
         val VM = base.VM.forAppContext(appContext)
         new Flow("test2")(VM.responsible[String, Int :: Float :: String :: TypeNil]("test-endpoint")) {
           logicMacro {m =>
-            m.map(_ => "hola2")
+            Future.successful(m.map(_ => Some("la")))
           }
         }
       }

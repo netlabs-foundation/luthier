@@ -285,17 +285,14 @@ object Flow {
     //if the flow is oneway we always succeed:
     val logicResultType = subType(c.prefix.actualType, newTypeName("LogicResult"), c.typeOf[Flows#Flow[_, _]])
     if (logicResultType =:= c.TypeTag.Unit.tpe) {
-//      println("flow is oneway")
       reify {
         val flow = c.prefix.splice
         flow.logic(l.splice.asInstanceOf[flow.Logic])
       }
     } else { //its a request response flow, so we must analyse the result
-//      println("flow is request-response")
       //calculate the valid responses typelist
       val rootEndpointType = subType(c.prefix.actualType, newTermName("rootEndpoint"), c.typeOf[Flows#Flow[_, _]])
-//      println("rootEndpoint is " + rootEndpointType)
-      val supportedResponsesTypeListType = 
+      val supportedResponsesTypeListType =
         subType(rootEndpointType, newTypeName("SupportedResponseTypes"),
                 rootEndpointType) match {
           case TypeBounds(lo, hi) => hi //in some case with generics, I might get the typelist like this
@@ -304,15 +301,38 @@ object Flow {
       val containedT = typeOf[Contained[String :: TypeNil, String]].asInstanceOf[TypeRef] //obtain a sample typeRef to use its parts
       implicit val possibleTypesTag = c.TypeTag(supportedResponsesTypeListType)
       val possibleTypesList = TypeList.describe(possibleTypesTag)
-//      println("Possible responses are: " + possibleTypes)
       if (rEv.tpe <:< c.typeOf[Future[Message[_]]]) {
         println("result is a type of future message")
+        val messageSubType = rEv.tpe.asInstanceOf[TypeRef].args(0).asInstanceOf[TypeRef].args(0)
+        val containedType = typeRef(
+          containedT.pre, containedT.sym,
+          List(supportedResponsesTypeListType, messageSubType))
+        val containedTree = c.inferImplicitValue(containedType, true, true, l.tree.pos)
+        if (containedTree != EmptyTree) {
+          val containedExr = c.Expr[Contained[_, _]](containedTree)
+          val r = reify {
+            val flow = c.prefix.splice
+            def casted[R](a: Any) = a.asInstanceOf[R]
+            val mf = l.splice.andThen(f =>
+              f.asInstanceOf[Future[Message[_]]].map(m => m.map(p => new OneOf(p)(casted(containedExr.splice))))(flow.workerActorsExecutionContext)
+            )
+            flow.logic(mf.asInstanceOf[flow.Logic])
+          }
+          r
+        } else {
+          c.abort(c.enclosingPosition, "Found flow's resulting future of message of type: " + messageSubType + "\n" +
+                  "Expected a Message[T] or Future[Message[T]] where T can be any of [\n    " +
+                  possibleTypesList.mkString("\n    ") + "\n]")
+        }
+
         c.literalUnit
+
+
+
       } else if (rEv.tpe <:< c.typeOf[Message[_]]) {
-        println("result is a type of message")
         val messageSubType = rEv.tpe.asInstanceOf[TypeRef].args(0)
         val containedType = typeRef(
-          containedT.pre, containedT.sym, 
+          containedT.pre, containedT.sym,
           List(supportedResponsesTypeListType, messageSubType))
         val containedTree = c.inferImplicitValue(containedType, true, true, l.tree.pos)
         if (containedTree != EmptyTree) {
@@ -332,6 +352,9 @@ object Flow {
                   "Expected a Message[T] or Future[Message[T]] where T can be any of [\n    " +
                   possibleTypesList.mkString("\n    ") + "\n]")
         }
+
+
+
       } else {
         c.abort(c.enclosingPosition, "Found flow's result of type: " + rEv.tpe + "\n" +
                 "Expected a Message[T] or Future[Message[T]] where T can be any of [\n    " +
