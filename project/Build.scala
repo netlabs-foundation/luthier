@@ -42,6 +42,7 @@ object CocoonBuild extends Build {
     fileEndpoint,
     jmsEndpoint,
     jdbcEndpoint,
+    amqpEndpoint,
     httpEndpoint,
     cxfEndpoint,
     streamEndpoint,
@@ -57,6 +58,7 @@ object CocoonBuild extends Build {
   lazy val logicalEndpoints = Project(id = "luthier-endpoint-logical", base = file("endpoints/logical")).dependsOn(coreAsDep).settings(defSettings:_*)
   lazy val fileEndpoint = Project(id = "luthier-endpoint-file", base = file("endpoints/file")).dependsOn(coreAsDep, logicalEndpoints).settings(defSettings:_*)
   lazy val jmsEndpoint = Project(id = "luthier-endpoint-jms", base = file("endpoints/jms")).dependsOn(coreAsDep, logicalEndpoints).settings(defSettings:_*)
+  lazy val amqpEndpoint = Project(id = "luthier-endpoint-amqp", base = file("endpoints/amqp")).dependsOn(coreAsDep, logicalEndpoints).settings(defSettings:_*)
   lazy val jdbcEndpoint = Project(id = "luthier-endpoint-jdbc", base = file("endpoints/jdbc")).dependsOn(coreAsDep, logicalEndpoints).settings(defSettings:_*)
   lazy val httpEndpoint = Project(id = "luthier-endpoint-http", base = file("endpoints/http")).dependsOn(coreAsDep, logicalEndpoints).settings(defSettings:_*)
   lazy val cxfEndpoint = Project(id = "luthier-endpoint-cxf", base = file ("endpoints/cxf")).dependsOn(coreAsDep, logicalEndpoints).settings(defSettings:_*)
@@ -67,7 +69,7 @@ object CocoonBuild extends Build {
   lazy val wsutil = Project(id = "luthier-wsutil", base = file("wsutil")).settings(defSettings:_*)
 
   lazy val luthierRunner = Project(id = "luthier-runner", base = file("luthier-runner")).settings(defSettings:_*).
-    dependsOn(core, logicalEndpoints, fileEndpoint, jmsEndpoint, jdbcEndpoint, httpEndpoint, cxfEndpoint, streamEndpoint, syslogEndpoint, xmppEndpoint, ircEndpoint)
+    dependsOn(core, logicalEndpoints, fileEndpoint, jmsEndpoint, amqpEndpoint, jdbcEndpoint, httpEndpoint, cxfEndpoint, streamEndpoint, syslogEndpoint, xmppEndpoint, ircEndpoint)
 
   lazy val veditor = Project(id = "luthier-visual-editor", base = file("veditor")).settings(defSettings:_*).dependsOn(core, luthierRunner)
 }
