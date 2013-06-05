@@ -53,7 +53,11 @@ class WsTest extends BaseFlowsTest {
         }
         val url = "http://localhost:8080"
         val server = new Flow("service")(Ws(Sei[WsDef](url, "/testws"))(_.echo _)) {
-          logic {m => m} //really simply echo!
+          logic {m =>
+            val s: String = m.payload
+            m.map(s => s)
+            m
+            } //really simply echo!
         }
         server.start
 
