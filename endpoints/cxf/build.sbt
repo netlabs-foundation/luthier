@@ -1,5 +1,5 @@
 { //cxf dependencies
-val cxfVersion = "2.7.5"
+val cxfVersion = "2.7.3"
 libraryDependencies ++= Seq(
   //"org.apache.cxf" % "cxf" % cxfVersion,
   "org.apache.cxf" % "cxf-api" % cxfVersion exclude("log4j", "log4j"),

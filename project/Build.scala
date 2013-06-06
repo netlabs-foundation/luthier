@@ -42,7 +42,7 @@ object CocoonBuild extends Build {
     fileEndpoint,
     jmsEndpoint,
     jdbcEndpoint,
-    amqpEndpoint,
+    //amqpEndpoint,
     httpEndpoint,
     cxfEndpoint,
     streamEndpoint,
@@ -69,7 +69,7 @@ object CocoonBuild extends Build {
   lazy val wsutil = Project(id = "luthier-wsutil", base = file("wsutil")).settings(defSettings:_*)
 
   lazy val luthierRunner = Project(id = "luthier-runner", base = file("luthier-runner")).settings(defSettings:_*).
-    dependsOn(core, logicalEndpoints, fileEndpoint, jmsEndpoint, amqpEndpoint, jdbcEndpoint, httpEndpoint, cxfEndpoint, streamEndpoint, syslogEndpoint, xmppEndpoint, ircEndpoint)
+    dependsOn(core, logicalEndpoints, fileEndpoint, jmsEndpoint, /*amqpEndpoint,*/ jdbcEndpoint, httpEndpoint, cxfEndpoint, streamEndpoint, syslogEndpoint, xmppEndpoint, ircEndpoint)
 
   lazy val veditor = Project(id = "luthier-visual-editor", base = file("veditor")).settings(defSettings:_*).dependsOn(core, luthierRunner)
 }
