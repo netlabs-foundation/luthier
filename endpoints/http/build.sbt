@@ -1,4 +1,4 @@
-{val jettyVersion = "8.1.8.v20121106"
+{val jettyVersion = "8.1.11.v20130520"
 libraryDependencies ++= Seq (
   "net.databinder.dispatch" %% "core" % "0.9.1",
   "net.databinder.dispatch" % "jsoup_2.9.2" % "0.9.1",
