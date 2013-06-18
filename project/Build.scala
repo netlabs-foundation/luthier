@@ -13,7 +13,7 @@ object CocoonBuild extends Build {
     fork in test := true,
     exportJars := true,
     resolvers ++= Seq(
-      "Local maven repo" at "file://" + Path.userHome + "/.m2/repository/",
+      //"Local maven repo" at "file://" + Path.userHome + "/.m2/repository/",
       "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/"
     ),
     libraryDependencies ++= Seq(
