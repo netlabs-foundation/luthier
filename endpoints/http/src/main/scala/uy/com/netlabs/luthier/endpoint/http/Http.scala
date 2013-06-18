@@ -154,18 +154,18 @@ object Http {
     def start(name: String, filter: Filter)
     def stop()
   }
-  private[Http] case class ServletServerRepr(servletContext: ServletContext) extends ServerRepr {
-    def start(name, filter) {
-      val enka = servletContext.addFilter(name, filter)
-      enka.setAsyncSupported(true)
-      enka.addMappingForServletNames(java.util.EnumSet.allOf(classOf[DispatcherType]), false, "*")
-      enka.addMappingForUrlPatterns(java.util.EnumSet.allOf(classOf[DispatcherType]), false, "*")
-      println(Console.RED + "Enka data" + Console.RESET)
-      enka.getServletNameMappings() foreach (s => println(s"Mapping for filter $name: $s"))
-      enka.getUrlPatternMappings() foreach (s => println(s"Mapping for filter $name: $s"))
-    }
-    def stop() {} //cannot stop :(
-  }
+//  private[Http] case class ServletServerRepr(servletContext: ServletContext) extends ServerRepr {
+//    def start(name, filter) {
+//      val enka = servletContext.addFilter(name, filter)
+//      enka.setAsyncSupported(true)
+//      enka.addMappingForServletNames(java.util.EnumSet.allOf(classOf[DispatcherType]), false, "*")
+//      enka.addMappingForUrlPatterns(java.util.EnumSet.allOf(classOf[DispatcherType]), false, "*")
+//      println(Console.RED + "Enka data" + Console.RESET)
+//      enka.getServletNameMappings() foreach (s => println(s"Mapping for filter $name: $s"))
+//      enka.getUrlPatternMappings() foreach (s => println(s"Mapping for filter $name: $s"))
+//    }
+//    def stop() {} //cannot stop :(
+//  }
   private[Http] case class JettyServerRepr(port: Int) extends ServerRepr {
     var server: unfiltered.jetty.Http = _
     def start(name, filter) {
@@ -206,5 +206,5 @@ object Http {
     def apply(f: Flow) = new HttpUnfilteredEndpoint(f, repr)
   }
   def server(port: Int) = HttpUnfilteredEF(JettyServerRepr(port))
-  def server(servletContext: ServletContext) = HttpUnfilteredEF(ServletServerRepr(servletContext))
+//  def server(servletContext: ServletContext) = HttpUnfilteredEF(ServletServerRepr(servletContext))
 }
