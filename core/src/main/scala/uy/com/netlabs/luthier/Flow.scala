@@ -380,8 +380,11 @@ object Flow {
           }
         }
       }.transform(l.tree)
-      val result = c.Expr[Unit](c resetLocalAttrs resultTree)
-      result
+      val mappedResult = c.Expr[Any](c resetLocalAttrs resultTree)
+      reify {
+        val flow = c.prefix.splice
+        flow.logicImpl(mappedResult.splice.asInstanceOf[flow.Logic])
+      }
     }
   }
 
