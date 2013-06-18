@@ -1,10 +1,12 @@
-{val jettyVersion = "8.1.11.v20130520"
+{
+val jettyVersion = "9.0.3.v20130506"
+val dispatchVersion = "0.10.1"
+val unfilteredVersion = "0.6.8"
 libraryDependencies ++= Seq (
-  "net.databinder.dispatch" %% "core" % "0.9.1",
-  "net.databinder.dispatch" % "jsoup_2.9.2" % "0.9.1",
-  "net.databinder" %% "unfiltered-filter" % "0.6.7",
-  "net.databinder" %% "unfiltered-filter-async" % "0.6.7",
-  "net.databinder" %% "unfiltered-jetty" % "0.6.7" exclude("javax.servlet", "servlet-api"),
-  //"javax" % "javaee-api" % "6.0",
-  "org.eclipse.jetty.aggregate" % "jetty-all-server" % jettyVersion % "optional"
+  "net.databinder.dispatch" %% "dispatch-core" % dispatchVersion,
+  "net.databinder.dispatch" %% "dispatch-jsoup" % dispatchVersion,
+  "net.databinder" %% "unfiltered-filter" % unfilteredVersion,
+  "net.databinder" %% "unfiltered-filter-async" % unfilteredVersion,
+  "net.databinder" %% "unfiltered-jetty" % unfilteredVersion
+  //"org.eclipse.jetty.aggregate" % "jetty-all" % jettyVersion % "optional"
 )}

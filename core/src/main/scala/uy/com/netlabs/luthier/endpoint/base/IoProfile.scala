@@ -31,9 +31,10 @@
 package uy.com.netlabs.luthier.endpoint.base
 
 import scala.concurrent.ExecutionContext
-import java.util.concurrent.Executors
+import java.util.concurrent.{Executor, Executors}
 
 trait IoProfile {
+  def executor: Executor
   def executionContext: ExecutionContext
   def dispose(): Unit
 }

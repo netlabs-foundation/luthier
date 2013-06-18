@@ -32,7 +32,7 @@ package uy.com.netlabs.luthier
 package endpoint.http
 
 import scala.util._
-import scala.concurrent._
+import scala.concurrent._, duration._
 import scala.collection.mutable.Map
 import scala.collection.JavaConversions._
 
@@ -40,7 +40,7 @@ import typelist._
 
 import com.ning.http.client.{ AsyncHttpClient, AsyncHttpClientConfig,
                              AsyncCompletionHandler, Cookie, RequestBuilder => Request }
-import dispatch.{ Promise => _, _ }
+import dispatch.{ Promise => _, Future => _, _ }
 import unfiltered.filter.async.Plan
 import unfiltered.request._
 import unfiltered.response._
@@ -59,15 +59,17 @@ object Http {
     type Response = R
     type SupportedTypes = (Request, FunctionHandler[R]) :: TypeNil
 
-    val dispatcher = new dispatch.FixedThreadPoolExecutor {
-      val threadPoolSize = ioThreads
-      val timeout = dispatch.Duration.millis(Long.MaxValue) //no timeout
+    val threadPoolSize = ioThreads
+
+    val ioProfile = endpoint.base.IoProfile.threadPool(ioThreads, flow.name + "-http-ep")
+    val dispatcher = new dispatch.HttpExecutor {
       lazy val client = new AsyncHttpClient(httpClientConfig)
     }
 
     def start() {}
     def dispose() {
       try dispatcher.shutdown catch { case ex: Exception => flow.log.error(ex, "Could not shutdown dispatcher") }
+      ioProfile.executor.shutdown()
     }
 
     private type HeaderBaggage = Seq[Cookie]
@@ -117,10 +119,10 @@ object Http {
 
     def pull()(implicit mf: MessageFactory): Future[Message[Payload]] = {
       val promise = Promise[Message[Payload]]()
-      dispatcher(wrapRequest(req.get)).onComplete {
-        case Right(res) => promise.success(toMessage(res, mf))
-        case Left(err)  => promise.failure(err)
-      }
+      dispatcher(wrapRequest(req.get))(ioProfile.executionContext).onComplete {
+        case Success(res) => promise.success(toMessage(res, mf))
+        case Failure(err)  => promise.failure(err)
+      }(ioProfile.executionContext)
       promise.future
     }
     def askImpl[Payload: SupportedType](msg, timeOut): Future[Message[Response]] = {
@@ -130,10 +132,10 @@ object Http {
       cookies foreach req._1.addOrReplaceCookie
 //      println("Sending cookies: " + cookies)
 
-      dispatcher(wrapRequest(req)).onComplete {
-        case Right(res) => promise.success(toMessage(res, msg))
-        case Left(err)  => promise.failure(err)
-      }
+      dispatcher(wrapRequest(req))(ioProfile.executionContext).onComplete {
+        case Success(res) => promise.success(toMessage(res, msg))
+        case Failure(err)  => promise.failure(err)
+      }(ioProfile.executionContext)
       promise.future
     }
   }
