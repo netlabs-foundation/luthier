@@ -184,13 +184,17 @@ object Http {
     object Handler extends Plan {
       def intent = {
         case req =>
+          try {
           onRequestHandler(newReceviedMessage(req)).onComplete {
             case Success(m) => m.payload.value match {
                 case s: String => req.respond(ResponseString(s))
                 case rf: ResponseFunction[HttpServletResponse @unchecked] => req.respond(rf)
               }
-            case Failure(ex) => req.respond(InternalServerError ~> ResponseString(ex.toString))
+            case Failure(ex) =>
+              log.error(ex, "Unexpected exception in code handling request")
+              req.respond(InternalServerError ~> ResponseString(ex.toString))
           }(flow.workerActorsExecutionContext)
+        } catch {case ex: Throwable => log.error(ex, "Could not process message"); throw ex}
       }
     }
 
