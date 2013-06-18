@@ -95,6 +95,7 @@ trait Flow extends FlowPatterns with Disposable {
   @volatile private[this] var instantiatedEndpoints = Map.empty[EndpointFactory[_], Endpoint]
 
   def start() {
+    if (logic == null) throw new IllegalStateException("Logic has not been defined yet.")
     rootEndpoint.start()
     if (logLifecycle) log.info("Flow " + name + " started")
   }
