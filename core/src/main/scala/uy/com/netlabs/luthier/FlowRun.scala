@@ -80,3 +80,6 @@ trait FlowRun[+FlowType <: Flow] extends MessageFactory {
     res
   }
 }
+object FlowRun {
+  type Any = FlowRun[_ <: Flow]
+}
