@@ -127,7 +127,6 @@ extends AmqpEndpoint with BasePullEndpoint with BaseSink with Askable {
   }
 
   def askImpl[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
-    
     ???
   }
 
