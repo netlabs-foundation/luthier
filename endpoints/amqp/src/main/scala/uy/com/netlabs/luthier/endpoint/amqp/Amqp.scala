@@ -61,9 +61,9 @@ class Amqp(val connectionFactory: ConnectionFactory,
                                  messageProperties: AMQP.BasicProperties, ioThreads: Int) extends EndpointFactory[AmqpOutEndpoint] {
     def apply(f) = new AmqpOutEndpoint(f, Amqp.this, bindingKeys, queue, exchange, messageProperties, ioThreads)
   }
-  def apply(bindingKey: String, exchange: Exchange = Exchange.Default, queue: Queue = null,
-            messageProperties: AMQP.BasicProperties = MessageProperties.BASIC, ioThreads: Int = 4): OutEF =
-              apply(Seq(bindingKey), exchange, queue, messageProperties, ioThreads)
+//  def apply(bindingKey: String, exchange: Exchange = Exchange.Default, queue: Queue = null,
+//            messageProperties: AMQP.BasicProperties = MessageProperties.BASIC, ioThreads: Int = 4): OutEF =
+//              apply(Seq(bindingKey), exchange, queue, messageProperties, ioThreads)
   def apply(bindingKeys: Seq[String], exchange: Exchange = Exchange.Default, queue: Queue = null,
             messageProperties: AMQP.BasicProperties = MessageProperties.BASIC, ioThreads: Int = 4): OutEF = {
     require(bindingKeys.length > 0, "You must provide at least 1 binding key.")
@@ -77,8 +77,8 @@ class Amqp(val connectionFactory: ConnectionFactory,
                                 exchange: Exchange, ioThreads: Int) extends EndpointFactory[AmqpInEndpoint] {
     def apply(f) = new AmqpInEndpoint(f, Amqp.this, bindingKeys, queue, exchange, ioThreads)
   }
-  def consume(bindingKey: String, queue: Queue = null, exchange: Exchange = Exchange.Default, ioThreads: Int = 4): InEF =
-    consume(Seq(bindingKey), queue, exchange, ioThreads)
+//  def consume(bindingKey: String, queue: Queue = null, exchange: Exchange = Exchange.Default, ioThreads: Int = 4): InEF =
+//    consume(Seq(bindingKey), queue, exchange, ioThreads)
   def consume(bindingKeys: Seq[String], queue: Queue = null, exchange: Exchange = Exchange.Default, ioThreads: Int = 4): InEF = {
     require(bindingKeys.length > 0, "You must provide at least 1 binding key.")
     val queueToUse = queue match {

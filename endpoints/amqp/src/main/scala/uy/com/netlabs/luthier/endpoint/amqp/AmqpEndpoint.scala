@@ -36,7 +36,7 @@ import com.rabbitmq.client._
 import uy.com.netlabs.luthier.typelist._
 import uy.com.netlabs.luthier.endpoint.base._
 import collection.JavaConverters._
-import scala.concurrent._, duration._
+import scala.concurrent.{Channel => _, _}, duration._
 import scala.util._
 
 case class AmqpDestination(queue: String) extends Destination
@@ -106,20 +106,35 @@ class AmqpInEndpoint(val flow: Flow, val manager: Amqp, val bindingKeys: Seq[Str
 
 class AmqpOutEndpoint(val flow: Flow, val manager: Amqp, val bindingKeys: Seq[String], val queue: Queue,
                       val exchange: Exchange, val messageProperties: AMQP.BasicProperties, ioThreads: Int)
-extends AmqpEndpoint with BasePullEndpoint with BaseSink with Askable {
+extends AmqpEndpoint with PullEndpoint with BaseSink with Askable {
   val ioProfile = IoProfile.threadPool(ioThreads, flow.name + "-amqp-ep")
   type Payload = Array[Byte]
-  type SupportedResponseTypes = Array[Byte] :: TypeNil
+  type Response = Array[Byte]
+  type SupportedTypes = Array[Byte] :: TypeNil
 
-  protected def retrieveMessage(mf: MessageFactory): Message[Payload] = {
-    val resp = manager.channel.basicGet(queue.name, true)
-    val res = mf(resp.getBody)
-    res.correlationId = resp.getProps.getCorrelationId
-    resp.getProps.getReplyTo match {
-      case s if s != null && s.nonEmpty => res.replyTo = AmqpDestination(s)
-      case _ =>
+  private class OneMessageConsumer(channel: Channel) extends DefaultConsumer(channel) {
+    override def handleDelivery(consumerTag, envelope, properties, body) {
+      channel.basicCancel(consumerTag) //I will not receive any more messages
     }
-    res
+  }
+
+  def pull()(implicit mf: MessageFactory): Future[Message[Payload]] = {
+    val pullPromise = Promise[Message[Payload]]()
+    val consumer = new DefaultConsumer(manager.channel) {
+      override def handleDelivery(consumerTag, envelope, properties, body) {
+        manager.channel.basicCancel(consumerTag) //I will not receive any more messages
+        manager.channel.basicAck(envelope.getDeliveryTag, false)
+        val res = mf(body)
+        res.correlationId = properties.getCorrelationId
+        properties.getReplyTo match {
+          case s if s != null && s.nonEmpty => res.replyTo = AmqpDestination(s)
+          case _ =>
+        }
+        pullPromise.trySuccess(res)
+      }
+    }
+    manager.channel.basicConsume(queue.name, false, consumer)
+    pullPromise.future
   }
   protected def pushMessage[Payload: SupportedType](msg: Message[Payload]) {
     for (key <- bindingKeys)
@@ -127,7 +142,41 @@ extends AmqpEndpoint with BasePullEndpoint with BaseSink with Askable {
   }
 
   def askImpl[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
-    ???
+    val rndUuid = java.util.UUID.randomUUID.toString
+    val resultPromise = Promise[Message[Response]]()
+    @volatile var consumerTag: String = null //holder for the consumer that might get instantiated or not.
+    Future {
+      val props = messageProperties.builder.correlationId(rndUuid).build()
+      manager.channel.basicPublish(exchange.name, bindingKeys.head, props, msg.payload.asInstanceOf[Array[Byte]])
+    } map {_ =>
+      val consumer = new DefaultConsumer(manager.channel) {
+        override def handleDelivery(ct, envelope, properties, body) {
+          if (properties.getCorrelationId != rndUuid) {
+            manager.channel.basicReject(envelope.getDeliveryTag, true)
+            return
+          }
+          manager.channel.basicCancel(consumerTag) //I will not receive any more messages
+          consumerTag = null // prevent IOException in the timeout event.
+          manager.channel.basicAck(envelope.getDeliveryTag, false)
+          val res = msg map (_ => body)
+          res.correlationId = properties.getCorrelationId
+          properties.getReplyTo match {
+            case s if s != null && s.nonEmpty => res.replyTo = AmqpDestination(s)
+            case _ =>
+          }
+          resultPromise.trySuccess(res)
+        }
+      }
+      if (!resultPromise.isCompleted) //it might have timed out in between.
+        consumerTag = manager.channel.basicConsume(queue.name, false, consumer)
+    }
+    flow.scheduleOnce(timeOut) {
+      resultPromise.tryFailure(new TimeoutException(s"Timeout $timeOut expired"))
+      if (consumerTag != null) try manager.channel.basicCancel(consumerTag)
+      catch {case ex: Exception => log.error(ex, "Failed cancelling temporal consumer")}
+    }
+
+    resultPromise.future
   }
 
   override def dispose() {
