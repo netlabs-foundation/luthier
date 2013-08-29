@@ -236,7 +236,7 @@ trait Flow extends FlowPatterns with Disposable {
    * Primitive to execute blocking code asynchronously without blocking
    * the flow's worker.
    *
-   * @returns A future for the computation
+   * @return A future for the computation
    */
   def blocking[R](code: => R): Future[R] = {
     Future(code)(blockingExecutorContext)
