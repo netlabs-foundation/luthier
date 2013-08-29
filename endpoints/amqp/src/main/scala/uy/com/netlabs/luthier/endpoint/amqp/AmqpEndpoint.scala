@@ -106,9 +106,9 @@ class AmqpInEndpoint(val flow: Flow, val manager: Amqp, val bindingKeys: Seq[Str
 
 class AmqpOutEndpoint(val flow: Flow, val manager: Amqp, val bindingKeys: Seq[String], val queue: Queue,
                       val exchange: Exchange, val messageProperties: AMQP.BasicProperties, ioThreads: Int)
-extends AmqpEndpoint with PullEndpoint with BaseSink with Askable {
+extends AmqpEndpoint with BasePullEndpoint with BaseSink /*with Askable*/ {
   val ioProfile = IoProfile.threadPool(ioThreads, flow.name + "-amqp-ep")
-  type Payload = Array[Byte]
+  type Payload = Option[Array[Byte]]
   type Response = Array[Byte]
   type SupportedTypes = Array[Byte] :: TypeNil
 
@@ -118,30 +118,25 @@ extends AmqpEndpoint with PullEndpoint with BaseSink with Askable {
     }
   }
 
-  def pull()(implicit mf: MessageFactory): Future[Message[Payload]] = {
-    val pullPromise = Promise[Message[Payload]]()
-    val consumer = new DefaultConsumer(manager.channel) {
-      override def handleDelivery(consumerTag, envelope, properties, body) {
-        manager.channel.basicCancel(consumerTag) //I will not receive any more messages
-        manager.channel.basicAck(envelope.getDeliveryTag, false)
-        val res = mf(body)
-        res.correlationId = properties.getCorrelationId
-        properties.getReplyTo match {
-          case s if s != null && s.nonEmpty => res.replyTo = AmqpDestination(s)
-          case _ =>
-        }
-        pullPromise.trySuccess(res)
+  protected def retrieveMessage(mf: MessageFactory): Message[Payload] = {
+    val basicGet = manager.channel.basicGet(queue.name, true)
+    if (basicGet != null) {
+      val properties = basicGet.getProps
+      val res = mf(Some(basicGet.getBody))
+      res.correlationId = properties.getCorrelationId
+      properties.getReplyTo match {
+        case s if s != null && s.nonEmpty => res.replyTo = AmqpDestination(s)
+        case _ =>
       }
-    }
-    manager.channel.basicConsume(queue.name, false, consumer)
-    pullPromise.future
+      res
+    } else mf(None)
   }
   protected def pushMessage[Payload: SupportedType](msg: Message[Payload]) {
     for (key <- bindingKeys)
       manager.channel.basicPublish(exchange.name, key, messageProperties, msg.payload.asInstanceOf[Array[Byte]])
   }
 
-  def askImpl[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
+  /*def askImpl[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
     val rndUuid = java.util.UUID.randomUUID.toString
     val resultPromise = Promise[Message[Response]]()
     @volatile var consumerTag: String = null //holder for the consumer that might get instantiated or not.
@@ -177,7 +172,7 @@ extends AmqpEndpoint with PullEndpoint with BaseSink with Askable {
     }
 
     resultPromise.future
-  }
+  }*/
 
   override def dispose() {
     super.dispose()
