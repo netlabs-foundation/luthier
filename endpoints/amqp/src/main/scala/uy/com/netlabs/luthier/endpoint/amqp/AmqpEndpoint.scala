@@ -54,6 +54,16 @@ trait AmqpEndpoint extends Endpoint {
   }
   def dispose() {
   }
+  
+  protected def mergeMessageWithProps(m: Message[_], props: AMQP.BasicProperties) = {
+    val res = props.builder()
+    m.replyTo match {
+      case d: AmqpDestination if d != null => res.replyTo(d.queue)
+      case _ =>
+    }
+    res.correlationId(m.correlationId)
+    res.build()
+  }
 }
 
 /**
@@ -71,11 +81,13 @@ class AmqpInEndpoint(val flow: Flow, val manager: Amqp, val bindingKeys: Seq[Str
         manager.channel.queueBind(queue.name, exchange.name, key)
     }
     val consumer = new DefaultConsumer(manager.channel) {
-      def reply(to: Destination) = (res: Try[Message[OneOf[_, SupportedResponseTypes]]]) => {
+      def reply(origProps: AMQP.BasicProperties, to: Destination) = (res: Try[Message[OneOf[_, SupportedResponseTypes]]]) => {
         res match {
           case Success(msg@Message(oneOf)) =>
             to match {
-              case d: AmqpDestination if d != null => manager.channel.basicPublish(d.queue, "", null, oneOf.valueAs[Array[Byte]])
+              case d: AmqpDestination if d != null =>
+                println("Sending message to " + d.queue)
+                manager.channel.basicPublish("", d.queue, mergeMessageWithProps(msg, origProps), oneOf.valueAs[Array[Byte]])
               case other => log.error("Failed to reply to client because replyTo destination is invalid. Destination is:" + other)
             }
           case Failure(ex) =>
@@ -92,7 +104,7 @@ class AmqpInEndpoint(val flow: Flow, val manager: Amqp, val bindingKeys: Seq[Str
         if (onEventHandler != null) {
           messageArrived(msg)
         } else { //its a responsible
-          requestArrived(msg, reply(msg.replyTo))
+          requestArrived(msg, reply(props, msg.replyTo))
         }
       }
     }
@@ -132,8 +144,9 @@ extends AmqpEndpoint with BasePullEndpoint with BaseSink /*with Askable*/ {
     } else mf(None)
   }
   protected def pushMessage[Payload: SupportedType](msg: Message[Payload]) {
+    val props = mergeMessageWithProps(msg, messageProperties)
     for (key <- bindingKeys)
-      manager.channel.basicPublish(exchange.name, key, messageProperties, msg.payload.asInstanceOf[Array[Byte]])
+      manager.channel.basicPublish(exchange.name, key, props, msg.payload.asInstanceOf[Array[Byte]])
   }
 
   /*def askImpl[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
