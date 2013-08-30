@@ -32,9 +32,10 @@ package uy.com.netlabs.luthier
 package endpoint
 package amqp
 
+import akka.actor.Cancellable
 import com.rabbitmq.client._
-import com.rabbitmq.client.ConnectionFactory
 import java.util.concurrent.ExecutorService
+import scala.concurrent._, duration._
 
 /**
  * This class serves as a factory for AMQP endpoints.
@@ -44,11 +45,47 @@ import java.util.concurrent.ExecutorService
 class Amqp(val connectionFactory: ConnectionFactory,
            connectionThreadPool: ExecutorService = null)(implicit appContext: AppContext) extends Disposable {
 
-  @volatile private[this] var _connection = new ConnectionInstance()
+  val log = akka.event.Logging(appContext.actorSystem, this)(new akka.event.LogSource[Amqp] {
+      def genString(a) = appContext.name + "-" + this
+    })
+  @volatile private[this] var _connection = new ConnectionInstance(connectionFactory.newConnection(connectionThreadPool))
+  @volatile private[amqp] var instantiatedInboundEndpoints = Vector.empty[AmqpInEndpoint]
   @volatile private[this] var declaredTempQueues = Seq.empty[String]
-  private class ConnectionInstance {
-    val conn: Connection = connectionFactory.newConnection(connectionThreadPool)
+  private class ConnectionInstance(val conn: Connection) extends ShutdownListener {
+    conn.addShutdownListener(this)
     val channel = conn.createChannel()
+
+    def shutdownCompleted(cause) {
+      cause.getCause match {
+        case se: java.net.SocketException if cause.isHardError =>
+          log.error(cause, "Connection to AMQP dropped, trying to reestablish it.")
+          attemptConnection()
+        case _ =>
+      }
+    }
+  }
+  @volatile private[this] var scheduledAttempt: Cancellable = null
+  private def attemptConnection() {
+    var startEndpoints = false
+    try {
+      val conn = connectionFactory.newConnection(connectionThreadPool)
+      _connection = new ConnectionInstance(conn)
+      startEndpoints = true
+      scheduledAttempt = null
+    } catch {
+      case ex: Throwable =>
+        log.error(ex, "Failed to reestablish connection, retrying in 5 seconds.")
+        scheduledAttempt = appContext.actorSystem.scheduler.scheduleOnce(5.seconds) {
+          attemptConnection()
+        }(appContext.actorSystem.dispatcher)
+    }
+    if (startEndpoints) {
+      log.info(s"Connection to AMQP reestablished. Reregistering ${instantiatedInboundEndpoints.length}")
+      for (ep <- instantiatedInboundEndpoints) {
+        ep.start()
+        log.info(s"Flow ${ep.flow.name} restarted")
+      }
+    }
   }
   def connection() = _connection.conn
   def channel = _connection.channel

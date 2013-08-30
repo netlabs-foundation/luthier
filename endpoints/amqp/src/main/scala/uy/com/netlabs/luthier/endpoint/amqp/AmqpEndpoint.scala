@@ -75,8 +75,12 @@ class AmqpInEndpoint(val flow: Flow, val manager: Amqp, val bindingKeys: Seq[Str
   type Payload = Array[Byte]
   type SupportedResponseTypes = Array[Byte] :: TypeNil
   val ioProfile = IoProfile.threadPool(ioThreads, flow.name + "-amqp-ep")
+  private lazy val registerInManger: Unit = {
+    manager.instantiatedInboundEndpoints :+= this
+  }
   override def start() {
     super.start()
+    registerInManger //only gets registered the first time in the manager
     if (exchange != Exchange.Default) {
       for (key <- bindingKeys)
         manager.channel.queueBind(queue.name, exchange.name, key)
@@ -114,6 +118,7 @@ class AmqpInEndpoint(val flow: Flow, val manager: Amqp, val bindingKeys: Seq[Str
   override def dispose() {
     super.dispose()
     ioProfile.dispose()
+    manager.instantiatedInboundEndpoints = manager.instantiatedInboundEndpoints.filterNot(this.==)
   }
 }
 
@@ -151,42 +156,42 @@ extends AmqpEndpoint with BasePullEndpoint with BaseSink /*with Askable*/ {
   }
 
   /*def askImpl[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
-    val rndUuid = java.util.UUID.randomUUID.toString
-    val resultPromise = Promise[Message[Response]]()
-    @volatile var consumerTag: String = null //holder for the consumer that might get instantiated or not.
-    Future {
-      val props = messageProperties.builder.correlationId(rndUuid).build()
-      manager.channel.basicPublish(exchange.name, bindingKeys.head, props, msg.payload.asInstanceOf[Array[Byte]])
-    } map {_ =>
-      val consumer = new DefaultConsumer(manager.channel) {
-        override def handleDelivery(ct, envelope, properties, body) {
-          if (properties.getCorrelationId != rndUuid) {
-            manager.channel.basicReject(envelope.getDeliveryTag, true)
-            return
-          }
-          manager.channel.basicCancel(consumerTag) //I will not receive any more messages
-          consumerTag = null // prevent IOException in the timeout event.
-          manager.channel.basicAck(envelope.getDeliveryTag, false)
-          val res = msg map (_ => body)
-          res.correlationId = properties.getCorrelationId
-          properties.getReplyTo match {
-            case s if s != null && s.nonEmpty => res.replyTo = AmqpDestination(s)
-            case _ =>
-          }
-          resultPromise.trySuccess(res)
-        }
-      }
-      if (!resultPromise.isCompleted) //it might have timed out in between.
-        consumerTag = manager.channel.basicConsume(queue.name, false, consumer)
-    }
-    flow.scheduleOnce(timeOut) {
-      resultPromise.tryFailure(new TimeoutException(s"Timeout $timeOut expired"))
-      if (consumerTag != null) try manager.channel.basicCancel(consumerTag)
-      catch {case ex: Exception => log.error(ex, "Failed cancelling temporal consumer")}
-    }
+   val rndUuid = java.util.UUID.randomUUID.toString
+   val resultPromise = Promise[Message[Response]]()
+   @volatile var consumerTag: String = null //holder for the consumer that might get instantiated or not.
+   Future {
+   val props = messageProperties.builder.correlationId(rndUuid).build()
+   manager.channel.basicPublish(exchange.name, bindingKeys.head, props, msg.payload.asInstanceOf[Array[Byte]])
+   } map {_ =>
+   val consumer = new DefaultConsumer(manager.channel) {
+   override def handleDelivery(ct, envelope, properties, body) {
+   if (properties.getCorrelationId != rndUuid) {
+   manager.channel.basicReject(envelope.getDeliveryTag, true)
+   return
+   }
+   manager.channel.basicCancel(consumerTag) //I will not receive any more messages
+   consumerTag = null // prevent IOException in the timeout event.
+   manager.channel.basicAck(envelope.getDeliveryTag, false)
+   val res = msg map (_ => body)
+   res.correlationId = properties.getCorrelationId
+   properties.getReplyTo match {
+   case s if s != null && s.nonEmpty => res.replyTo = AmqpDestination(s)
+   case _ =>
+   }
+   resultPromise.trySuccess(res)
+   }
+   }
+   if (!resultPromise.isCompleted) //it might have timed out in between.
+   consumerTag = manager.channel.basicConsume(queue.name, false, consumer)
+   }
+   flow.scheduleOnce(timeOut) {
+   resultPromise.tryFailure(new TimeoutException(s"Timeout $timeOut expired"))
+   if (consumerTag != null) try manager.channel.basicCancel(consumerTag)
+   catch {case ex: Exception => log.error(ex, "Failed cancelling temporal consumer")}
+   }
 
-    resultPromise.future
-  }*/
+   resultPromise.future
+   }*/
 
   override def dispose() {
     super.dispose()
