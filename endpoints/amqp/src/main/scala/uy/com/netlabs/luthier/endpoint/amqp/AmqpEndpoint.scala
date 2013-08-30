@@ -54,7 +54,7 @@ trait AmqpEndpoint extends Endpoint {
   }
   def dispose() {
   }
-  
+
   protected def mergeMessageWithProps(m: Message[_], props: AMQP.BasicProperties) = {
     val res = props.builder()
     m.replyTo match {
@@ -67,7 +67,8 @@ trait AmqpEndpoint extends Endpoint {
 }
 
 /**
- * Implementation of Source and Responsible for the AMQP protocol.
+ * Implementation of Source, and Responsible for the AMQP protocol.
+ * Note that Responsible behaviour will reply to the replyTo property received by the endpoint.
  */
 class AmqpInEndpoint(val flow: Flow, val manager: Amqp, val bindingKeys: Seq[String], val queue: Queue,
                      val exchange: Exchange, ioThreads: Int) extends AmqpEndpoint with BaseSource with BaseResponsible {

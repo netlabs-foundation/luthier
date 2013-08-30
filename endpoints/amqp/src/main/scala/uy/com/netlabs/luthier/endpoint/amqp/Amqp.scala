@@ -64,6 +64,16 @@ class Amqp(val connectionFactory: ConnectionFactory,
 //  def apply(bindingKey: String, exchange: Exchange = Exchange.Default, queue: Queue = null,
 //            messageProperties: AMQP.BasicProperties = MessageProperties.BASIC, ioThreads: Int = 4): OutEF =
 //              apply(Seq(bindingKey), exchange, queue, messageProperties, ioThreads)
+
+  /**
+   * Creates an `EndpointFactory` for a Pull/Sink endpoint.
+   * Except for the binding keys all other parameters are optional: the exchange defaults to the nameless exchange,
+   * the queue defaults to a queue with the same name of the first binding key, the `AMQP.BasicProperties` defaults to
+   * `MessageProperties.BASIC`.
+   *
+   * '''Note:''' when the endpoint is first instantiated in the first run, it will declare the exchange if it's not the
+   * default, and it will always declare the queue.
+   */
   def apply(bindingKeys: Seq[String], exchange: Exchange = Exchange.Default, queue: Queue = null,
             messageProperties: AMQP.BasicProperties = MessageProperties.BASIC, ioThreads: Int = 4): OutEF = {
     require(bindingKeys.length > 0, "You must provide at least 1 binding key.")
@@ -79,6 +89,15 @@ class Amqp(val connectionFactory: ConnectionFactory,
   }
 //  def consume(bindingKey: String, queue: Queue = null, exchange: Exchange = Exchange.Default, ioThreads: Int = 4): InEF =
 //    consume(Seq(bindingKey), queue, exchange, ioThreads)
+
+  /**
+   * Creates an `EndpointFactory` for a Source/Responsible endpoint.
+   * Except for the binding keys all other parameters are optional: the exchange defaults to the nameless exchange,
+   * the queue defaults to a queue with the same name of the first binding key.
+   *
+   * '''Note:''' when the endpoint is first instantiated in the first run, it will declare the exchange if it's not the
+   * default, and it will always declare the queue, then it will bind the queue to every key declared.
+   */
   def consume(bindingKeys: Seq[String], queue: Queue = null, exchange: Exchange = Exchange.Default, ioThreads: Int = 4): InEF = {
     require(bindingKeys.length > 0, "You must provide at least 1 binding key.")
     val queueToUse = queue match {
