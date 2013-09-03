@@ -31,15 +31,15 @@
 package uy.com.netlabs.luthier
 package endpoint
 
-import org.scalatest.{ BeforeAndAfter, FunSpec }
+import org.scalatest.{BeforeAndAfterEach, FunSpec}
 import java.nio.file.Paths
 
-class BaseFlowsTest extends FunSpec with BeforeAndAfter {
+class BaseFlowsTest extends FunSpec with BeforeAndAfterEach {
   var testApp: AppContext = _
-  before {
+  override def beforeEach() {
     testApp = AppContext.build("Test App")
   }
-  after {
+  override def afterEach() {
     testApp.actorSystem.shutdown()
   }
 }

@@ -38,6 +38,10 @@ import scala.concurrent.{ ExecutionContext, Future, duration }, duration._
 import scala.util.Try
 import typelist._
 
+/**
+ * A pull endpoint that calls a prepared statement, be warned that for better throughput
+ * you need a pooled datasource.
+ */
 class JdbcPull[R](val flow: Flow,
                   val query: String,
                   val rowMapper: Row => R,
@@ -45,34 +49,38 @@ class JdbcPull[R](val flow: Flow,
                   ioThreads: Int) extends endpoint.base.BasePullEndpoint {
   type Payload = IndexedSeq[R]
 
-  @volatile private[this] var connection: Connection = _
-  @volatile private[this] var preparedStatement: PreparedStatement = _
-
-  def dispose(): Unit = {
-    Try(preparedStatement.close())
-    Try(connection.close())
-    ioProfile.dispose()
-  }
-  def start(): Unit = {
+  def dispose(): Unit = {}
+  @inline private def withStatement[R](f: (Connection, PreparedStatement) => R): R = {
+    val connection = dataSource.getConnection()
     try {
-      connection = dataSource.getConnection()
-      preparedStatement = connection.prepareStatement(query)
+      val preparedStatement = connection.prepareStatement(query)
+      f(connection, preparedStatement)
+    } finally {
+      try connection.close() catch { case ex: Exception => }
     }
   }
+  def start(): Unit = {}
 
   lazy val ioProfile = endpoint.base.IoProfile.threadPool(ioThreads, flow.name + "-jdbc-ep")
 
   protected def retrieveMessage(mf): uy.com.netlabs.luthier.Message[Payload] = {
-    val res = Try {
+    val connection = dataSource.getConnection()
+    try {
+      val preparedStatement = connection.prepareStatement(query)
       val rs = preparedStatement.executeQuery()
       val res = collection.mutable.ArrayBuffer[R]()
       while (rs.next) res += rowMapper(Row(rs))
-      res: Payload
+      mf(res)
+    } finally {
+      try connection.close() catch { case ex: Exception => }
     }
-    mf(res.get)
   }
 }
 
+/**
+ * An askable endpoint that calls a prepared statement, be warned that for better throughput
+ * you need a pooled datasource.
+ */
 class JdbcAskable[R](val flow: Flow,
                      val query: String,
                      val rowMapper: Row => R,
@@ -103,21 +111,19 @@ class JdbcAskable[R](val flow: Flow,
           case prod: Product     => prod.productIterator.toIndexedSeq
         }
       }
-      val res = Try {
-        var ps = preparedStatement.get()
-        if (ps == null) {
-          ps = connection.prepareStatement(query)
-          preparedStatement.set(ps)
-        }
-        ps.clearParameters()
+
+      val connection = dataSource.getConnection()
+      try {
+        val ps = connection.prepareStatement(query)
         var i = 0
         while ({ i += 1; i <= args.length }) ps.setObject(i, args(i - 1))
         val rs = ps.executeQuery()
         val res = collection.mutable.ArrayBuffer[R]()
         while (rs.next) res += rowMapper(Row(rs))
-        res: Response
+        msg map (_ => res)
+      } finally {
+        try connection.close() catch { case ex: Exception => }
       }
-      msg map (_ => res.get)
     }(ioProfile.executionContext)
   }
 }
