@@ -50,15 +50,6 @@ class JdbcPull[R](val flow: Flow,
   type Payload = IndexedSeq[R]
 
   def dispose(): Unit = {}
-  @inline private def withStatement[R](f: (Connection, PreparedStatement) => R): R = {
-    val connection = dataSource.getConnection()
-    try {
-      val preparedStatement = connection.prepareStatement(query)
-      f(connection, preparedStatement)
-    } finally {
-      try connection.close() catch { case ex: Exception => }
-    }
-  }
   def start(): Unit = {}
 
   lazy val ioProfile = endpoint.base.IoProfile.threadPool(ioThreads, flow.name + "-jdbc-ep")
