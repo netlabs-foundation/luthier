@@ -211,4 +211,136 @@ class FlowPatternsTest extends endpoint.BaseFlowsTest {
       }
     }
   }
+  describe("Indexed Paging") {
+    it ("should iterated all pages in sequence using fold") {
+      new Flows {
+        val appContext = testApp
+        val Vm = endpoint.base.VM.forAppContext(appContext)
+        val pager = pagingFlow(this, false)
+        pager.start()
+        val res = inFlow { (flow, msg) =>
+          import flow._
+          implicit val fr = msg.flowRun
+          val ep = Vm.ref[Int, Seq[Person]]("user/VM/pagingEndpoint")
+          val pages = indexedPaging(0){_ => (i => ep.ask(msg.map(_ => i)) map {
+                case Message(ex: Exception) => None
+                case Message(persons) if persons.nonEmpty => Some(persons)
+                case _ => None
+              })}
+          pages.fold(Seq.empty[Person])((msg, acc) => acc ++ msg)
+        }.flatMap(identity)(appContext.actorSystem.dispatcher)
+        val seq = Await.result(res, 2.seconds)
+        assert(seq.size === 100)
+      }
+    }
+    it ("should fail folding if one of the page requests fail") {
+      new Flows {
+        val appContext = testApp
+        val Vm = endpoint.base.VM.forAppContext(appContext)
+        val pager = pagingFlow(this, true)
+        pager.start()
+        val res = inFlow { (flow, msg) =>
+          import flow._
+          implicit val fr = msg.flowRun
+          val ep = Vm.ref[Int, Seq[Person]]("user/VM/pagingEndpoint")
+          val pages = indexedPaging(0){_ => (i => ep.ask(msg.map(_ => i)) map {
+                case Message(ex: Exception) => None
+                case Message(persons) if persons.nonEmpty => Some(persons)
+                case _ => None
+              })}
+          pages.fold(Seq.empty[Person])((msg, acc) => acc ++ msg)
+        }.flatMap(identity)(appContext.actorSystem.dispatcher)
+        Await.ready(res, 2.seconds)
+        assert(res.value.get.isFailure)
+      }
+    }
+    it ("should not request pages on mapping") {
+      new Flows {
+        val appContext = testApp
+        val Vm = endpoint.base.VM.forAppContext(appContext)
+        val pager = pagingFlow(this, false)
+        pager.start()
+        @volatile var lastRequestedIndex = 0
+        val res = inFlow { (flow, msg) =>
+          import flow._
+          implicit val fr = msg.flowRun
+          val ep = Vm.ref[Int, Seq[Person]]("user/VM/pagingEndpoint")
+          val pages = indexedPaging(0){_ => {i => lastRequestedIndex = i; ep.ask(msg.map(_ => i)) map {
+                case Message(ex: Exception) => None
+                case Message(persons) if persons.nonEmpty => Some(persons)
+                case _ => None
+              }}}
+          pages.map(_ map (_.name)).get(0)
+        }.flatMap(identity)(appContext.actorSystem.dispatcher)
+        Await.result(res, 1.seconds)
+        Thread.sleep(100) ///give enough time for a second page request
+        assert(lastRequestedIndex === 0)
+      }
+    }
+    it ("should filter on demand without requesting all the pages") {
+      new Flows {
+        val appContext = testApp
+        val Vm = endpoint.base.VM.forAppContext(appContext)
+        val pager = pagingFlow(this, false)
+        pager.start()
+        @volatile var lastRequestedIndex = 0
+        val res = inFlow { (flow, msg) =>
+          import flow._
+          implicit val fr = msg.flowRun
+          val ep = Vm.ref[Int, Seq[Person]]("user/VM/pagingEndpoint")
+          val pages = indexedPaging(0){_ => {i => lastRequestedIndex = i; ep.ask(msg.map(_ => i)) map {
+                case Message(ex: Exception) => None
+                case Message(persons) if persons.nonEmpty => Some(persons)
+                case _ => None
+              }}}
+          pages.filter(_.find(_.name endsWith "55").isDefined).next
+        }.flatMap(identity)(appContext.actorSystem.dispatcher)
+        Await.result(res, 2.seconds)
+        Thread.sleep(100) ///give enough time for a second page request
+        assert(lastRequestedIndex === 5)
+      }
+    }
+    it ("should be able to filter") {
+      new Flows {
+        val appContext = testApp
+        val Vm = endpoint.base.VM.forAppContext(appContext)
+        val pager = pagingFlow(this, false)
+        pager.start()
+        val res = inFlow { (flow, msg) =>
+          import flow._
+          implicit val fr = msg.flowRun
+          val ep = Vm.ref[Int, Seq[Person]]("user/VM/pagingEndpoint")
+          val pages = indexedPaging(0){_ => (i => ep.ask(msg.map(_ => i)) map {
+                case Message(ex: Exception) => None
+                case Message(persons) if persons.nonEmpty => Some(persons)
+                case _ => None
+              })}
+          pages.filter(_.find(_.name.init.head == '2').isDefined).fold(Seq.empty[Person])((msg, acc) => acc ++ msg)
+        }.flatMap(identity)(appContext.actorSystem.dispatcher)
+        val persons = Await.result(res, 2.seconds)
+        assert(persons.forall(_.name.init.head == '2'), "Found persons:\n  " + persons.mkString("\n  "))
+      }
+    }
+    it ("should be able to map") {
+      new Flows {
+        val appContext = testApp
+        val Vm = endpoint.base.VM.forAppContext(appContext)
+        val pager = pagingFlow(this, false)
+        pager.start()
+        val res = inFlow { (flow, msg) =>
+          import flow._
+          implicit val fr = msg.flowRun
+          val ep = Vm.ref[Int, Seq[Person]]("user/VM/pagingEndpoint")
+          val pages = indexedPaging(0){_ => (i => ep.ask(msg.map(_ => i)) map {
+                case Message(ex: Exception) => None
+                case Message(persons) if persons.nonEmpty => Some(persons)
+                case _ => None
+              })}
+          pages.map(_.filter(_.name endsWith "5")).fold(Seq.empty[Person])((msg, acc) => acc ++ msg)
+        }.flatMap(identity)(appContext.actorSystem.dispatcher)
+        val persons = Await.result(res, 2.seconds)
+        assert(persons.forall(_.name endsWith "5"), "Found persons:\n  " + persons.mkString("\n  "))
+      }
+    }
+  }
 }
