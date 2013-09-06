@@ -52,8 +52,8 @@ trait FlowPatterns {
   def retryAttempts[T](maxAttempts: Int,
                        description: String,
                        logRetriesWithLevel: akka.event.Logging.LogLevel = akka.event.Logging.InfoLevel)(
-                         op: => Future[T])(
-                           isFailure: Try[T] => Boolean)(implicit fc: FlowRun[_ <: Flow]): Future[T] = {
+    op: => Future[T])(
+    isFailure: Try[T] => Boolean)(implicit fc: FlowRun.Any): Future[T] = {
     import fc.flow.workerActorsExecutionContext
     val promise = Promise[T]()
     op onComplete { t =>
@@ -73,12 +73,12 @@ trait FlowPatterns {
    * Convenience call to retryAttempts passing Int.MaxValue and a positive isSuccess instead of isFailure.
    */
   def untilSuccessful[T](description: String,
-                         logRetriesWithLevel: akka.event.Logging.LogLevel = akka.event.Logging.InfoLevel)(op: => Future[T])(isSuccess: Try[T] => Boolean)(implicit fc: FlowRun[_ <: Flow]): Future[T] = {
+                         logRetriesWithLevel: akka.event.Logging.LogLevel = akka.event.Logging.InfoLevel)(op: => Future[T])(isSuccess: Try[T] => Boolean)(implicit fc: FlowRun.Any): Future[T] = {
     retryAttempts(Int.MaxValue, description)(op)(isSuccess andThen (!_))
   }
 
   def retryBackoff[T](initalBackoff: Long, backoffExponent: Long, maxBackoff: Long, description: String,
-                      logRetriesWithLevel: akka.event.Logging.LogLevel = akka.event.Logging.InfoLevel)(op: => Future[T])(isFailure: Try[T] => Boolean)(implicit fc: FlowRun[_ <: Flow]): Future[T] = {
+                      logRetriesWithLevel: akka.event.Logging.LogLevel = akka.event.Logging.InfoLevel)(op: => Future[T])(isFailure: Try[T] => Boolean)(implicit fc: FlowRun.Any): Future[T] = {
     import fc.flow.workerActorsExecutionContext
     def backoff(wait: Long, acc: Long): Future[T] = {
       val promise = Promise[T]()
@@ -97,5 +97,84 @@ trait FlowPatterns {
       promise.future
     }
     backoff(initalBackoff, 0)
+  }
+
+  trait Paging[A] {
+    def next(): Future[Option[A]]
+    def map[S](f: A => S)(implicit ec: ExecutionContext): Paging[S] = {
+      val outer = this
+      new Paging[S] {
+        def next = outer.next.map(_.map(f))(ec)
+      }
+    }
+    def filter(f: A => Boolean)(implicit ec: ExecutionContext): Paging[A] = {
+      val outer = this
+      new Paging[A] {
+        def next() = outer.next.filter(_.filter(f).isDefined)(ec)
+      }
+    }
+    def fold[B](init: B)(op: (A, B) => B)(implicit ec: ExecutionContext): Future[B] = {
+      val res = Promise[B]()
+      def iter(b: B): Unit = next() foreach {
+        case Some(a) => iter(op(a, b))
+        case None => res.success(b)
+      }
+      iter(init)
+      res.future
+    }
+  }
+
+  def paging[S, R](initialState: S)(pager: S => Future[Option[(R, S)]])(implicit fc: FlowRun.Any): Paging[R] = new Paging[R] {
+    import fc.flow._
+    private[this] var lastCall: Future[Option[(R, S)]] = null
+    def next: Future[Option[R]] = synchronized {
+      lastCall = if (lastCall == null) {
+        pager(initialState)
+      } else {
+        lastCall.flatMap {
+          case Some((r, s)) => pager(s)
+          case None         => lastCall
+        }
+      }
+      lastCall map (_.map(_._1))
+    }
+  }
+
+  trait IndexedPaging[A] {
+    def get(i: Int): Future[Option[A]]
+    def map[S](f: A => S)(implicit ec: ExecutionContext): IndexedPaging[S] = {
+      val outer = this
+      new IndexedPaging[S] {
+        def get(i: Int) = outer.get(i).map(_.map(f))(ec)
+      }
+    }
+    def filter(f: A => Boolean)(implicit ec: ExecutionContext): IndexedPaging[A] = {
+      val outer = this
+      new IndexedPaging[A] {
+        def get(i: Int) = outer.get(i).filter(_.filter(f).isDefined)(ec)
+      }
+    }
+    def fold[B](init: B)(op: (A, B) => B)(implicit ec: ExecutionContext): Future[B] = {
+      val res = Promise[B]()
+      def iter(i: Int, b: B): Unit = get(i) foreach {
+        case Some(a) => iter(i + 1, op(a, b))
+        case None => res.success(b)
+      }
+      iter(0, init)
+      res.future
+    }
+  }
+
+  def indexedPaging[S, R](initialState: S)(pager: S => (Int => Future[Option[R]]))(implicit fc: FlowRun.Any): IndexedPaging[R] = new IndexedPaging[R] {
+    import fc.flow._
+    private[this] var indexer: (Int => Future[Option[R]]) = null
+    def get(i: Int): Future[Option[R]] = {
+      synchronized {
+        if (indexer == null) {
+          indexer = pager(initialState)
+        }
+      }
+      indexer(i)
+    }
   }
 }
