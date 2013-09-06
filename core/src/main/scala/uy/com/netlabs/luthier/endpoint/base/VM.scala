@@ -131,7 +131,7 @@ class VM private[VM](val appContext: AppContext) {
         case Success(msg) => requestor.tell(msg.payload.value, self)
         case Failure(err) => requestor.tell(err, self)
       }
-      f onFailure { case ex => appContext.actorSystem.log.error(ex, "Error on flow " + flow) }
+      f onFailure { case ex => log.error(ex, "Error on flow " + flow) }
     }
   }
   case class ResponsibleEndpointFactory[ReqType: ClassTag, ResponseType <: TypeList] private[VM](actorPath: String) extends EndpointFactory[VMResponsibleEndpoint[ReqType, ResponseType]] {
