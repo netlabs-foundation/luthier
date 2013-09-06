@@ -110,7 +110,11 @@ trait FlowPatterns {
     def filter(f: A => Boolean)(implicit ec: ExecutionContext): Paging[A] = {
       val outer = this
       new Paging[A] {
-        def next() = outer.next.filter(_.filter(f).isDefined)(ec)
+        def next() = outer.next.flatMap {
+          case None => Future.successful(None)
+          case s@Some(a) if f(a) => Future.successful(s)
+          case other => next()
+        }
       }
     }
     def fold[B](init: B)(op: (A, B) => B)(implicit ec: ExecutionContext): Future[B] = {
@@ -149,10 +153,15 @@ trait FlowPatterns {
         def get(i: Int) = outer.get(i).map(_.map(f))(ec)
       }
     }
-    def filter(f: A => Boolean)(implicit ec: ExecutionContext): IndexedPaging[A] = {
+    def filter(f: A => Boolean)(implicit ec: ExecutionContext): Paging[A] = {
       val outer = this
-      new IndexedPaging[A] {
-        def get(i: Int) = outer.get(i).filter(_.filter(f).isDefined)(ec)
+      new Paging[A] {
+        @volatile var lastIndex = -1
+        def next() = outer.get({lastIndex += 1; lastIndex}).flatMap {
+          case None => Future.successful(None)
+          case s@Some(a) if f(a) => Future.successful(s)
+          case other => next()
+        }
       }
     }
     def fold[B](init: B)(op: (A, B) => B)(implicit ec: ExecutionContext): Future[B] = {
@@ -167,8 +176,9 @@ trait FlowPatterns {
     }
   }
 
-  def indexedPaging[S, R](initialState: S)(pager: S => (Int => Future[Option[R]]))(implicit fc: FlowRun.Any): IndexedPaging[R] = new IndexedPaging[R] {
+  def indexedPaging[S, R](initialState: S, cache: Boolean = false)(pager: S => (Int => Future[Option[R]]))(implicit fc: FlowRun.Any): IndexedPaging[R] = new IndexedPaging[R] {
     import fc.flow._
+    private[this] val retrievedPages = if (cache) new java.util.HashMap[Int, Future[Option[R]]]() else null
     private[this] var indexer: (Int => Future[Option[R]]) = null
     def get(i: Int): Future[Option[R]] = {
       synchronized {
@@ -176,7 +186,17 @@ trait FlowPatterns {
           indexer = pager(initialState)
         }
       }
-      indexer(i)
+      //cache previously retrieved pages
+      if (cache) {
+        retrievedPages.synchronized {
+          val prev = retrievedPages.get(i)
+          if (prev == null) {
+            val res = indexer(i)
+            retrievedPages.put(i, res)
+            res
+          } else prev
+        }
+      } else indexer(i)
     }
   }
 }
