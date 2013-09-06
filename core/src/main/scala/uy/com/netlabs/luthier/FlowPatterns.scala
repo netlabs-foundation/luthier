@@ -115,9 +115,10 @@ trait FlowPatterns {
     }
     def fold[B](init: B)(op: (A, B) => B)(implicit ec: ExecutionContext): Future[B] = {
       val res = Promise[B]()
-      def iter(b: B): Unit = next() foreach {
-        case Some(a) => iter(op(a, b))
-        case None => res.success(b)
+      def iter(b: B): Unit = next() onComplete {
+        case Success(Some(a)) => iter(op(a, b))
+        case Success(None) => res.success(b)
+        case Failure(ex) => res.failure(ex)
       }
       iter(init)
       res.future
@@ -156,9 +157,10 @@ trait FlowPatterns {
     }
     def fold[B](init: B)(op: (A, B) => B)(implicit ec: ExecutionContext): Future[B] = {
       val res = Promise[B]()
-      def iter(i: Int, b: B): Unit = get(i) foreach {
-        case Some(a) => iter(i + 1, op(a, b))
-        case None => res.success(b)
+      def iter(i: Int, b: B): Unit = get(i) onComplete {
+        case Success(Some(a)) => iter(i + 1, op(a, b))
+        case Success(None) => res.success(b)
+        case Failure(ex) => res.failure(ex)
       }
       iter(0, init)
       res.future
