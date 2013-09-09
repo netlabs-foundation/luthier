@@ -148,80 +148,86 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String, shar
       import uy.com.netlabs.luthier.typelist._
       import scala.language._
       val app = ${if (shareGlobalActorContext) "sharedAppContext" else """AppContext.build("${appName}", java.nio.file.Paths.get("$file"), config)"""}
-      val flow = new Flows {
-        val appContext = app
+        val flow = new Flows {
+          val appContext = app
 
-        ${content.mkString("\n")}
-      }
+          ${content.mkString("\n")}
+        }
     """
     script
   }
   private[this] def loadFullFlow(parentAppContext: AppContext, filePath: Path): () => Unit = {
     try {
       val content = Files.readAllLines(filePath, java.nio.charset.Charset.forName("utf8")).toSeq
-      require(compilerLazy.interpret(content mkString "\n") == IR.Success, "Failed compiling flow " + file)
-      val lr = compilerLazy.lastRequest
-      lr.definedSymbolList match {
-        case Nil => throw new IllegalArgumentException("No class defined in Full Flow file")
-        case symbols =>
-          val flowsSymbol = compilerLazy.global.typeOf[Flows].typeSymbol
-          val appContextType = compilerLazy.global.typeOf[AppContext]
-          //find the symbols that extends Flows and that have a constructor that takes an AppContext as first argument, then try to find matches
-          //for the remaining types.
-          //I'll type the variable possibleFlows myself, because its kinda creepy.
-          val processedFlows: Seq[String Either (compilerLazy.global.ClassSymbol, Seq[compilerLazy.global.Symbol])] = for {
-            sy <- symbols if sy.isClass && !sy.isAbstractClass
-            cs = sy.asClass if cs.typeSignature.baseType(flowsSymbol) != compilerLazy.global.NoType
-            constructors = cs.typeSignature.declaration(compilerLazy.global.nme.CONSTRUCTOR).asTerm.alternatives if constructors.size == 1
-            pc = constructors.head.asMethod if pc.isPublic
-            List(appContextParam :: params) = pc.paramss //must be a single param list
-            if appContextParam.typeSignature <:< appContextType // the first param is an appContext, we hit the gold
-          } yield {
-            val matchedParams = params map (p => p -> compilerLazy.typeOfTerm(p.name.toTermName.toString))
+      //synchronize over the compiler instance, to make sure nobody messes with the classloader while we use it.
+      compilerLazy.synchronized {
+        compilerLazy.resetClassLoader()
+        val theRun = compilerLazy.compileSourcesKeepingRun(new scala.reflect.internal.util.BatchSourceFile(filePath.toString, content mkString "\n"))
+        if (!theRun._1) println(Console.RED + Console.BOLD + "Failed" + Console.RESET)
+        require(theRun._1, "Failed compiling flow " + file)
 
-            val unmatchedParams = matchedParams.filter(p => p._2 == compilerLazy.global.NoType || !p._2.<:<(p._1.typeSignature))
-            if (unmatchedParams.isEmpty) Right(cs -> matchedParams.map(_._1))
-            else {
-              def describe(s: compilerLazy.global.Symbol) = s"${s.nameString}: ${s.typeSignature}"
-              val unmatchedParamsDescr = unmatchedParams map {
-                case (param, compilerLazy.global.NoType) => describe(param)
-                case (param, fromCompiler) => describe(param) +
-                  s"  (Note that a variable ${param.nameString} was found, but it is not applicable because its type $fromCompiler is not assignable from expected type ${param.typeSignature})"
+        theRun._2.symSource.keys.toSeq match {
+          case Nil => throw new IllegalArgumentException("No class defined in Full Flow file")
+          case symbols =>
+            val flowsSymbol = compilerLazy.global.typeOf[Flows].typeSymbol
+            val appContextType = compilerLazy.global.typeOf[AppContext]
+            //find the symbols that extends Flows and that have a constructor that takes an AppContext as first argument, then try to find matches
+            //for the remaining types.
+            //I'll type the variable possibleFlows myself, because its kinda creepy.
+            val processedFlows: Seq[String Either (compilerLazy.global.ClassSymbol, Seq[compilerLazy.global.Symbol])] = for {
+              sy <- symbols if sy.isClass && !sy.isAbstractClass
+              cs = sy.asClass if cs.typeSignature.baseType(flowsSymbol) != compilerLazy.global.NoType
+              constructors = cs.typeSignature.declaration(compilerLazy.global.nme.CONSTRUCTOR).asTerm.alternatives if constructors.size == 1
+              pc = constructors.head.asMethod if pc.isPublic
+              List(appContextParam :: params) = pc.paramss //must be a single param list
+              if appContextParam.typeSignature <:< appContextType // the first param is an appContext, we hit the gold
+            } yield {
+              val matchedParams = params map (p => p -> compilerLazy.typeOfTerm(p.name.toTermName.toString))
+
+              val unmatchedParams = matchedParams.filter(p => p._2 == compilerLazy.global.NoType || !p._2.<:<(p._1.typeSignature))
+              if (unmatchedParams.isEmpty) Right(cs -> matchedParams.map(_._1))
+              else {
+                def describe(s: compilerLazy.global.Symbol) = s"${s.nameString}: ${s.typeSignature}"
+                val unmatchedParamsDescr = unmatchedParams map {
+                  case (param, compilerLazy.global.NoType) => describe(param)
+                  case (param, fromCompiler) => describe(param) +
+                    s"  (Note that a variable ${param.nameString} was found, but it is not applicable because its type $fromCompiler is not assignable from expected type ${param.typeSignature})"
+                }
+                Left(s"$cs correctly extends Flows, but its primary constructor cannot be called.\n" +
+                     s"It is defined as:\n  ${pc.paramss.map(_.map(describe).mkString("(", ", ", ")")).mkString("")}\n" +
+                     s"and I don't know how to provide\n  ${unmatchedParamsDescr.mkString("\n  ")}")
               }
-              Left(s"$cs correctly extends Flows, but its primary constructor cannot be called.\n" +
-                   s"It is defined as:\n  ${pc.paramss.map(_.map(describe).mkString("(", ", ", ")")).mkString("")}\n" +
-                   s"and I don't know how to provide\n  ${unmatchedParamsDescr.mkString("\n  ")}")
             }
-          }
-          val (failedFlows, possibleFlows) = processedFlows.partition(_.isLeft)
+            val (failedFlows, possibleFlows) = processedFlows.partition(_.isLeft)
 
-          failedFlows foreach { case Left(msg) => logger.warning(msg) }
+            failedFlows foreach { case Left(msg) => logger.warning(msg) }
 
-          //instantiate the selected flows.
-          val appName = {
-            val r = file.stripSuffix(".fflow").stripSuffix(".scala").replace('/', '-')
-            if (r.charAt(0) == '-') r.drop(1) else r
-          }
-          val appContext = if (shareGlobalActorContext) parentAppContext else AppContext.build(appName, filePath, parentAppContext.actorSystem.settings.config)
-          val flowss = possibleFlows map {
-            case Right((flowsSymbol, argumentsSymbols)) =>
-              def loadClass(c: String) = compilerLazy.getInterpreterClassLoader.loadClass(c)
-              val argumentClasses = classOf[AppContext] +: argumentsSymbols.map(s => loadClass(s.typeSignature.typeSymbol.javaClassName)) toArray;
-              val c = loadClass(flowsSymbol.javaClassName).getConstructor(argumentClasses: _*)
-              logger.debug(s"Constructor $c")
-              val arguments = argumentsSymbols map (s => compilerLazy.requestForName(s.asTerm.name).flatMap(_.getEval).getOrElse(throw new IllegalStateException(s"Could not obtain value $s from the compiler!")))
-              c.newInstance((appContext +: arguments).toArray[Object]: _*).asInstanceOf[Flows]
-          }
+            //instantiate the selected flows.
+            val appName = {
+              val r = file.stripSuffix(".fflow").stripSuffix(".scala").replace('/', '-')
+              if (r.charAt(0) == '-') r.drop(1) else r
+            }
+            val appContext = if (shareGlobalActorContext) parentAppContext else AppContext.build(appName, filePath, parentAppContext.actorSystem.settings.config)
+            val flowss = possibleFlows map {
+              case Right((flowsSymbol, argumentsSymbols)) =>
+                def loadClass(c: String) = compilerLazy.getInterpreterClassLoader.loadClass(c)
+                val argumentClasses = classOf[AppContext] +: argumentsSymbols.map(s => loadClass(s.typeSignature.typeSymbol.javaClassName)) toArray;
+                val c = loadClass(flowsSymbol.javaClassName).getConstructor(argumentClasses: _*)
+                logger.debug(s"Constructor $c")
+                val arguments = argumentsSymbols map (s => compilerLazy.requestForName(s.asTerm.name).flatMap(_.getEval).getOrElse(throw new IllegalStateException(s"Could not obtain value $s from the compiler!")))
+                c.newInstance((appContext +: arguments).toArray[Object]: _*).asInstanceOf[Flows]
+            }
 
-          () => {
-            logger.info("Starting App: " + appContext.name)
-            val appStartTime = System.nanoTime()
-            for (flows <- flowss; flow <- flows.registeredFlows) flow.start()
-            val totalTime = System.nanoTime() - appStartTime
-            logger.info(Console.GREEN + f"  App fully initialized. Total time: ${totalTime / 1000000000d}%.3f" + Console.RESET)
+            () => {
+              logger.info("Starting App: " + appContext.name)
+              val appStartTime = System.nanoTime()
+              for (flows <- flowss; flow <- flows.registeredFlows) flow.start()
+              val totalTime = System.nanoTime() - appStartTime
+              logger.info(Console.GREEN + f"  App fully initialized. Total time: ${totalTime / 1000000000d}%.3f" + Console.RESET)
 
-            _theFlows = flowss
-          }
+              _theFlows = flowss
+            }
+        }
       }
     } catch {
       case e: java.lang.reflect.InvocationTargetException => throw new java.lang.reflect.InvocationTargetException(e.getTargetException(), s"Failed to instance one of the flows defined in $file")
