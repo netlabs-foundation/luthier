@@ -157,3 +157,18 @@ extends BaseJmsEndpoint {
     configureSourceOnStart(createDestination())
   }
 }
+class JmsDestEndpoint(val flow: Flow,
+                      dest: JmsDestination,
+                      val jmsOperations: JmsOperations,
+                      val messageSelector: String,
+                      val ioThreads: Int,
+                      val autoHandleExceptions: Boolean,
+                      val deliveryMode: Int)
+extends BaseJmsEndpoint {
+
+  def createDestination(): javax.jms.Destination = dest.destination
+
+  def start() {
+    configureSourceOnStart(createDestination())
+  }
+}
