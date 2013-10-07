@@ -170,9 +170,10 @@ protected[jms] trait JmsOperations {
     implicit val session = threadLocalSession.get()
     handlingSessionClosed {
       val producer = session.createProducer(destination)
-      producer.setDeliveryMode(deliveryMode)
-      producer.send(msg)
-      producer.close()
+      try {
+        producer.setDeliveryMode(deliveryMode)
+        producer.send(msg)
+      } finally Try(producer.close())
     }
   }
   /**
@@ -184,9 +185,10 @@ protected[jms] trait JmsOperations {
     implicit val session = threadLocalSession.get()
     handlingSessionClosed {
       val producer = session.createProducer(destination)
-      producer.setDeliveryMode(deliveryMode)
-      producer.send(payloadToJmsMessage(msg, session))
-      producer.close()
+      try {
+        producer.setDeliveryMode(deliveryMode)
+        producer.send(payloadToJmsMessage(msg, session))
+      } finally Try(producer.close())
     }
   }
 

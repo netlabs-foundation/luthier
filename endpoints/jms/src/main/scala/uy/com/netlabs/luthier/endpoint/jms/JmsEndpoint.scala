@@ -121,10 +121,7 @@ extends BaseJmsEndpoint
                 }
                 newReceviedMessage(ex)
             }
-            Try(requestArrived(esbMessage, sendMessage(_, m.getJMSReplyTo))) match {
-              case Failure(ex) => log.error(ex, "Failed delivering request")
-              case _           =>
-            }
+            requestArrived(esbMessage, sendMessage(_, m.getJMSReplyTo))
           }
         }, flow)
       log.info("Configured responsible consumer on destination " + destination)
@@ -136,9 +133,12 @@ extends BaseJmsEndpoint
   }
 
   protected def sendMessage(msg: Try[Message[OneOf[_, SupportedResponseTypes]]], dest: javax.jms.Destination) {
-    msg match {
+    try msg match {
       case Success(m) => jmsOperations.sendMessage(m.map(_.value), dest, deliveryMode)(null) //force the evidence..
       case Failure(ex) => jmsOperations.sendMessage(ex, dest, deliveryMode)
+    }
+    catch {
+      case ex: Exception => log.error(ex, "Failed delivering request")
     }
   }
 }
