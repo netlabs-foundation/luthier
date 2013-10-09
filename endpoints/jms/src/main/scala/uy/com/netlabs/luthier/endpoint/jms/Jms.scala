@@ -200,16 +200,18 @@ protected[jms] trait JmsOperations {
   (implicit typeSupportedEv: TypeSupportedByTransport[String :: Array[Byte] :: java.io.Serializable :: TypeNil, Payload],
    executionContext: ExecutionContext): Future[Message[Any]] = {
     implicit val session = threadLocalSession.get()
-    handlingSessionClosed {
-      val producer = session.createProducer(destination)
-      producer.setDeliveryMode(deliveryMode)
-      val tempQueue = session.createTemporaryQueue
-      val m = msg: jmsMessage
-      m.setJMSReplyTo(tempQueue)
-      //The next future executes in the ioExecutionContext
-      Future(producer.send(m)) flatMap { _ =>
-        producer.close()
-        val jmsResponse = Promise[Message[Any]]()
+    val jmsResponse = Promise[Message[Any]]()
+    Future {
+      handlingSessionClosed {
+        val tempQueue = session.createTemporaryQueue
+        val producer = session.createProducer(destination)
+        try {
+          producer.setDeliveryMode(deliveryMode)
+          val m = msg: jmsMessage
+          m.setJMSReplyTo(tempQueue)
+          //The next future executes in the ioExecutionContext
+          producer.send(m)
+        } finally producer.close()
         val consumer = session.createConsumer(tempQueue)
         consumer setMessageListener new MessageListener {
           def onMessage(m) {
@@ -222,9 +224,9 @@ protected[jms] trait JmsOperations {
           try tempQueue.delete() catch {case ex: Exception => log.error(ex, "Could not delete temporary queue " + tempQueue)}
           jmsResponse tryFailure new java.util.concurrent.TimeoutException(s"$timeOut ellapsed")
         }
-        jmsResponse.future
       }
     }
+    jmsResponse.future
   }
 
   @volatile
