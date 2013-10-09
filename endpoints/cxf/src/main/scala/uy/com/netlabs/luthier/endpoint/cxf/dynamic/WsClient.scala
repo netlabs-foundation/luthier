@@ -34,8 +34,47 @@ package cxf.dynamic
 
 import language.dynamics
 import scala.concurrent.duration._
+import scala.reflect.ClassTag
 import typelist._
 import org.apache.cxf.jaxws.endpoint.dynamic.JaxWsDynamicClientFactory
+
+class DynamicInstance private[dynamic] (val peer: Any) extends Dynamic {
+  private val dynClass = peer.getClass
+  private val dynFields = dynClass.getFields()
+  private val dynMeths = dynClass.getMethods()
+//  val instance = dynClass.newInstance()
+  def selectDynamic(varia: String) = {
+    //prefer methods, then methods of the from variable_=, then setters, and finally variables
+    dynMeths find (_.getName == varia) orElse (dynMeths find (_.getName == s"get${varia.capitalize}")) orElse
+    ((dynFields find (_.getName == varia)): @unchecked) match {
+      case Some(setter: java.lang.reflect.Method) => setter.invoke(peer)
+      case Some(setter: java.lang.reflect.Field)  => setter.get(peer)
+      case None                                   => throw new NoSuchMethodException(s"Could not find method $varia")
+    }
+  }
+  def applyDynamic(varia: String)(value: Any) = {
+    dynMeths find (_.getName == varia) match {
+      case Some(setter) => setter.invoke(peer, value.asInstanceOf[AnyRef])
+      case None         => throw new NoSuchMethodException(s"Could not find method $varia")
+    }
+  }
+  def updateDynamic(varia: String)(value: Any) {
+    //prefer methods, then methods of the from variable_=, then setters, and finally variables
+    dynMeths find (_.getName == varia) orElse (dynMeths find (_.getName == varia + "_$eq")) orElse (dynMeths find (_.getName == s"set${varia.capitalize}")) orElse
+    ((dynFields find (_.getName == varia)): @unchecked) match {
+      case Some(setter: java.lang.reflect.Method) => setter.invoke(peer, value.asInstanceOf[AnyRef])
+      case Some(setter: java.lang.reflect.Field)  => setter.set(peer, value.asInstanceOf[AnyRef])
+      case None                                   => throw new NoSuchMethodException(s"Could not find method $varia")
+    }
+  }
+
+  override def toString() = {
+    s"""Dynamic($dynClass) {
+       |  ${dynFields.map(_.toString).mkString("\n  ")}
+       |  ${dynMeths.map(_.toString).mkString("\n  ")}
+       |}""".stripMargin
+  }
+}
 
 case class WsClient(val url: String) {
   val (dynamicClient, clientClassLoader) = {
@@ -46,54 +85,33 @@ case class WsClient(val url: String) {
     res -> clCl
   }
 
-  class DynamicInstance private[WsClient] (className: String) extends Dynamic {
-    val dynClass = wsClassRef(className)
-    val dynFields = dynClass.getFields()
-    val dynMeths = dynClass.getMethods()
-    val instance = dynClass.newInstance()
-    def selectDynamic(varia: String) = {
-      //prefer methods, then methods of the from variable_=, then setters, and finally variables
-      dynMeths find (_.getName == varia) orElse (dynMeths find (_.getName == s"get${varia.capitalize}")) orElse
-        ((dynFields find (_.getName == varia)): @unchecked) match {
-          case Some(setter: java.lang.reflect.Method) => setter.invoke(instance)
-          case Some(setter: java.lang.reflect.Field)  => setter.get(instance)
-          case None                                   => throw new NoSuchMethodException(s"Could not find method $varia")
-        }
-    }
-    def applyDynamic(varia: String)(value: Any) = {
-      dynMeths find (_.getName == varia) match {
-        case Some(setter) => setter.invoke(instance, value.asInstanceOf[AnyRef])
-        case None         => throw new NoSuchMethodException(s"Could not find method $varia")
-      }
-    }
-    def updateDynamic(varia: String)(value: Any) {
-      //prefer methods, then methods of the from variable_=, then setters, and finally variables
-      dynMeths find (_.getName == varia) orElse (dynMeths find (_.getName == varia + "_$eq")) orElse (dynMeths find (_.getName == s"set${varia.capitalize}")) orElse
-        ((dynFields find (_.getName == varia)): @unchecked) match {
-          case Some(setter: java.lang.reflect.Method) => setter.invoke(instance, value.asInstanceOf[AnyRef])
-          case Some(setter: java.lang.reflect.Field)  => setter.set(instance, value.asInstanceOf[AnyRef])
-          case None                                   => throw new NoSuchMethodException(s"Could not find method $varia")
-        }
-    }
-  }
-
-  def instance(className: String) = new DynamicInstance(className)
+  def instance(className: String) = new DynamicInstance(wsClassRef(className).newInstance())
   def wsClassRef(className: String) = Class.forName(className, false, clientClassLoader)
 }
 
 object WsInvoker {
-  class DynamicWsClient[Result] private[WsInvoker] (val flow: Flow, client: WsClient, operation: String, shutDownClientOnEndpointDispose: Boolean) extends Askable {
+  class DynamicWsClient[Result] private[WsInvoker] (val flow: Flow, client: WsClient, operation: String,
+                                                    shutDownClientOnEndpointDispose: Boolean, resultClassTag: ClassTag[Result]) extends Askable {
     type SupportedTypes = Seq[_] :: Product :: TypeNil
     type Response = Result
+    val resultRuntimeClass = resultClassTag.runtimeClass.asInstanceOf[Class[Result]]
     def askImpl[Payload: SupportedType](msg, timeout) = {
       flow.blocking {
         val res = msg.payload match {
           case traversable: Seq[Any] => client.dynamicClient.invoke(operation, traversable.asInstanceOf[Seq[AnyRef]].toArray: _*)
           case product: Product      => client.dynamicClient.invoke(operation, product.productIterator.asInstanceOf[Iterator[AnyRef]].toArray: _*)
         }
-        msg map (_ =>
-          if (res.length == 1) res(0).asInstanceOf[Response]
-          else res.asInstanceOf[Response])
+        msg map {_ =>
+          if (res.length == 1) {
+            if (resultRuntimeClass == classOf[DynamicInstance])
+              new DynamicInstance(res(0)).asInstanceOf[Result]
+            else
+              resultRuntimeClass.cast(res(0))
+          }
+          else {
+            resultRuntimeClass.cast(res)
+          }
+        }
       }
     }
     def start() {}
@@ -106,8 +124,9 @@ object WsInvoker {
     }
   }
 
-  case class EF[Result] private[WsInvoker] (client: WsClient, operation: String, shutDownClientOnEndpointDispose: Boolean) extends EndpointFactory[DynamicWsClient[Result]] {
-    def apply(f: Flow) = new DynamicWsClient(f, client, operation, shutDownClientOnEndpointDispose)
+  case class EF[Result] private[WsInvoker] (client: WsClient, operation: String, shutDownClientOnEndpointDispose: Boolean,
+                                            resultClassTag: ClassTag[Result]) extends EndpointFactory[DynamicWsClient[Result]] {
+    def apply(f: Flow) = new DynamicWsClient(f, client, operation, shutDownClientOnEndpointDispose, resultClassTag)
   }
-  def apply[Result](client: WsClient, operation: String, shutDownClientOnEndpointDispose: Boolean = false) = EF[Result](client, operation, shutDownClientOnEndpointDispose)
+  def apply[Result: ClassTag](client: WsClient, operation: String, shutDownClientOnEndpointDispose: Boolean = false) = EF[Result](client, operation, shutDownClientOnEndpointDispose, implicitly)
 }
