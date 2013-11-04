@@ -206,7 +206,7 @@ As we mentioned, there are two types of flows files the runners accepts:
        import scala.language._
        import uy.com.netlabs.luthier.endpoint.SomeEndpoint
 
-       class MyFlows(appContext: AppContext) extends Flows {
+       class MyFlows(val appContext: AppContext) extends Flows {
          new Flow("test")(SomeEndpoint) {
            logic {req =>
            }
