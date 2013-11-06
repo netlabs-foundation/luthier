@@ -201,9 +201,19 @@ protected[jms] trait JmsOperations {
    executionContext: ExecutionContext): Future[Message[Any]] = {
     implicit val session = threadLocalSession.get()
     val jmsResponse = Promise[Message[Any]]()
+    @volatile var tempQueue : javax.jms.TemporaryQueue = null
+    @volatile var consumer : javax.jms.MessageConsumer = null
+    val timeoutTimer = appContext.actorSystem.scheduler.scheduleOnce(timeOut) {
+      jmsResponse tryFailure new java.util.concurrent.TimeoutException(s"$timeOut ellapsed")
+      Future {
+        try consumer.close() catch {case ex: Exception => log.error(ex, "Could not dispose consumer")}
+        try tempQueue.delete() catch {case ex: Exception => log.error(ex, "Could not delete temporary queue " + tempQueue)}
+      }
+    }(appContext.actorSystem.dispatcher)
+
     Future {
       handlingSessionClosed {
-        val tempQueue = session.createTemporaryQueue
+        tempQueue = session.createTemporaryQueue
         val producer = session.createProducer(destination)
         try {
           producer.setDeliveryMode(deliveryMode)
@@ -212,19 +222,24 @@ protected[jms] trait JmsOperations {
           //The next future executes in the ioExecutionContext
           producer.send(m)
         } finally producer.close()
-        val consumer = session.createConsumer(tempQueue)
+        consumer = session.createConsumer(tempQueue)
         consumer setMessageListener new MessageListener {
           def onMessage(m) {
-            consumer.close()
+            timeoutTimer.cancel()
+            if (timeoutTimer.isCancelled) {
+              try consumer.close() catch {case ex: Exception => log.error(ex, "Could not dispose consumer")}
+              try tempQueue.delete() catch {case ex: Exception => log.error(ex, "Could not delete temporary queue " + tempQueue)}
+            }
             jmsResponse trySuccess jmsMessageToEsbMessage(p => msg.map(_ => p), m)
           }
         }
-        appContext.actorSystem.scheduler.scheduleOnce(timeOut) {
-          try consumer.close() catch {case ex: Exception => log.error(ex, "Could not dispose consumer")}
-          try tempQueue.delete() catch {case ex: Exception => log.error(ex, "Could not delete temporary queue " + tempQueue)}
-          jmsResponse tryFailure new java.util.concurrent.TimeoutException(s"$timeOut ellapsed")
-        }
       }
+    }.onFailure { case t =>
+      if (consumer != null)
+          try consumer.close() catch {case ex: Exception => log.error(ex, "Could not dispose consumer")}
+      if (tempQueue != null)
+          try tempQueue.delete() catch {case ex: Exception => log.error(ex, "Could not delete temporary queue " + tempQueue)}
+      jmsResponse.tryFailure(t)
     }
     jmsResponse.future
   }
