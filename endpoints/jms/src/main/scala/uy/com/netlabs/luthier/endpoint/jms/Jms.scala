@@ -37,7 +37,7 @@ import akka.event.LoggingAdapter
 import javax.jms.{ ConnectionFactory, Connection, Queue, MessageListener,
                   ExceptionListener, Session, Message => jmsMessage,
                   TextMessage, ObjectMessage, BytesMessage, IllegalStateException,
-                  DeliveryMode}
+                  DeliveryMode, TemporaryQueue}
 import scala.concurrent.{ ExecutionContext, Future, Promise }
 import scala.concurrent.duration._
 import scala.util.{ Try, Success, Failure }
@@ -255,13 +255,43 @@ protected[jms] trait JmsOperations {
     threadLocalSession.get().createConsumer(destination).setMessageListener(l)
   }
 
+  @volatile
+  private[this] var registeredTemporaryListeners = Vector.empty[(MessageListener, TemporaryQueue=>Unit, Flow)]
+
+  def registerTemporaryQueue(l: MessageListener, queueUpdaterCallback: TemporaryQueue=>Unit, f: Flow): TemporaryQueue = {
+    log.info(s"Registering listener for flow ${f.name}")
+    val session = threadLocalSession.get
+    val temporaryQueue: TemporaryQueue = session.createTemporaryQueue
+    val consumer = try {
+      session.createConsumer(temporaryQueue)
+    } catch { case t: Throwable =>
+      Try(temporaryQueue.delete())
+      throw t
+    }
+    try {
+      consumer.setMessageListener(l)
+    } catch { case t: Throwable =>
+      Try(consumer.close())
+      Try(temporaryQueue.delete)
+      throw t
+    }
+    registeredTemporaryListeners :+= (l, queueUpdaterCallback, f)
+    temporaryQueue
+  }
+
   private def rebindMessageListeners() {
     val session = threadLocalSession.get()
     for ((dest, l, f) <- registeredListeners) {
       session.createConsumer(dest).setMessageListener(l)
       log.info(s"Listener for flow ${f.name} re-registered")
     }
-    if (registeredListeners.nonEmpty) connection.start()
+    for ((l, queueUpdaterCallback, f) <- registeredTemporaryListeners) {
+      val queue = session.createTemporaryQueue
+      queueUpdaterCallback(queue)
+      session.createConsumer(queue).setMessageListener(l)
+      log.info(s"Temporary listener for flow ${f.name} re-registered")
+    }
+    if (registeredListeners.nonEmpty || registeredTemporaryListeners.nonEmpty) connection.start()
   }
 
   private[this] val endpointReferenceCount = new java.util.concurrent.atomic.AtomicInteger(0)
@@ -298,6 +328,7 @@ protected[jms] trait JmsOperations {
       case d => JmsUtils.pathToDestination(d, s)
     }
     res.setJMSReplyTo(replyTo)
+    res.setJMSCorrelationID(m.correlationId)
     if (m.correlationGroupSize > 0) {
       res.setIntProperty("correlation-group-size", m.correlationGroupSize)
       res.setIntProperty("correlation-seq", m.correlationSequence)
