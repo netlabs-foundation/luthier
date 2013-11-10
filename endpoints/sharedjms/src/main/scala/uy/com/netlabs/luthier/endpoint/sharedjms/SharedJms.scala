@@ -47,7 +47,9 @@ object SharedJms {
   type SupportedType[Payload] = TypeSupportedByTransport[SupportedTypes, Payload]
 
   private[SharedJms] trait RequiredJmsFunctions {
-    def registerTemporaryQueue(l: MessageListener, quc: TemporaryQueue=>Unit, f: Flow): TemporaryQueue
+    def startEndpoint()
+    def stopEndpoint(reg: endpoint.jms.TemporaryQueueRegistration)
+    def registerTemporaryQueue(l: MessageListener, quc: TemporaryQueue=>Unit, f: Flow): (endpoint.jms.TemporaryQueueRegistration, TemporaryQueue)
     def push[Payload: SupportedType](msg: Message[Payload]): Future[Unit]
     def jmsMessageToEsbMessage(mf: Any => Message[_], m: jmsMessage): Message[Any]
   }
@@ -58,7 +60,9 @@ object SharedJms {
   def apply(epf: EndpointFactory[endpoint.jms.JmsQueueEndpoint])(implicit i1:DummyImplicit) = EF { case f: Flow =>
     val ep: endpoint.jms.JmsQueueEndpoint = epf(f)
     new RequiredJmsFunctions() {
-      def registerTemporaryQueue(l: MessageListener, quc: TemporaryQueue=>Unit, f: Flow): TemporaryQueue =
+      def startEndpoint() = ep.start()
+      def stopEndpoint(reg: endpoint.jms.TemporaryQueueRegistration) { ep.jmsOperations.unregisterTemporaryQueue(reg); ep.dispose() }
+      def registerTemporaryQueue(l: MessageListener, quc: TemporaryQueue=>Unit, f: Flow): (endpoint.jms.TemporaryQueueRegistration, TemporaryQueue) =
         ep.jmsOperations.registerTemporaryQueue(l, quc, f)
       def push[Payload: SupportedType](msg: Message[Payload]): Future[Unit] = ep.push(msg)
       def jmsMessageToEsbMessage(mf: Any => Message[_], m: jmsMessage): Message[Any] = ep.jmsOperations.jmsMessageToEsbMessage(mf, m)
@@ -67,7 +71,9 @@ object SharedJms {
   def apply(epf: EndpointFactory[endpoint.jms.JmsTopicEndpoint]) = EF { case f: Flow =>
     val ep: endpoint.jms.JmsTopicEndpoint = epf(f)
     new RequiredJmsFunctions() {
-      def registerTemporaryQueue(l: MessageListener, quc: TemporaryQueue=>Unit, f: Flow): TemporaryQueue =
+      def startEndpoint() = ep.start()
+      def stopEndpoint(reg: endpoint.jms.TemporaryQueueRegistration) { ep.jmsOperations.unregisterTemporaryQueue(reg); ep.dispose() }
+      def registerTemporaryQueue(l: MessageListener, quc: TemporaryQueue=>Unit, f: Flow): (endpoint.jms.TemporaryQueueRegistration, TemporaryQueue) =
         ep.jmsOperations.registerTemporaryQueue(l, quc, f)
       def push[Payload: SupportedType](msg: Message[Payload]): Future[Unit] = ep.push(msg)
       def jmsMessageToEsbMessage(mf: Any => Message[_], m: jmsMessage): Message[Any] = ep.jmsOperations.jmsMessageToEsbMessage(mf, m)
@@ -82,6 +88,7 @@ object SharedJms {
     val correlationIdPrefix = f"${java.lang.System.currentTimeMillis}%x"
     val atomicLong = new java.util.concurrent.atomic.AtomicLong
     var temporaryQueue: TemporaryQueue = null
+    var temporaryQueueRegistration: endpoint.jms.TemporaryQueueRegistration = null
     val activeTransactions = new mutable.HashMap[Long, (Promise[Message[Response]], Message[Any], Cancellable)]()
                     with mutable.SynchronizedMap[Long, (Promise[Message[Response]], Message[Any], Cancellable)]
 
@@ -108,10 +115,15 @@ object SharedJms {
     }
 
     def start {
-      temporaryQueue = requiredJmsFunctions.registerTemporaryQueue(messageListener, {q => temporaryQueue = q}, flow)
+      println("started")
+      requiredJmsFunctions.startEndpoint()
+      val (reg, tq) = requiredJmsFunctions.registerTemporaryQueue(messageListener, {q => temporaryQueue = q}, flow)
+      temporaryQueueRegistration = reg
+      temporaryQueue = tq
     }
 
     def dispose {
+      requiredJmsFunctions.stopEndpoint(temporaryQueueRegistration)
     }
 
     @Override

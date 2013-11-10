@@ -83,6 +83,10 @@ class Jms(connectionFactory: ConnectionFactory) {
               EFD(dest, messageSelector, ioThreads, autoHandleExceptions, deliveryMode)
 }
 
+class TemporaryQueueRegistration(private[jms] val messageListener: MessageListener,
+                                 private[jms] val queueUpdateCallback: TemporaryQueue=>Unit,
+                                 private[jms] val flow: Flow,
+                                 private[jms] var temporaryQueue: TemporaryQueue)
 /**
  * This interfaces represents JMS doable JMS operations, abstracted from the actual implementation, so that we can
  * provide them resiliently, handling connection problems and stuff.
@@ -256,9 +260,9 @@ protected[jms] trait JmsOperations {
   }
 
   @volatile
-  private[this] var registeredTemporaryListeners = Vector.empty[(MessageListener, TemporaryQueue=>Unit, Flow)]
+  private[this] var registeredTemporaryListeners = Set.empty[TemporaryQueueRegistration]
 
-  def registerTemporaryQueue(l: MessageListener, queueUpdaterCallback: TemporaryQueue=>Unit, f: Flow): TemporaryQueue = {
+  def registerTemporaryQueue(l: MessageListener, queueUpdaterCallback: TemporaryQueue=>Unit, f: Flow): (TemporaryQueueRegistration, TemporaryQueue) = {
     log.info(s"Registering listener for flow ${f.name}")
     val session = threadLocalSession.get
     val temporaryQueue: TemporaryQueue = session.createTemporaryQueue
@@ -275,8 +279,14 @@ protected[jms] trait JmsOperations {
       Try(temporaryQueue.delete)
       throw t
     }
-    registeredTemporaryListeners :+= (l, queueUpdaterCallback, f)
-    temporaryQueue
+    val reg = new TemporaryQueueRegistration(l, queueUpdaterCallback, f, temporaryQueue)
+    registeredTemporaryListeners += reg
+    (reg, temporaryQueue)
+  }
+
+  def unregisterTemporaryQueue(reg: TemporaryQueueRegistration) {
+    Try(reg.temporaryQueue.delete)
+    registeredTemporaryListeners -= reg
   }
 
   private def rebindMessageListeners() {
@@ -285,11 +295,11 @@ protected[jms] trait JmsOperations {
       session.createConsumer(dest).setMessageListener(l)
       log.info(s"Listener for flow ${f.name} re-registered")
     }
-    for ((l, queueUpdaterCallback, f) <- registeredTemporaryListeners) {
+    for (reg <- registeredTemporaryListeners) {
       val queue = session.createTemporaryQueue
-      queueUpdaterCallback(queue)
-      session.createConsumer(queue).setMessageListener(l)
-      log.info(s"Temporary listener for flow ${f.name} re-registered")
+      reg.queueUpdateCallback(queue)
+      session.createConsumer(queue).setMessageListener(reg.messageListener)
+      log.info(s"Temporary listener for flow ${reg.flow.name} re-registered")
     }
     if (registeredListeners.nonEmpty || registeredTemporaryListeners.nonEmpty) connection.start()
   }
