@@ -107,6 +107,15 @@ trait FlowPatterns {
         def next = outer.next.map(_.map(f))(ec)
       }
     }
+    def flatMap[S](f: A => Future[S])(implicit ec: ExecutionContext): Paging[S] = {
+      val outer = this
+      new Paging[S] {
+        def next = outer.next.map(_.map(v => f(v)))(ec).flatMap {
+          case None => Future.successful(None)
+          case Some(a) => a map Some.apply
+        }
+      }
+    }
     def filter(f: A => Boolean)(implicit ec: ExecutionContext): Paging[A] = {
       val outer = this
       new Paging[A] {
@@ -151,6 +160,15 @@ trait FlowPatterns {
       val outer = this
       new IndexedPaging[S] {
         def get(i: Int) = outer.get(i).map(_.map(f))(ec)
+      }
+    }
+    def flatMap[S](f: A => Future[S])(implicit ec: ExecutionContext): IndexedPaging[S] = {
+      val outer = this
+      new IndexedPaging[S] {
+        def get(i: Int) = outer.get(i).map(_.map(f))(ec).flatMap {
+          case None => Future.successful(None)
+          case Some(a) => a map Some.apply
+        }
       }
     }
     def filter(f: A => Boolean)(implicit ec: ExecutionContext): Paging[A] = {
