@@ -194,10 +194,10 @@ trait Flow extends FlowPatterns with Disposable {
     workerActors ! res
     res.promise.future
   }
-  def scheduleOnce(delay: FiniteDuration)(f: ⇒ Unit): Cancellable = {
+  def scheduleOnce(delay: FiniteDuration)(f: => Unit): Cancellable = {
     appContext.actorSystem.scheduler.scheduleOnce(delay)(f)(blockingExecutorContext)
   }
-  def schedule(initialDelay: FiniteDuration, frequency: FiniteDuration)(f: ⇒ Unit): Cancellable = {
+  def schedule(initialDelay: FiniteDuration, frequency: FiniteDuration)(f: => Unit): Cancellable = {
     appContext.actorSystem.scheduler.schedule(initialDelay, frequency)(f)(blockingExecutorContext)
   }
   /**
@@ -262,7 +262,6 @@ object Flow {
   }
 
 
-  //FIXE: this code is in a broken state, do not use.
   def logicMacroImpl[R, F <: Flow](c: Context {type PrefixType = F})(l: c.Expr[RootMessage[F] => R])
   (fEv: c.WeakTypeTag[F]): c.Expr[Unit] = {
     import c.universe._
