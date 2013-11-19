@@ -103,4 +103,7 @@ trait FlowRun[+FlowType <: Flow] extends MessageFactory {
 }
 object FlowRun {
   type Any = FlowRun[_ <: Flow]
+  
+  implicit def workerActorsExecutionContext(implicit fr: FlowRun.Any) =
+    fr.flow.workerActorsExecutionContext(fr.rootMessage.asInstanceOf[RootMessage[fr.flow.type]])
 }
