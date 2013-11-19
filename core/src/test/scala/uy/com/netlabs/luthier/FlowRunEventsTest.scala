@@ -28,58 +28,55 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+
 package uy.com.netlabs.luthier
-package endpoint
-package base
 
-import typelist._
-import scala.concurrent._, duration._, scala.util._
+import uy.com.netlabs.luthier.endpoint.BaseFlowsTest
+import scala.concurrent._, duration._
 
-class VmEndpointTest extends BaseFlowsTest {
-  describe("VM endpoints") {
-    they("shuold successfully ignore messages of invalid types") {
+class FlowRunEventsTest extends BaseFlowsTest {
+  describe("FlowRuns") {
+    they("Should report flow response completed asap") {
       new Flows {
         val appContext = testApp
-        val Vm = VM.forAppContext(appContext)
-        val p = Promise[Unit]()
-        new Flow("source")(Vm.source[String]("the-test-actor")) {
-          logic { msg =>
-            if (msg.payload == 42) { println("Error, 42 this should never happen!"); sys.exit(5) }
-            println("Message " + msg.payload + " arrived")
-            p.trySuccess(())
+        val res = Promise[String]()
+        val run = inFlow { (flow, msg) =>
+          import flow._
+          import FlowRun._
+          implicit val fr = msg.flowRun
+          blocking { Thread.sleep(10000) }.map {_ => 
+            res.tryFailure(new Exception("You shouldn't have waited for me"))
           }
-        }.start()
-        inFlow { (f, msg) =>
-          import f._
-          val dest = Vm.sink[Any]("user/VM/the-test-actor")
-          dest.push(msg.map(_ => 42)) //wrong message
-          dest.push(msg.map(_ => "42 - hellooooooo"))
+          fr.afterFlowResponse(res.trySuccess("Flow is done!"))
         }
-        Await.ready(p.future, 1.second) //the first one must be ignored, the second one succeed
+        assert(Await.result(res.future, 100.millis) === "Flow is done!")
       }
     }
-    they("shuold support responsible") {
+    they("Should report whole flow completion after all the code completes, and not before") {
       new Flows {
         val appContext = testApp
-        val Vm = VM.forAppContext(appContext)
-        val p = Promise[String]()
-        new Flow("responsible")(Vm.responsible[String, String :: TypeNil]("the-test-actor")) {
-          logic { msg =>
-            if (true)
-              msg.map(m => "Hello " + m)
-            else Future.successful(msg)
+        val res = Promise[String]()
+        val wholeFlowComplete = Promise[String]()
+        val f = new Flow("test")(new endpoint.base.DummySource) {
+          logic { msg => 
+            blocking { Thread.sleep(100); log.info("Done with long wait") }.map {_ =>
+              log.info("2 Done with long wait")
+              wholeFlowComplete.success("Whole Flow is done!")
+            }
+            blocking { Thread.sleep(10); log.info("Some more blocking here") }.map {_ => 
+              log.info("2 Some more blocking here")
+            }
+            blocking { Thread.sleep(10); log.info("And here") }.map {_ => 
+              log.info("2 And here")
+            }
+            flowRun.afterWholeFlowRun {
+              if (wholeFlowComplete.isCompleted) res.success("Whole Flow is done!")
+              else res.failure(new Exception("It seems it ended prematurely"))
+            }
           }
-        }.start()
-        inFlow { (f, msg) =>
-          import f._
-          implicit val fr = msg.flowRun
-          import FlowRun._
-          val dest = Vm.ref[String, String]("user/VM/the-test-actor")
-          val q = dest.ask(msg.map(_ => "world"))
-          q.onSuccess {case resp => p.trySuccess(resp.payload)}
-          q
         }
-        Await.result(p.future, 1.second) == "Hello world" //the first one must be ignored, the second one succeed
+        f.runFlow(null)
+        assert(Await.result(res.future, 1000.millis) === "Whole Flow is done!")
       }
     }
   }

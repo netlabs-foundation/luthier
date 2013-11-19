@@ -46,10 +46,13 @@ trait EndpointFactory[+E <: Endpoint] extends Equals {
   def apply(flow: Flow): E
 }
 
-/* ****** Incoming endpoints ****** */
+/* ****** Inbound endpoints ****** */
 
 trait InboundEndpoint extends Endpoint {
   type Payload <: Any
+  type Throttler
+  
+  def throttler: Throttler = null.asInstanceOf[Throttler]
 
   def newReceviedMessage[P](payload: P) = Message(payload)
 }

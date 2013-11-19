@@ -135,12 +135,14 @@ trait Flow extends FlowPatterns with Disposable {
       lazy val rootMessage = self
       val flow = enclosingFlow
     }
-    private val pendingFutures = new java.util.concurrent.atomic.AtomicInteger(1) //starts at one, representing the basic flowRun
+    private val pendingFutures = new java.util.concurrent.atomic.AtomicInteger(0) //starts at one, representing the basic flowRun
     def incrementPendingFutures() {
-      pendingFutures.incrementAndGet()
+      val i = pendingFutures.incrementAndGet()
+      log.info("Incremented pending futures to " + i)
     }
     def decrementPendingFutures() {
       val curr = pendingFutures.decrementAndGet()
+      log.info("Decremented pending futures to " + curr)
       if (curr == 0) //if reached 0 notify the flowRun that the all the flow is completed
         flowRun.wholeFlowRunCompleted()
     }
@@ -151,6 +153,7 @@ trait Flow extends FlowPatterns with Disposable {
     val enclosingFlow: this.type = this
     doWork {
       val msg = new FlowRootMessage(rootMessage)
+      msg.incrementPendingFutures()
       val res = logic(msg)
       res match {
         case res: Future[_] => //result from a Responsible
@@ -209,9 +212,15 @@ trait Flow extends FlowPatterns with Disposable {
    * a Future for the computation.
    */
   def doWork[R](task: => R) = {
-    val res = new Flow.Work(() => task)
-    workerActors ! res
-    res.promise.future
+    if (workerActors.isTerminated) {
+      val error = "Work was requested for flow actor " + workerActorsName + " but the flow was already shutdown!"
+      log.warning(error)
+      Future.failed(new Exception(error))
+    } else {
+      val res = new Flow.Work(() => task)
+      workerActors ! res
+      res.promise.future
+    }
   }
   def scheduleOnce(delay: FiniteDuration)(f: => Unit): Cancellable = {
     appContext.actorSystem.scheduler.scheduleOnce(delay)(f)(blockingExecutorContext)
@@ -224,9 +233,9 @@ trait Flow extends FlowPatterns with Disposable {
    * declaration delegates work to the actors
    */
   implicit def workerActorsExecutionContext(implicit rm: RootMessage[this.type]): ExecutionContext = new ExecutionContext {
+    val frm = rm.asInstanceOf[FlowRootMessage]
+    frm.incrementPendingFutures()
     def execute(runnable: Runnable) {
-      val frm = rm.asInstanceOf[FlowRootMessage]
-      frm.incrementPendingFutures()
       doWork {
         try runnable.run
         finally frm.decrementPendingFutures()
