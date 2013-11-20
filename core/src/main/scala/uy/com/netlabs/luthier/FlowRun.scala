@@ -103,7 +103,4 @@ trait FlowRun[+FlowType <: Flow] extends MessageFactory {
 }
 object FlowRun {
   type Any = FlowRun[_ <: Flow]
-  
-  implicit def workerActorsExecutionContextFromFlowRun(implicit fr: FlowRun.Any): scala.concurrent.ExecutionContext =
-    fr.flow.workerActorsExecutionContext(fr.rootMessage.asInstanceOf[RootMessage[fr.flow.type]])
 }

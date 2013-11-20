@@ -32,7 +32,6 @@ package uy.com.netlabs.luthier
 
 import typelist._
 import scala.concurrent._, duration._
-import FlowRun._
 
 class FlowPatternsTest extends endpoint.BaseFlowsTest {
   val totalCount = 15

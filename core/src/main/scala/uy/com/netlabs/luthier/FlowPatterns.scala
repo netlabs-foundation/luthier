@@ -32,7 +32,6 @@ package uy.com.netlabs.luthier
 
 import scala.util._
 import scala.concurrent._, duration._
-import FlowRun._
 
 /**
  * FlowPatterns defines common flow constructions to use when implementing a flow.

@@ -229,10 +229,9 @@ trait Flow extends FlowPatterns with Disposable {
     appContext.actorSystem.scheduler.schedule(initialDelay, frequency)(f)(blockingExecutorContext)
   }
   /**
-   * Implicit ExecutionContext so future composition inside a flow
-   * declaration delegates work to the actors
+   * ExecutionContext for the worker actors
    */
-  implicit def workerActorsExecutionContext(implicit rm: RootMessage[this.type]): ExecutionContext = new ExecutionContext {
+  def workerActorsExecutionContext(implicit rm: RootMessage[this.type]): ExecutionContext = new ExecutionContext {
     val frm = rm.asInstanceOf[FlowRootMessage]
     frm.incrementPendingFutures()
     def execute(runnable: Runnable) {
