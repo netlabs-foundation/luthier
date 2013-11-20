@@ -229,7 +229,19 @@ trait Flow extends FlowPatterns with Disposable {
     appContext.actorSystem.scheduler.schedule(initialDelay, frequency)(f)(blockingExecutorContext)
   }
   /**
-   * ExecutionContext for the worker actors
+   * ExecutionContext that delegates work to the worker actors. Note that probably you will
+   * want the {{workerActorsExecutionContext}} instead since this execution context does not register
+   * the continuations in the flowRun.
+   * @see workerActorsExecutionContext
+   */
+  val rawWorkerActorsExecutionContext =  new ExecutionContext {
+    def execute(runnable: Runnable) { doWork(runnable.run) }
+    def reportFailure(t: Throwable) = appContext.actorSystem.log.error(t, "")
+  }
+  /**
+   * ExecutionContext for concatenation based on flowRuns. This is the execution context selected
+   * inside the logic method if none is specified (and if you are using a flow run you should always
+   * pick this one).
    */
   def workerActorsExecutionContext(implicit rm: RootMessage[this.type]): ExecutionContext = new ExecutionContext {
     val frm = rm.asInstanceOf[FlowRootMessage]

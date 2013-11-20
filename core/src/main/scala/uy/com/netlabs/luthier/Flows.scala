@@ -69,7 +69,7 @@ trait Flows {
       private[Flows] def setup(endpoint, flow) {
         endpoint.onRequest{m =>
           val res = flow.runFlow(m).mapTo[Future[Message[OneOf[_, endpoint.SupportedResponseTypes]]]] //the result of running the flow is the one this is being mappedTo, but is encapsulated in the florRun future, hence, flatten it
-          res.flatMap(identity)(flow.rawWorkersExecutionContext)
+          res.flatMap(identity)(flow.rawWorkerActorsExecutionContext)
         }
       }
     }
@@ -86,11 +86,6 @@ trait Flows {
     val flowsContext = Flows.this //backreference
     val rootEndpoint = endpoint(this)
     exchangePattern.setup(rootEndpoint, this)
-    
-    private[Flows] val rawWorkersExecutionContext = new scala.concurrent.ExecutionContext {
-      def execute(r) = doWork(r.run)
-      def reportFailure(t) = appContext.actorSystem.log.error(t, "")
-    }
   }
 
   private[this] val anonFlowsDiposer = new scala.concurrent.ExecutionContext {
