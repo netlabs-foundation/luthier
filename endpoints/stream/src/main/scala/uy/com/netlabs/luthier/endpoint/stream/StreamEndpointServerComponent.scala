@@ -146,7 +146,7 @@ protected trait StreamEndpointServerComponent {
           resp.onComplete {
             case Success(m) => processResponseFromRequestedMessage(m)
             case Failure(err) => log.error(err, "Failed to respond to client")
-          }(flow.workerActorsExecutionContext)
+          }(flow.rawWorkerActorsExecutionContext)
         }
       } else log.error(t.failed.get, s"Failure reading from client $client")
     }
