@@ -281,6 +281,7 @@ protected[jms] trait JmsOperations {
     }
     val reg = new TemporaryQueueRegistration(l, queueUpdaterCallback, f, temporaryQueue)
     registeredTemporaryListeners += reg
+    reg.temporaryQueue = temporaryQueue
     (reg, temporaryQueue)
   }
 
@@ -297,6 +298,7 @@ protected[jms] trait JmsOperations {
     }
     for (reg <- registeredTemporaryListeners) {
       val queue = session.createTemporaryQueue
+      reg.temporaryQueue = queue
       reg.queueUpdateCallback(queue)
       session.createConsumer(queue).setMessageListener(reg.messageListener)
       log.info(s"Temporary listener for flow ${reg.flow.name} re-registered")
