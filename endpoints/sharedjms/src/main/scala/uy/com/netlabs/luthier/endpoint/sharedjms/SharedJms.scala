@@ -87,7 +87,8 @@ object SharedJms {
 
     val correlationIdPrefix = f"${java.lang.System.currentTimeMillis}%x"
     val atomicLong = new java.util.concurrent.atomic.AtomicLong
-    var temporaryQueue: TemporaryQueue = null
+    val referenceCount = new java.util.concurrent.atomic.AtomicLong(0)
+    @volatile var temporaryQueue: TemporaryQueue = null
     var temporaryQueueRegistration: endpoint.jms.TemporaryQueueRegistration = null
     val activeTransactions = new mutable.HashMap[Long, (Promise[Message[Response]], Message[Any], Cancellable)]()
                     with mutable.SynchronizedMap[Long, (Promise[Message[Response]], Message[Any], Cancellable)]
@@ -115,15 +116,33 @@ object SharedJms {
     }
 
     def start {
-      println("started")
-      requiredJmsFunctions.startEndpoint()
-      val (reg, tq) = requiredJmsFunctions.registerTemporaryQueue(messageListener, {q => temporaryQueue = q}, flow)
-      temporaryQueueRegistration = reg
-      temporaryQueue = tq
+      try {
+        this.synchronized {
+          val refcnt = referenceCount.get
+          if (refcnt == 0) {
+            requiredJmsFunctions.startEndpoint()
+            val (reg, tq) = requiredJmsFunctions.registerTemporaryQueue(messageListener, {
+              q => temporaryQueue = q
+              log.info("temporary queue = " + temporaryQueue)
+            }, flow)
+            temporaryQueueRegistration = reg
+            temporaryQueue = tq
+            log.info("temporary queue = " + temporaryQueue)
+          }
+          referenceCount.incrementAndGet
+        }
+      } catch { case t: Throwable =>
+        log.error(t, s"Failed starting SharedJms endpoint")
+        throw t
+      }
     }
 
     def dispose {
-      requiredJmsFunctions.stopEndpoint(temporaryQueueRegistration)
+      this.synchronized {
+        val refcnt = referenceCount.decrementAndGet
+        if (refcnt == 0)
+          requiredJmsFunctions.stopEndpoint(temporaryQueueRegistration)
+      }
     }
 
     @Override
@@ -131,7 +150,9 @@ object SharedJms {
       val promise = Promise[Message[Response]]()
       val id = atomicLong.incrementAndGet
       msg.correlationId = f"${correlationIdPrefix}%s-$id%x"
-      msg.replyTo = "jms:queue://" + temporaryQueue.getQueueName
+      this.synchronized {
+        msg.replyTo = "jms:queue://" + temporaryQueue.getQueueName
+      }
 
       val timeoutTimer = appContext.actorSystem.scheduler.scheduleOnce(timeOut) {
         promise tryFailure new java.util.concurrent.TimeoutException(s"$timeOut ellapsed")
