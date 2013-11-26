@@ -32,6 +32,7 @@ package uy.com.netlabs.luthier
 
 import scala.util._
 import scala.concurrent._, duration._
+import FlowRun._
 
 /**
  * FlowPatterns defines common flow constructions to use when implementing a flow.
@@ -39,6 +40,7 @@ import scala.concurrent._, duration._
  */
 trait FlowPatterns {
 
+//  private implicit def flowExecutionContext(implicit fc: FlowRun.Any) = fc.flow.workerActorsExecutionContext(fc.rootMessage.asInstanceOf[RootMessage[fc.flow.type]])
   /**
    * Retries the operation `op` at most `maxAttempts`.
    *
@@ -54,9 +56,8 @@ trait FlowPatterns {
                        logRetriesWithLevel: akka.event.Logging.LogLevel = akka.event.Logging.InfoLevel)(
     op: => Future[T])(
     isFailure: Try[T] => Boolean)(implicit fc: FlowRun.Any): Future[T] = {
-    import fc.flow.workerActorsExecutionContext
     val promise = Promise[T]()
-    op onComplete { t =>
+    op.onComplete { t =>
       val failed = isFailure(t)
       if (failed && maxAttempts > 1) {
         if (fc.flow.log.isEnabled(logRetriesWithLevel)) fc.flow.log.log(logRetriesWithLevel, s"""Attempt for "$description" failed. Remaining $maxAttempts attempts. Retrying...""")
@@ -79,10 +80,9 @@ trait FlowPatterns {
 
   def retryBackoff[T](initalBackoff: Long, backoffExponent: Long, maxBackoff: Long, description: String,
                       logRetriesWithLevel: akka.event.Logging.LogLevel = akka.event.Logging.InfoLevel)(op: => Future[T])(isFailure: Try[T] => Boolean)(implicit fc: FlowRun.Any): Future[T] = {
-    import fc.flow.workerActorsExecutionContext
     def backoff(wait: Long, acc: Long): Future[T] = {
       val promise = Promise[T]()
-      op onComplete { t =>
+      op.onComplete { t =>
         val failed = isFailure(t)
         if (failed && acc < maxBackoff) {
           if (fc.flow.log.isEnabled(logRetriesWithLevel)) fc.flow.log.log(logRetriesWithLevel, s"""Attempt for "$description" failed. Backing of for $wait ms before retry""")
@@ -105,6 +105,15 @@ trait FlowPatterns {
       val outer = this
       new Paging[S] {
         def next = outer.next.map(_.map(f))(ec)
+      }
+    }
+    def flatMap[S](f: A => Future[S])(implicit ec: ExecutionContext): Paging[S] = {
+      val outer = this
+      new Paging[S] {
+        def next = outer.next.map(_.map(v => f(v)))(ec).flatMap {
+          case None => Future.successful(None)
+          case Some(a) => a map Some.apply
+        }
       }
     }
     def filter(f: A => Boolean)(implicit ec: ExecutionContext): Paging[A] = {
@@ -130,7 +139,6 @@ trait FlowPatterns {
   }
 
   def paging[S, R](initialState: S)(pager: S => Future[Option[(R, S)]])(implicit fc: FlowRun.Any): Paging[R] = new Paging[R] {
-    import fc.flow._
     private[this] var lastCall: Future[Option[(R, S)]] = null
     def next: Future[Option[R]] = synchronized {
       lastCall = if (lastCall == null) {
@@ -151,6 +159,15 @@ trait FlowPatterns {
       val outer = this
       new IndexedPaging[S] {
         def get(i: Int) = outer.get(i).map(_.map(f))(ec)
+      }
+    }
+    def flatMap[S](f: A => Future[S])(implicit ec: ExecutionContext): IndexedPaging[S] = {
+      val outer = this
+      new IndexedPaging[S] {
+        def get(i: Int) = outer.get(i).map(_.map(f))(ec).flatMap {
+          case None => Future.successful(None)
+          case Some(a) => a map Some.apply
+        }
       }
     }
     def filter(f: A => Boolean)(implicit ec: ExecutionContext): Paging[A] = {

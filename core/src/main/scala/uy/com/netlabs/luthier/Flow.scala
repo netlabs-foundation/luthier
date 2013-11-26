@@ -86,14 +86,14 @@ import typelist._
  */
 trait Flow extends FlowPatterns with Disposable {
   type InboundEndpointTpe <: InboundEndpoint
-
+  
   def name: String
   val appContext: AppContext
   val rootEndpoint: InboundEndpointTpe
   val log: LoggingAdapter
   var logLifecycle = true
   @volatile private[this] var instantiatedEndpoints = Map.empty[EndpointFactory[_], Endpoint]
-
+  
   def start() {
     if (logic == null) throw new IllegalStateException(s"Logic has not been defined yet for flow $name.")
     rootEndpoint.start()
@@ -114,12 +114,12 @@ trait Flow extends FlowPatterns with Disposable {
     d.onDispose(_ => dispose())
     this
   }
-
-
+  
+  
 //  implicit def genericInvalidMessage[V <: Message[_], TL <: TypeList](value: V): Future[Message[OneOf[_, TL]]] = macro Flow.genericInvalidMessageImpl[V, TL]
 //  implicit def genericInvalidFutureMessage[V <: Future[Message[_]], TL <: TypeList](value: V): Future[Message[OneOf[_, TL]]] = macro Flow.genericInvalidFutureMessageImpl[V, TL]
 //  implicit def genericInvalidResponse[V, TL <: TypeList](value: V): Future[Message[OneOf[_, TL]]] = macro Flow.genericInvalidResponseImpl[V, TL]
-
+  
   type Logic <: RootMessage[this.type] => LogicResult
   type LogicResult
   private[this] var logic: Logic = _
@@ -127,29 +127,48 @@ trait Flow extends FlowPatterns with Disposable {
     logic = l
   }
   def logic[R](l: RootMessage[this.type] => R) = macro Flow.logicMacroImpl[R, this.type]
-
+  
+  private class FlowRootMessage(val peer: Message[InboundEndpointTpe#Payload]) extends RootMessage[this.type] with MessageProxy[InboundEndpointTpe#Payload] {
+    val enclosingFlow: Flow.this.type = Flow.this
+    val self = this
+    val flowRun = new FlowRun[enclosingFlow.type] {
+      lazy val rootMessage = self
+      val flow = enclosingFlow
+    }
+    private val pendingFutures = new java.util.concurrent.atomic.AtomicInteger(0) //starts at one, representing the basic flowRun
+    def incrementPendingFutures() {
+      val i = pendingFutures.incrementAndGet()
+      log.info("Incremented pending futures to " + i)
+    }
+    def decrementPendingFutures() {
+      val curr = pendingFutures.decrementAndGet()
+      log.info("Decremented pending futures to " + curr)
+      if (curr == 0) //if reached 0 notify the flowRun that the all the flow is completed
+        flowRun.wholeFlowRunCompleted()
+    }
+  }
+  
   def runFlow(payload: InboundEndpointTpe#Payload): Future[LogicResult] = runFlow(Message(payload))
   def runFlow(rootMessage: Message[InboundEndpointTpe#Payload]): Future[LogicResult] = {
     val enclosingFlow: this.type = this
     doWork {
-      val msg = new RootMessage[enclosingFlow.type] with MessageProxy[InboundEndpointTpe#Payload] {
-        val peer = rootMessage
-        val self = this
-        val flowRun = new FlowRun[enclosingFlow.type] {
-          lazy val rootMessage = self
-          val flow = enclosingFlow
-        }
-      }
+      val msg = new FlowRootMessage(rootMessage)
+      msg.incrementPendingFutures()
       val res = logic(msg)
       res match {
         case res: Future[_] => //result from a Responsible
-          res.onComplete(_ => msg.flowRun.flowRunCompleted())(workerActorsExecutionContext)
-        case _ => msg.flowRun.flowRunCompleted()
+          res.onComplete{ _ => 
+            msg.flowRun.flowResponseCompleted()
+            msg.decrementPendingFutures()
+          }(workerActorsExecutionContext(msg))
+        case _ => 
+          msg.flowRun.flowResponseCompleted()
+          msg.decrementPendingFutures()
       }
       res
     }
   }
-
+  
   implicit val self: this.type = this
   implicit def messageInLogicImplicit: RootMessage[this.type] = macro Flow.findNearestMessageMacro[this.type]
   implicit def flowRun(implicit rootMessage: RootMessage[this.type]) = rootMessage.flowRun
@@ -163,60 +182,74 @@ trait Flow extends FlowPatterns with Disposable {
         res
     }
   }
-
+  
   /**
    * Number of workers to allocate in the flow's worker pool.
    */
   var workers: Int = 5
-
-  lazy val workerActors = appContext.actorSystem.actorOf(Props(new Actor {
-        def receive = {
-          case w: Flow.Work[_] =>
-            val oldContext = scala.concurrent.BlockContext.current
-            val bc = new scala.concurrent.BlockContext {
-              def blockOn[T](thunk: => T)(implicit permission: scala.concurrent.CanAwait): T = {
-                log.warning("Blocking from a flow actor is discouraged! You'd be better composing futures.")
-                oldContext.blockOn(thunk)
-              }
-            }
-            scala.concurrent.BlockContext.withBlockContext(bc) {
-              try w.promise.complete(Success(w.task()))
-              catch { case ex: Exception => w.promise.complete(Failure(ex)) }
-            }
+  
+  protected def workerActorsReceive: akka.actor.Actor.Receive = {
+    case w: Flow.Work[_] =>
+      val oldContext = scala.concurrent.BlockContext.current
+      val bc = new scala.concurrent.BlockContext {
+        def blockOn[T](thunk: => T)(implicit permission: scala.concurrent.CanAwait): T = {
+          log.warning("Blocking from a flow actor is discouraged! You'd be better composing futures.")
+          oldContext.blockOn(thunk)
         }
-      }).withRouter(RoundRobinRouter(nrOfInstances = workers)), name.replace(' ', '-') + "-actors")
+      }
+      scala.concurrent.BlockContext.withBlockContext(bc) {
+        try w.promise.complete(Success(w.task()))
+        catch { case ex: Exception => w.promise.complete(Failure(ex)) }
+      }
+  }
+  protected def workerActorsName = name.replace(' ', '-') + "-actors"
+  
+  lazy val workerActors = appContext.actorSystem.actorOf(Props(new Actor {
+        def receive = workerActorsReceive
+      }).withRouter(RoundRobinRouter(nrOfInstances = workers)), workerActorsName)
   /**
    * Executes the passed ``task`` asynchronously in a FlowWorker and returns
    * a Future for the computation.
    */
   def doWork[R](task: => R) = {
-    val res = new Flow.Work(() => task)
-    workerActors ! res
-    res.promise.future
+    if (workerActors.isTerminated) {
+      val error = "Work was requested for flow actor " + workerActorsName + " but the flow was already shutdown!"
+      log.warning(error)
+      Future.failed(new Exception(error))
+    } else {
+      val res = new Flow.Work(() => task)
+      workerActors ! res
+      res.promise.future
+    }
   }
-  def scheduleOnce(delay: FiniteDuration)(f: ⇒ Unit): Cancellable = {
+  def scheduleOnce(delay: FiniteDuration)(f: => Unit): Cancellable = {
     appContext.actorSystem.scheduler.scheduleOnce(delay)(f)(blockingExecutorContext)
   }
-  def schedule(initialDelay: FiniteDuration, frequency: FiniteDuration)(f: ⇒ Unit): Cancellable = {
+  def schedule(initialDelay: FiniteDuration, frequency: FiniteDuration)(f: => Unit): Cancellable = {
     appContext.actorSystem.scheduler.schedule(initialDelay, frequency)(f)(blockingExecutorContext)
   }
   /**
    * Implicit ExecutionContext so future composition inside a flow
    * declaration delegates work to the actors
    */
-  implicit lazy val workerActorsExecutionContext = new ExecutionContext {
+  implicit def workerActorsExecutionContext(implicit rm: RootMessage[this.type]): ExecutionContext = new ExecutionContext {
+    val frm = rm.asInstanceOf[FlowRootMessage]
+    frm.incrementPendingFutures()
     def execute(runnable: Runnable) {
-      doWork(runnable.run)
+      doWork {
+        try runnable.run
+        finally frm.decrementPendingFutures()
+      }
     }
     def reportFailure(t: Throwable) = appContext.actorSystem.log.error(t, "")
   }
-
+   
   /**
    * Number of workers to allocate in the blocking workers pool.
    * Note that this threadpool is only instantiated if used by a call of blocking.
    */
   var blockingWorkers: Int = 10
-
+   
   @volatile private[this] var blockingExecutorInstantiated = false
   private lazy val blockingExecutor = {
     blockingExecutorInstantiated = true
@@ -231,7 +264,7 @@ trait Flow extends FlowPatterns with Disposable {
    * Private executor meant for IO
    */
   private lazy val blockingExecutorContext = ExecutionContext.fromExecutor(blockingExecutor)
-
+   
   /**
    * Primitive to execute blocking code asynchronously without blocking
    * the flow's worker.
@@ -262,7 +295,6 @@ object Flow {
   }
 
 
-  //FIXE: this code is in a broken state, do not use.
   def logicMacroImpl[R, F <: Flow](c: Context {type PrefixType = F})(l: c.Expr[RootMessage[F] => R])
   (fEv: c.WeakTypeTag[F]): c.Expr[Unit] = {
     import c.universe._
@@ -324,11 +356,12 @@ object Flow {
             val containedTree = c.inferImplicitValue(containedType, true, true, l.tree.pos)
             if (containedTree != EmptyTree) {
               val containedExr = c.Expr[Contained[_, _]](containedTree)
+              val implicitRootMessage = c.Expr[RootMessage[_]](c.parse("messageInLogicImplicit"))
               val r = reify {
                 val flow = c.prefix.splice
                 def casted[R](a: Any) = a.asInstanceOf[R]
                 import scala.concurrent.Future, uy.com.netlabs.luthier.typelist.OneOf
-                branchExpr.splice.map(m => m.map(p => new OneOf(p)(casted(containedExr.splice))))(flow.workerActorsExecutionContext)
+                branchExpr.splice.map(m => m.map(p => new OneOf(p)(casted(containedExr.splice))))(flow.workerActorsExecutionContext(casted(implicitRootMessage.splice)))
               }
               branch -> r.tree
             } else {

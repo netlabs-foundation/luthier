@@ -52,12 +52,33 @@ trait FlowRun[+FlowType <: Flow] extends MessageFactory {
    */
   val context: Map[Any, Any] = scala.collection.concurrent.TrieMap.empty
 
-  private[this] var doneReactions = Set.empty[() => Unit]
-  def afterFlowRun(code: => Unit) {
-    doneReactions += (() => code)
+  private[this] var afterFlowResponseReactions = Set.empty[() => Unit]
+  /**
+   * Registers a thunk to be executed after the the response of the flow is obtained.
+   * That is, if the flow is oneway, when the last line of code is executed, if the
+   * flow is request response, when the response is obtained (if the response is
+   * wrapped in a future, then it awaits for the future to complete).
+   */
+  def afterFlowResponse(code: => Unit) {
+    afterFlowResponseReactions += (() => code)
   }
-  private[luthier] def flowRunCompleted() {
-    for (r <- doneReactions) r()
+  private[luthier] def flowResponseCompleted() {
+    for (r <- afterFlowResponseReactions) r()
+  }
+  private[this] var afterFlowRunReactions = Set.empty[() => Unit]
+  /**
+   * Registers a thunk to be executed after all of the code written in the flow
+   * completes. That includes every future mapping that was done and would hence
+   * run in the flow.
+   * 
+   * An easy way to think of this method is to register a thunk to be run when all
+   * visible code in the logic has been run.
+   */
+  def afterWholeFlowRun(code: => Unit) {
+    afterFlowRunReactions += (() => code)
+  }
+  private[luthier] def wholeFlowRunCompleted() {
+    for (r <- afterFlowRunReactions) r()
   }
 
   private[this] var lastProducedMessage0: Message[_] = _
@@ -82,4 +103,7 @@ trait FlowRun[+FlowType <: Flow] extends MessageFactory {
 }
 object FlowRun {
   type Any = FlowRun[_ <: Flow]
+  
+  implicit def workerActorsExecutionContextFromFlowRun(implicit fr: FlowRun.Any): scala.concurrent.ExecutionContext =
+    fr.flow.workerActorsExecutionContext(fr.rootMessage.asInstanceOf[RootMessage[fr.flow.type]])
 }
