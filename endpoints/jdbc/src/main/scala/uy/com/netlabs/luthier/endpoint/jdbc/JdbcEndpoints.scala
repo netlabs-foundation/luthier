@@ -98,8 +98,9 @@ class JdbcAskable[R](val flow: Flow,
     Future {
       val args = {
         msg.payload match {
-          case is: IndexedSeq[_] => is
-          case prod: Product     => prod.productIterator.toIndexedSeq
+          case is: IndexedSeq[_]          => is
+          case gto: GenTraversableOnce[_] => gto.toIndexedSeq
+          case prod: Product              => prod.productIterator.toIndexedSeq
         }
       }
 
