@@ -35,6 +35,7 @@ import javax.sql.DataSource
 import java.sql.{ Connection, PreparedStatement, ResultSet }
 import scala.reflect._
 import scala.concurrent.{ ExecutionContext, Future, duration }, duration._
+import scala.collection.GenTraversableOnce
 import scala.util.Try
 import typelist._
 
