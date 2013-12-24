@@ -35,6 +35,7 @@ import javax.sql.DataSource
 import java.sql.{ Connection, PreparedStatement, ResultSet }
 import scala.reflect._
 import scala.concurrent.{ ExecutionContext, Future, duration }, duration._
+import scala.collection.GenTraversableOnce
 import scala.util.Try
 import typelist._
 
@@ -98,8 +99,9 @@ class JdbcAskable[R](val flow: Flow,
     Future {
       val args = {
         msg.payload match {
-          case is: IndexedSeq[_] => is
-          case prod: Product     => prod.productIterator.toIndexedSeq
+          case is: IndexedSeq[_]          => is
+          case gto: GenTraversableOnce[_] => gto.toIndexedSeq
+          case prod: Product              => prod.productIterator.toIndexedSeq
         }
       }
 

@@ -65,6 +65,7 @@ object Ws {
 
     sei.InterfaceImplementor.methodImplementors += methodRef.method -> { args =>
       val payload = args match { //map from array to tuple
+        case arr if arr == null => ()
         case arr if arr.length == 0 => ()
         case arr if arr.length == 1 => arr(0)
         case arr if arr.length == 2 => (arr(0), arr(1))
