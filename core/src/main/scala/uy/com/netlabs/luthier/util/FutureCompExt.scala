@@ -28,14 +28,25 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package uy.com.netlabs.luthier
+package uy.com.netlabs.luthier.util
 
-import language.implicitConversions
-import scala.concurrent.Future
+import language.higherKinds
+import scala.concurrent._
+import scala.collection.JavaConverters._
 
-object `package` {
-  implicit def workerActorsExecutionContextFromFlowRun(implicit fr: FlowRun.Any): scala.concurrent.ExecutionContext =
-    fr.flow.workerActorsExecutionContext(fr.rootMessage.asInstanceOf[RootMessage[fr.flow.type]])
-
-  implicit def pimpFutureCompanion(comp: Future.type) = util.FutureCompExt
+object FutureCompExt {
+  /**
+   * Seperates a Seq of Futures into a Future of two seqs, one with the
+   * successes and one with the failures.
+   */
+  def sieve[T](futures: Seq[Future[T]])(implicit ec: ExecutionContext): Future[(Seq[T], Seq[Throwable])] = {
+    futures.foldLeft(Future.successful(Vector.empty[T], Vector.empty[Throwable])) { (state, f) =>
+      (for {
+          r <- f
+          (succs, failds) <- state
+        } yield (succs :+ r, failds)).recoverWith {
+        case e => state.map(pair => (pair._1, pair._2 :+e))
+      }
+    }
+  }
 }

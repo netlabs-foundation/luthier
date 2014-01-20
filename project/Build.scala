@@ -3,7 +3,7 @@ import sbt._, Keys._
 
 object CocoonBuild extends Build {
 
-  val _scalaVersion = "2.10.2"
+  val _scalaVersion = "2.10.3"
 
   val defSettings = Seq(
     version := "2.0.0-SNAPSHOT",
@@ -34,7 +34,7 @@ object CocoonBuild extends Build {
     ),
     initialCommands in console += "import uy.com.netlabs.luthier._",
     publishTo := Some(Resolver.file("file",  new File(Path.userHome.absolutePath+"/.m2/repository")))
-  ) ++ Dist.settings
+  ) ++ Dist.settings ++ org.netbeans.sbtplugin.NbPlugin.nbsettings
 
   lazy val root = Project(id = "Luthier", base = file(".")).aggregate(
     core,
@@ -49,6 +49,7 @@ object CocoonBuild extends Build {
     syslogEndpoint,
     xmppEndpoint,
     ircEndpoint,
+    sharedjmsEndpoint,
     wsutil,
     luthierRunner,
     veditor
@@ -66,10 +67,11 @@ object CocoonBuild extends Build {
   lazy val syslogEndpoint = Project(id = "luthier-endpoint-syslog", base = file ("endpoints/syslog")).dependsOn(coreAsDep, logicalEndpoints).settings(defSettings:_*)
   lazy val xmppEndpoint = Project(id = "luthier-endpoint-xmpp", base = file ("endpoints/xmpp")).dependsOn(coreAsDep, logicalEndpoints).settings(defSettings:_*)
   lazy val ircEndpoint = Project(id = "luthier-endpoint-irc", base = file ("endpoints/irc")).dependsOn(coreAsDep, logicalEndpoints).settings(defSettings:_*)
+  lazy val sharedjmsEndpoint = Project(id = "luthier-endpoint-sharedjms", base = file ("endpoints/sharedjms")).dependsOn(coreAsDep, jmsEndpoint, logicalEndpoints).settings(defSettings:_*)
   lazy val wsutil = Project(id = "luthier-wsutil", base = file("wsutil")).settings(defSettings:_*)
 
   lazy val luthierRunner = Project(id = "luthier-runner", base = file("luthier-runner")).settings(defSettings:_*).
-    dependsOn(core, logicalEndpoints, fileEndpoint, jmsEndpoint, amqpEndpoint, jdbcEndpoint, httpEndpoint, cxfEndpoint, streamEndpoint, syslogEndpoint, xmppEndpoint, ircEndpoint)
+    dependsOn(core, logicalEndpoints, fileEndpoint, jmsEndpoint, amqpEndpoint, jdbcEndpoint, httpEndpoint, cxfEndpoint, streamEndpoint, syslogEndpoint, xmppEndpoint, ircEndpoint, sharedjmsEndpoint)
 
   lazy val veditor = Project(id = "luthier-visual-editor", base = file("veditor")).settings(defSettings:_*).dependsOn(core, luthierRunner)
 }
