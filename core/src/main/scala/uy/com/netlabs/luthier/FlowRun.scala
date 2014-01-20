@@ -65,21 +65,6 @@ trait FlowRun[+FlowType <: Flow] extends MessageFactory {
   private[luthier] def flowResponseCompleted() {
     for (r <- afterFlowResponseReactions) r()
   }
-  private[this] var afterFlowRunReactions = Set.empty[() => Unit]
-  /**
-   * Registers a thunk to be executed after all of the code written in the flow
-   * completes. That includes every future mapping that was done and would hence
-   * run in the flow.
-   * 
-   * An easy way to think of this method is to register a thunk to be run when all
-   * visible code in the logic has been run.
-   */
-  def afterWholeFlowRun(code: => Unit) {
-    afterFlowRunReactions += (() => code)
-  }
-  private[luthier] def wholeFlowRunCompleted() {
-    for (r <- afterFlowRunReactions) r()
-  }
 
   private[this] var lastProducedMessage0: Message[_] = _
   private[this] var lastReceivedMessage0: Message[_] = rootMessage
