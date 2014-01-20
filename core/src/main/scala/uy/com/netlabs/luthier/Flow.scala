@@ -235,7 +235,9 @@ trait Flow extends FlowPatterns with Disposable {
   implicit def workerActorsExecutionContext(implicit rm: RootMessage[this.type]): ExecutionContext = new ExecutionContext {
     val frm = rm.asInstanceOf[FlowRootMessage]
     frm.incrementPendingFutures()
+    @volatile private var used = false
     def execute(runnable: Runnable) {
+      if (used) throw new IllegalStateException("A materialized worker execution context can only be used once. Instead of reutilizing it, materialize a new one")
       doWork {
         try runnable.run
         finally frm.decrementPendingFutures()

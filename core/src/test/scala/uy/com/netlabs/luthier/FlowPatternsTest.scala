@@ -43,6 +43,11 @@ class FlowPatternsTest extends endpoint.BaseFlowsTest {
         @volatile var count = 0
         val run = inFlow { (flow, msg) =>
           import flow._
+          implicit val fr = msg.flowRun
+
+          val futures = Vector.fill(100)(blocking {"blocking is the Future"})
+          val sieved = Future.sieve(futures)
+
           retryAttempts(totalCount, "fail op")(doWork { println("Counting!"); count += 1 })(_ => count != totalCount)(msg.flowRun)
         }.flatMap(identity)(appContext.actorSystem.dispatcher)
         Await.result(run, 1.second)
