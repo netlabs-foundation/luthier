@@ -28,27 +28,28 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
 package uy.com.netlabs.luthier
 
-import uy.com.netlabs.luthier.endpoint.BaseFlowsTest
-import scala.concurrent._, duration._
+import typelist._
+import endpoint.base.VM
+import scala.concurrent._
 
-class FlowRunEventsTest extends BaseFlowsTest {
-  describe("FlowRuns") {
-    they("Should report flow response completed asap") {
-      new Flows {
-        val appContext = testApp
-        val res = Promise[String]()
-        val run = inFlow { (flow, msg) =>
-          import flow._
-          implicit val fr = msg.flowRun
-          blocking { Thread.sleep(10000) }.map {_ =>
-            res.tryFailure(new Exception("You shouldn't have waited for me"))
-          }
-          fr.afterFlowResponse(res.trySuccess("Flow is done!"))
-        }
-        assert(Await.result(res.future, 100.millis) === "Flow is done!")
+/**
+ * This test only needs to compile, not to be run.
+ */
+class FlowLogicMacroTest extends Flows {
+  val appContext = AppContext.build("test")
+
+  val Vm = VM.forAppContext(appContext)
+  new Flow("test")(Vm.responsible[Int, String :: Throwable :: TypeNil]("test")) {
+    logicImpl { req =>
+      Future.successful(OneOf("")).recover { case e => OneOf(e)}.map(v => req.map(_ => v))
+    }
+    logic { req =>
+      (0: Any) match {
+        case 0 => Future.successful(OneOf("")).recover { case e => OneOf(e)}.map(v => req.map(_ => v))
+        case 1 => req.map(_ => "Hi")
+        case 2 => req.map(_ => new Exception("Boom"))
       }
     }
   }

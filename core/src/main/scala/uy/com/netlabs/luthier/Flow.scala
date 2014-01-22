@@ -127,6 +127,13 @@ trait Flow extends FlowPatterns with Disposable {
     logic = l
   }
   def logic[R](l: RootMessage[this.type] => R) = macro Flow.logicMacroImpl[R, this.type]
+  /**
+   * Validates that the passed value of type T is one of the possible response types as defined by the Responsible root endpoint and
+   * wraps in a properly typed OneOf instance.
+   */
+  def OneOf[T, FT <: Flow {type InboundEndpointTpe <: Responsible}](t: T)(implicit fr: FlowRun[FT], ev: Contained[FT#InboundEndpointTpe#SupportedResponseTypes, T]) = {
+    new OneOf(t)(ev)
+  }
 
   private class FlowRootMessage(val peer: Message[InboundEndpointTpe#Payload]) extends RootMessage[this.type] with MessageProxy[InboundEndpointTpe#Payload] {
     val enclosingFlow: Flow.this.type = Flow.this
@@ -279,11 +286,12 @@ object Flow {
   }
 
   import scala.reflect.macros.{ Context, Universe }
-  def findNearestMessageMacro[F <: Flow](c: Context): c.Expr[RootMessage[F]] = {
+  def findNearestMessageMacro[F <: Flow](c: Context {type PrefixType <: Flow }): c.Expr[RootMessage[F]] = {
     import c.universe._
+    val rootMessageTpe = c.typeOf[RootMessage[_]]
     val collected = c.enclosingClass.collect {
-      case a @ Apply(Ident(i), List(Function(List(param @ ValDef(modifiers, paramName, _, _)), _))) if i.encoded == "logic" &&
-        modifiers.hasFlag(Flag.PARAM) && param.symbol.typeSignature.toString.startsWith("uy.com.netlabs.luthier.RootMessage") &&
+      case a @ Apply(Ident(i), List(Function(List(param @ ValDef(modifiers, paramName, _, _)), _))) if (i.encoded == "logic" || i.encoded == "logicImpl") &&
+        modifiers.hasFlag(Flag.PARAM) && param.symbol.typeSignature <:< rootMessageTpe &&
         !c.typeCheck(c.parse(paramName.encoded), param.symbol.typeSignature, silent = true).isEmpty =>
         paramName
     }.head
@@ -322,6 +330,7 @@ object Flow {
       }
     } else { //its a request response flow, so we must analyse the result
       //calculate the valid responses typelist
+      val messageResultType = logicResultType.asInstanceOf[TypeRef].args(0)
       val rootEndpointType = subType(c.prefix.actualType, newTermName("rootEndpoint"), c.typeOf[Flows#Flow[_, _]])
       val supportedResponsesTypeListType =
         subType(rootEndpointType, newTypeName("SupportedResponseTypes"),
@@ -336,14 +345,15 @@ object Flow {
       //iterate every exit branch trying to find a valid mapping
       val futureMessageTypeTag = c.typeOf[Future[Message[_]]]
       val messageTypeTag = c.typeOf[Message[_]]
-      val mappedBranches: List[(Tree, Tree)] = exitBranches map {branch =>
-        if (branch.tpe <:< futureMessageTypeTag) {
-//          println(s"Branch $branch: ${branch.tpe} is instanoce of Future[Message[_]]")
+      val mappedBranches: List[(Tree, Tree)] = exitBranches map { branch =>
+        if (branch.tpe =:= c.TypeTag.Nothing.tpe) {
+          branch -> branch
+        } else if (branch.tpe <:< futureMessageTypeTag) {
           val branchExpr = c.Expr[Future[Message[_]]](branch)
 //          println(s"result($branch) is a type of future message")
           //to obtain the subtype directly from the message, I have to first get the view from the Message[_] POV, otherwise,
           //since this is a root message, the first argument to it, is the type of the flow, as in RootMessage[this.type] in flow's Logic.'
-          if (branch.tpe =:= c.TypeTag.Nothing.tpe) {
+          if (branch.tpe <:< logicResultType) {
             branch -> branch
           } else {
             val messageSubType = branch.tpe.asInstanceOf[TypeRef].args(0).baseType(messageTypeTag.typeSymbol).asInstanceOf[TypeRef].args(0)
@@ -369,31 +379,33 @@ object Flow {
           }
 
         } else if (branch.tpe <:< messageTypeTag) {
-          val branchExpr = c.Expr[Message[_]](branch)
-          //to obtain the subtype directly from the message, I have to first get the view from the Message[_] POV, otherwise,
-          //since this is a root message, the first argument to it, is the type of the flow, as in RootMessage[this.type] in flow's Logic.'
-          val messageSubType = branch.tpe.baseType(messageTypeTag.typeSymbol).asInstanceOf[TypeRef].args(0)
-          val containedType = typeRef(
-            containedT.pre, containedT.sym,
-            List(supportedResponsesTypeListType, messageSubType))
-          val containedTree = c.inferImplicitValue(containedType, true, true, l.tree.pos)
-          if (containedTree != EmptyTree) {
-            //reifiy a call to logic mapping the result
-            val containedExr = c.Expr[Contained[_, _]](containedTree)
-            val r = reify {
-              val flow = c.prefix.splice
-              def casted[R](a: Any) = a.asInstanceOf[R]
-              import scala.concurrent.Future, uy.com.netlabs.luthier.typelist.OneOf
-              Future.successful(branchExpr.splice.map(p => new OneOf(p)(casted(containedExr.splice))))
-            }
-            branch -> r.tree
+          if (branch.tpe <:< messageResultType) {
+            branch -> branch
           } else {
-            c.abort(branch.pos, "Found flow's resulting message of type: " + messageSubType + "\n" +
-                    "Expected a Message[T] or Future[Message[T]] where T can be any of [\n    " +
-                    possibleTypesList.mkString("\n    ") + "\n]")
+            val branchExpr = c.Expr[Message[_]](branch)
+            //to obtain the subtype directly from the message, I have to first get the view from the Message[_] POV, otherwise,
+            //since this is a root message, the first argument to it, is the type of the flow, as in RootMessage[this.type] in flow's Logic.'
+            val messageSubType = branch.tpe.baseType(messageTypeTag.typeSymbol).asInstanceOf[TypeRef].args(0)
+            val containedType = typeRef(
+              containedT.pre, containedT.sym,
+              List(supportedResponsesTypeListType, messageSubType))
+            val containedTree = c.inferImplicitValue(containedType, true, true, l.tree.pos)
+            if (containedTree != EmptyTree) {
+              //reifiy a call to logic mapping the result
+              val containedExr = c.Expr[Contained[_, _]](containedTree)
+              val r = reify {
+                val flow = c.prefix.splice
+                def casted[R](a: Any) = a.asInstanceOf[R]
+                import scala.concurrent.Future, uy.com.netlabs.luthier.typelist.OneOf
+                Future.successful(branchExpr.splice.map(p => new OneOf(p)(casted(containedExr.splice))))
+              }
+              branch -> r.tree
+            } else {
+              c.abort(branch.pos, "Found flow's resulting message of type: " + messageSubType + "\n" +
+                      "Expected a Message[T] or Future[Message[T]] where T can be any of [\n    " +
+                      possibleTypesList.mkString("\n    ") + "\n]")
+            }
           }
-
-
 
         } else {
           c.abort(branch.pos, "Found flow's result of type: " + branch.tpe + "\n" +
