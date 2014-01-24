@@ -51,25 +51,23 @@ trait EndpointFactory[+E <: Endpoint] extends Equals {
 trait InboundEndpoint extends Endpoint {
   type Payload <: Any
   type Throttler
-  
+
   def throttler: Throttler = null.asInstanceOf[Throttler]
 
   def newReceviedMessage[P](payload: P) = Message(payload)
 }
 
 object InboundEndpoint {
+  type AsOneWay[S <: Source] = Source { type Payload = S#Payload }
+  type AsRequestResponse[R <: Responsible] = Responsible {
+    type Payload = R#Payload
+    type SupportedResponseTypes = R#SupportedResponseTypes
+  }
   implicit class SelectOneWay[S <: Source](val s: S) {
-    type SourceOnly = Source {
-      type Payload = S#Payload
-    }
-    def asSource = s.asInstanceOf[SourceOnly]
+    def asSource = s.asInstanceOf[AsOneWay[S]]
   }
   implicit class SelectRequestResponse[R <: Responsible](val r: R) {
-    type ResponsibleOnly = Responsible {
-      type Payload = R#Payload
-      type SupportedResponseTypes = R#SupportedResponseTypes
-    }
-    def asResponsible = r.asInstanceOf[ResponsibleOnly]
+    def asResponsible = r.asInstanceOf[AsRequestResponse[R]]
   }
 }
 
