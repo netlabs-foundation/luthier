@@ -30,172 +30,136 @@
  */
 
 package uy.com.netlabs.luthier
-package endpoint.logical
+package endpoint
+package logical
 
-import akka.actor.Cancellable
-import endpoint.base.IoProfile
-import language._
-import scala.collection.mutable.SynchronizedQueue
+import typelist._
 import scala.concurrent._, duration._
-import uy.com.netlabs.luthier.endpoint.base.IoExecutionContext
 
+/**
+ * A Throttler is an entity which has state and can tell you whether you should
+ * proceed with an operation or backoff somehow.
+ */
 trait Throttler {
-  def queueEvent()
-  def completeEvent(spentMillis: Long)
-  def dispose() {}
-}
-
-
-case class NoLimit(val cb: ThrottlingCallback) extends Throttler {
-  def queueEvent{ cb.dispatch() }
-  def completeEvent(spentMillis: Long) {}
-}
-
-
-case class ConcurrentRequestsLimit(val maxConcurrentAsks: Int)(val cb: ThrottlingCallback) extends Throttler {
-  @volatile private var activeCount: Int = 0
-  def queueEvent() {
-    this.synchronized {
-      if (activeCount < maxConcurrentAsks) {
-        cb.dispatch()
-        activeCount += 1
-      }
-    }
-  }
-
-  def completeEvent(spentMillis: Long) {
-    val dispatched = cb.dispatch()
-    if (!dispatched) {
-      this.synchronized { activeCount -= 1 }
-    }
-  }
-}
-
-
-case class FixedRateLimit(val maxRate: Double,
-                          val batchPeriod: FiniteDuration = 1.second)(val cb: ThrottlingCallback) extends Throttler {
-  // TODO: implement a decent congestion control algorithm like "vegas"...
-
-  //val deadPeriod = deadPeriodOption.getOrElse((5*1000/maxRate max 60000).millis) //don't needed...
-  val SPEED_ESTIMATION_EWMA_ALPHA = 0.1
-  @volatile private var remainder = 0.0
-  @volatile private var lastUpdate = System.currentTimeMillis
-  @volatile private var periodEstimationInSeconds: Double = 1 / maxRate
-
-  def queueEvent() {
-  }
-
-  def completeEvent(spentMillis: Long) {
-    lastUpdate = System.currentTimeMillis
-    periodEstimationInSeconds = nextEwmaPeriod(spentMillis)
-  }
-
-  private def nextEwmaPeriod(deltaMillis: Long): Double = {
-    SPEED_ESTIMATION_EWMA_ALPHA * (deltaMillis / 1000.0) + (1 - SPEED_ESTIMATION_EWMA_ALPHA) * periodEstimationInSeconds
-  }
-
-  def getEstimatedSpeed() = 1.0 / periodEstimationInSeconds
-
-  private val timer = cb.schedule(batchPeriod) {
-    val msgsToSendDbl = batchPeriod.toMillis / 1000.0 * maxRate + remainder
-    val msgsToSend = msgsToSendDbl.asInstanceOf[Int]
-    remainder = msgsToSendDbl - msgsToSend
-    1 to msgsToSend takeWhile {_ => cb.dispatch}
-  }
-
-  override def dispose() {
-    timer.cancel()
-  }
-}
-
-
-trait ThrottlingCallback {
   /**
-   * This method returns true if a queued message could be asked to the inner endpoint, or false if there weren't any
-   * queued messages. If the call to "ask" fails, then that exception is not returned. Instead the promise is completed
-   * with failure.
+   * Ask the throttler whether bucket is available.
    */
-  def dispatch(): Boolean
-
+  def shouldThrottle(): Boolean
   /**
-   * queuedCount returns an approximation to the queued messages count.
+   * Submit a performed operation registry to the Throttler so that it can update
+   * its internal state.
    */
-  def queuedCount: Int
-
-  // Wrapper to scheduleOnce
-  def scheduleOnce(dur: FiniteDuration)(callback: => Unit): Cancellable
-
-  /**
-   * Wrapper to schedule. Don't forget to cancel them.
-   */
-  def schedule(dur: FiniteDuration)(callback: => Unit): Cancellable
+  def submit()
 }
 
+/**
+ * Action to take when an operation should be throttled.
+ * @param T Specificies with which inbound endpoint type the action is compatible.
+ */
+sealed trait ThrottlingAction[-T <: InboundEndpoint]
+object ThrottlingAction {
+  /**
+   * Signals that the operation should be discarded.
+   */
+  case object Drop extends ThrottlingAction[InboundEndpoint]
+  /**
+   * Signals that the operation should result in the given response.
+   */
+  case class Reply[T, R <: Responsible](resp: T)(implicit ev: Contained[R#SupportedResponseTypes, T]) extends ThrottlingAction[R]
+  /**
+   * Signals that the operation should be backed off using the given backoff function.
+   */
+  case class Backoff(initialBackoff: FiniteDuration, f: FiniteDuration => Option[FiniteDuration]) extends ThrottlingAction[InboundEndpoint]
+}
 
-case class Throttling(val throttlerFactory: ThrottlingCallback => Throttler) {
-  class ThrottlingEndpoint[A <: Askable](val flow: Flow, val ef: EndpointFactory[A], val ioThreads: Int) extends Askable with IoExecutionContext {
-    val endpoint = ef(flow)
-    type SupportedTypes = endpoint.SupportedTypes
-    type Response = endpoint.Response
+object Throttling {
+  class SourceThrottlingEndpoint[S <: Source](val flow: Flow, val underlying: S,
+                                              override val throttler: Throttler,
+                                              val action: ThrottlingAction[S]) extends Source {
 
-    val ioProfile = IoProfile.threadPool(ioThreads, flow.name + "-throttling-ep")
-
-    val throttler = throttlerFactory(new ThrottlingCallback {
-        def dispatch() = {
-          val entry = try { queue.dequeue } catch { case _: NoSuchElementException => null }
-          try {
-            if (null != entry) {
-              entry.sentTime = System.currentTimeMillis
-              val f = endpoint.askImpl(entry.msg, entry.timeOut)(null) //provide evidence
-              entry.promise.completeWith(f)
-            }
-          } catch {
-            case ex: Throwable => entry.promise.tryFailure(ex)
-          }
-          null != entry
+    underlying.onEvent { evt =>
+      if (throttler.shouldThrottle) {
+        import ThrottlingAction._
+        (action: @unchecked) match {
+          case Drop => log.info(s"Dropping message $evt due to throttling."); Future.successful(())
+          case Backoff(id, f) => backoff(id, f, evt)
         }
-        def queuedCount = queue.size
-        def scheduleOnce(dur: FiniteDuration)(cb: => Unit) = appContext.actorSystem.scheduler.scheduleOnce(dur)(cb)
-        def schedule(dur: FiniteDuration)(cb: => Unit) = appContext.actorSystem.scheduler.schedule(dur, dur)(cb)
-      })
+      } else onEventHandler(evt)
+    }
 
-    case class QueueEntry[Payload: SupportedType](
-      msg: Message[Payload],
-      timeOut: FiniteDuration,
-      promise: Promise[Message[Response]],
-      var sentTime: Long = 0
-    )
-    val queue = new SynchronizedQueue[QueueEntry[_]]
+    type Throttler = logical.Throttler
+    type Payload = underlying.Payload
 
-    def askImpl[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
-      val p = promise[Message[Response]]
-      val entry = QueueEntry(msg, timeOut, p)
-      queue += entry
-      p.future.onComplete {
-        case _ =>
-          val now = System.currentTimeMillis
-          throttler.completeEvent(now - entry.sentTime)
+    private def backoff(d: FiniteDuration, next: FiniteDuration => Option[FiniteDuration], msg: Message[Payload]): Future[Unit] = {
+      log.info(s"Backing off for $d message $msg due to throttling.")
+      val res = Promise[Unit]
+      flow.scheduleOnce(d) {
+        if (throttler.shouldThrottle) next(d) match {
+          case Some(d) => res completeWith backoff(d, next, msg)
+          case None => res.failure(new TimeoutException())
+        }
+        else res completeWith onEventHandler(msg)
       }
-      throttler.queueEvent
-      p.future
+      res.future
+    }
+    def dispose(): Unit = {
+      underlying.dispose()
+    }
+    def start(): Unit = {
+      underlying.start()
+    }
+  }
+  class ResponsibleThrottlingEndpoint[R <: Responsible](val flow: Flow, val underlying: R,
+                                                        override val throttler: Throttler,
+                                                        val action: ThrottlingAction[R]) extends Responsible {
+
+    underlying.onRequest { evt =>
+      if (throttler.shouldThrottle) {
+        import ThrottlingAction._
+        action match {
+          case Drop =>
+            log.info(s"Dropping message $evt due to throttling.")
+            Future.failed(new Exception("Message dropped"))
+          case Reply(resp) =>
+            log.info(s"Replying with $resp due to throttling.")
+            Future.successful(evt map (_ => new OneOf[Any, underlying.SupportedResponseTypes](resp)(null)))
+          case Backoff(id, f) => backoff(id, f, evt)
+        }
+      } else onRequestHandler(evt)
     }
 
-    def start{
-      endpoint.start()
-    }
+    type Throttler = logical.Throttler
+    type Payload = underlying.Payload
+    type SupportedResponseTypes = underlying.SupportedResponseTypes
 
-    def dispose{
-      throttler.dispose()
-      endpoint.dispose()
-      ioProfile.dispose()
+    private def backoff(d: FiniteDuration, next: FiniteDuration => Option[FiniteDuration], msg: Message[Payload]): Future[Message[OneOf[_, SupportedResponseTypes]]] = {
+      log.info(s"Backing off for $d message $msg due to throttling.")
+      val res = Promise[Message[OneOf[_, SupportedResponseTypes]]]
+      flow.scheduleOnce(d) {
+        if (throttler.shouldThrottle)  next(d) match {
+          case Some(d) => res completeWith backoff(d, next, msg)
+          case None => res.failure(new TimeoutException())
+        }
+        else res completeWith onRequestHandler(msg)
+      }
+      res.future
+    }
+    def dispose(): Unit = {
+      underlying.dispose()
+    }
+    def start(): Unit = {
+      underlying.start()
     }
   }
 
-  private case class EF[A <: Askable](ef: EndpointFactory[A], ioThreads: Int) extends EndpointFactory[ThrottlingEndpoint[A]] {
-    def apply(f: Flow) = new ThrottlingEndpoint(f, ef, ioThreads)
+  case class SEF[S <: Source](source: EndpointFactory[S], throttler: Throttler,
+                              action: ThrottlingAction[S]) extends EndpointFactory[SourceThrottlingEndpoint[S]] {
+    def apply(f) = new SourceThrottlingEndpoint(f, source(f), throttler, action)
   }
-
-  def apply[A <: Askable](ef: EndpointFactory[A], ioThreads: Int = 4): EndpointFactory[ThrottlingEndpoint[A]] = {
-    EF(ef, ioThreads)
+  case class REF[R <: Responsible](responsible: EndpointFactory[R], throttler: Throttler,
+                                   action: ThrottlingAction[R]) extends EndpointFactory[ResponsibleThrottlingEndpoint[R]] {
+    def apply(f) = new ResponsibleThrottlingEndpoint(f, responsible(f), throttler, action)
   }
+  def apply[S <: Source](source: EndpointFactory[S])(throttler: Throttler, action: ThrottlingAction[S]) = SEF(source, throttler, action)
+  def apply[R <: Responsible](responsible: => EndpointFactory[R])(throttler: Throttler, action: ThrottlingAction[R]) = REF(responsible, throttler, action) //not here that the responsible is a byname just to get past the overloading issue
 }

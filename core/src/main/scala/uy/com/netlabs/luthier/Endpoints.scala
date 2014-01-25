@@ -72,9 +72,9 @@ object InboundEndpoint {
 }
 
 trait Source extends InboundEndpoint {
-  private[this] var onEventHandler0: Message[Payload] => Unit = _
-  protected def onEventHandler: Message[Payload] => Unit = onEventHandler0
-  def onEvent(thunk: Message[Payload] => Unit) { onEventHandler0 = thunk }
+  private[this] var onEventHandler0: Message[Payload] => Future[Unit] = _
+  protected def onEventHandler: Message[Payload] => Future[Unit] = onEventHandler0
+  def onEvent(thunk: Message[Payload] => Future[Unit]) { onEventHandler0 = thunk }
 }
 
 trait Responsible extends InboundEndpoint {
@@ -169,23 +169,6 @@ trait Askable extends OutboundEndpoint {
   def ask[Payload](msg: Message[Payload]): Future[Message[Response]] = macro OutboundEndpoint.askMacroImpl[Payload]
 }
 object Askable {
-  implicit class SourceAndSink2Askable[In <: Source, Out <: Sink](t: (In, Out)) extends Askable {
-    val out = t._2
-    val in = t._1
-    type Response = in.Payload
-    type SupportedTypes = out.SupportedTypes
-    def askImpl[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration) = {
-      out.pushImpl(msg)
-      val resp = Promise[Message[Response]]()
-      flow.scheduleOnce(timeOut)(resp.tryFailure(new TimeoutException()))
-      in onEvent resp.trySuccess
-      resp.future
-    }
-    implicit def flow = t._1.flow
-    def start() {}
-    def dispose() {} //Do not dispose underlying source and sink
-  }
-
   //  @scala.annotation.implicitNotFound("There is no definition that states that ${Req} is replied with ${Resp}")
   //  trait CallDefinition[Req, Resp]
   //

@@ -76,8 +76,7 @@ object FeedableEndpoint {
   class FeedableSource[Req](val flow: Flow, val requestor: Requestor[Req, Unit :: TypeNil]) extends FeedableEndpointBase[Req, Unit :: TypeNil] with Source {
     type Payload = Req
     def feed(r: Req): Future[OneOf[_, Unit :: TypeNil]] = {
-      flow.runFlow(r.asInstanceOf[flow.InboundEndpointTpe#Payload]).map(_ =>
-        new OneOf[Unit, Unit :: TypeNil](()))(flow.rawWorkerActorsExecutionContext)
+      onEventHandler(newReceviedMessage(r)).map(m => new OneOf[Unit, Unit :: TypeNil](()))(flow.rawWorkerActorsExecutionContext)
     }
     def dispose(): Unit = {}
     def start(): Unit = requestor.connect(this)
@@ -95,7 +94,9 @@ object FeedableEndpoint {
   case class source[Req](requestor: Requestor[Req, Unit :: TypeNil]) extends EndpointFactory[FeedableSource[Req]] {
     def apply(f) = new FeedableSource[Req](f, requestor)
   }
+  def apply[Req](requestor: Requestor[Req, Unit :: TypeNil]) = source(requestor)
   case class responsible[Req, Resp <: TypeList](requestor: Requestor[Req, Resp]) extends EndpointFactory[FeedableResponsible[Req, Resp]] {
     def apply(f) = new FeedableResponsible[Req, Resp](f, requestor)
   }
+  def apply[Req, Resp <: TypeList](requestor: Requestor[Req, Resp]) = responsible(requestor)
 }

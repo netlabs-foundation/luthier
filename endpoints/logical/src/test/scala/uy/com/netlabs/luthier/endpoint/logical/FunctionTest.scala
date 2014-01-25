@@ -32,16 +32,12 @@ package uy.com.netlabs.luthier
 package endpoint
 package logical
 
-import java.nio.file.Paths
-import scala.concurrent._, duration._
-import scala.util._
 import language._
-import logical.Polling._
 import org.scalatest._
-import uy.com.netlabs.luthier.AppContext
-import uy.com.netlabs.luthier.Flows
+import scala.util._
 import scala.sys.process.stringSeqToProcess
 import scala.sys.process.stringToProcess
+import scala.concurrent._, duration._
 import uy.com.netlabs.luthier.MessageFactory.factoryFromMessage
 import uy.com.netlabs.luthier.endpoint.Process
 
