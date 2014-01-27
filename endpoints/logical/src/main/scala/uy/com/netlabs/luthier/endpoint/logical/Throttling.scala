@@ -123,8 +123,13 @@ object Throttling {
             case Backoff(id, f, rejectAction) => backoff(id, f, msg, rejectAction)
             case e@Enqueue(_, rejectAction) =>
               val res = Promise[Res]
-              if (!e.queue.offer(msg->res)) handle(msg, rejectAction)
-              else res.future
+              if (!e.queue.offer(msg->res)) {
+                log.info(s"Applying rejectAction to $msg due to queue being full")
+                handle(msg, rejectAction)
+              } else {
+                log.info(s"Enqueing $msg due to throttling")
+                res.future
+              }
           }
       }
     }
@@ -141,7 +146,7 @@ object Throttling {
           case None => next(d) match {
               case Some(d) => res completeWith backoff(d, next, msg, rejectAction)
               case None =>
-                log.info("Applying rejectAction after full backoff failed.")
+                log.info(s"Applying rejectAction to $msg after full backoff failed.")
                 res completeWith handle(msg, rejectAction)
             }
         }

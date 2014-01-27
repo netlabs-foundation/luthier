@@ -158,4 +158,36 @@ class ThrottlingTest extends BaseFlowsTest {
       assert(answer.valueAs[String] === "my message is not the one you sent", "Reply?")
     }
   }
+  describe("Enqueue action in Throttler") {
+    it("enqueue up to its limit, and then call the rejectAction") {
+      implicit val ec = testApp.actorSystem.dispatcher
+      val throttler = new Throttler {
+        def acquireSlot() = None
+        def isSlotAvailableHint = false
+        def start() {}
+        def disposeImpl() {}
+      }
+      val requestor = new FeedableEndpoint.Requestor[String, String :: TypeNil]()
+      @volatile var neverToggles = true
+      val e1 = ThrottlingAction.Enqueue(1, ThrottlingAction.Drop)
+      val e2 = ThrottlingAction.Enqueue(1, e1)
+      new Flows {
+        val appContext = testApp
+        new Flow("t1")(Throttling(FeedableEndpoint(requestor))(throttler, e2)) {
+          logic { req =>
+            /*nothing will ever reach here*/
+            neverToggles = false
+            req
+          }
+        }.start
+      }
+      val a = requestor.request("a")
+      val b = requestor.request("b")
+      val res = Future.sequence(Seq(a,b))
+      Thread.sleep(100) //give some time for the flows to process it
+      assert(neverToggles === true, "Toggled?")
+      assert(e1.queue.size === 1, "Enqueue1?")
+      assert(e2.queue.size === 1, "Enqueue2?")
+    }
+  }
 }
