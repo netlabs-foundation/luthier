@@ -88,7 +88,7 @@ object ThrottlingAction {
    * Signals that the operation should be stored and retried later when there is a slot available.
    */
   case class Enqueue[T <: Endpoint](maxQueueSize: Int, rejectAction: ThrottlingAction[T]) extends ThrottlingAction[T] {
-    val queue = new java.util.concurrent.ArrayBlockingQueue[(Message[_], Promise[_])](maxQueueSize)
+    val queue = new java.util.concurrent.ArrayBlockingQueue[(Message[_], Promise[_], Any)](maxQueueSize)
     override def hashCode = java.util.Objects.hashCode(this)
     override def equals(that: Any) = this eq that.asInstanceOf[AnyRef]
   }
@@ -104,12 +104,13 @@ object Throttling {
     def underlying: Underlying
     protected def throttler: Throttler
     protected def throttlingAction: ThrottlingAction[Underlying]
-    protected def handler: Message[Payload] => Future[Res]
+    protected type HandlerArgs
+    protected def handler(args: HandlerArgs): Message[Payload] => Future[Res]
 
-    protected def handle(msg: Message[Payload], throttlingAction: ThrottlingAction[Underlying]): Future[Res] = {
+    protected def handle(msg: Message[Payload], throttlingAction: ThrottlingAction[Underlying], args: HandlerArgs): Future[Res] = {
       throttler.acquireSlot match {
         case Some(slot) =>
-          val r = handler(msg)
+          val r = handler(args)(msg)
           r.onComplete { case _ => slot.markCompleted()}(flow.rawWorkerActorsExecutionContext)
           r
         case None =>
@@ -120,12 +121,12 @@ object Throttling {
             case Reply(resp) =>
               log.info(s"Replying with $resp due to throttling.")
               Future.successful(msg.map (_ => new OneOf[Any, TypeNil](resp)(null)).asInstanceOf[Res])
-            case Backoff(id, f, rejectAction) => backoff(id, f, msg, rejectAction)
+            case Backoff(id, f, rejectAction) => backoff(id, f, msg, rejectAction, args)
             case e@Enqueue(_, rejectAction) =>
               val res = Promise[Res]
-              if (!e.queue.offer(msg->res)) {
+              if (!e.queue.offer((msg, res, args))) {
                 log.info(s"Applying rejectAction to $msg due to queue being full")
-                handle(msg, rejectAction)
+                handle(msg, rejectAction, args)
               } else {
                 log.info(s"Enqueing $msg due to throttling")
                 res.future
@@ -134,20 +135,20 @@ object Throttling {
       }
     }
     protected def backoff(d: FiniteDuration, next: FiniteDuration => Option[FiniteDuration], msg: Message[Payload],
-                          rejectAction: ThrottlingAction[Underlying]): Future[Res] = {
+                          rejectAction: ThrottlingAction[Underlying], args: HandlerArgs): Future[Res] = {
       log.info(s"Backing off for $d message $msg due to throttling.")
       val res = Promise[Res]
       flow.scheduleOnce(d) {
         throttler.acquireSlot match {
           case Some(slot) =>
-            val r = handler(msg)
+            val r = handler(args)(msg)
             r.onComplete { case _ => slot.markCompleted()}(flow.rawWorkerActorsExecutionContext)
             res completeWith r
           case None => next(d) match {
-              case Some(d) => res completeWith backoff(d, next, msg, rejectAction)
+              case Some(d) => res completeWith backoff(d, next, msg, rejectAction, args)
               case None =>
                 log.info(s"Applying rejectAction to $msg after full backoff failed.")
-                res completeWith handle(msg, rejectAction)
+                res completeWith handle(msg, rejectAction, args)
             }
         }
       }
@@ -167,8 +168,8 @@ object Throttling {
               while (!done && throttler.isSlotAvailableHint) {
                 q.poll() match {
                   case null => done = true
-                  case (msg, promise: Promise[Res @unchecked]) =>
-                    promise completeWith handle(msg.as[Payload], action)
+                  case (msg, promise: Promise[Res] @unchecked, args: HandlerArgs @unchecked) =>
+                    promise completeWith handle(msg.as[Payload], action, args)
                 }
               }
             }
@@ -192,49 +193,99 @@ object Throttling {
   class SourceThrottlingEndpoint[S <: Source](val flow: Flow, val underlying: S,
                                               override val throttler: Throttler,
                                               val throttlingAction: ThrottlingAction[S]) extends Source with ThrottlingEndpoint {
-    override def handler = onEventHandler
-    underlying.onEvent(handle(_: Message[Payload], throttlingAction))
+    override def handler(args) = onEventHandler
+    underlying.onEvent(handle(_: Message[Payload], throttlingAction, ()))
 
     protected type Res = Unit
     type Throttler = logical.Throttler
     type Underlying = S
+    protected type HandlerArgs = Unit
     type Payload = underlying.Payload
   }
   class ResponsibleThrottlingEndpoint[R <: Responsible](val flow: Flow, val underlying: R,
                                                         override val throttler: Throttler,
                                                         val throttlingAction: ThrottlingAction[R]) extends Responsible with ThrottlingEndpoint {
 
-    def handler = onRequestHandler
-    underlying.onRequest(handle(_: Message[Payload], throttlingAction))
+    def handler(args) = onRequestHandler
+    underlying.onRequest(handle(_: Message[Payload], throttlingAction, ()))
 
     protected type Res = Message[OneOf[_, underlying.SupportedResponseTypes]]
     type Throttler = logical.Throttler
     type Underlying = R
+    protected type HandlerArgs = Unit
     type Payload = underlying.Payload
     type SupportedResponseTypes = underlying.SupportedResponseTypes
   }
 
-  case class SEF[S <: Source](source: EndpointFactory[S], throttler: Throttler,
-                              action: ThrottlingAction[S]) extends EndpointFactory[SourceThrottlingEndpoint[S]] {
+  case class SourceEF[S <: Source](source: EndpointFactory[S], throttler: Throttler,
+                                   action: ThrottlingAction[S]) extends EndpointFactory[SourceThrottlingEndpoint[S]] {
     def apply(f) = new SourceThrottlingEndpoint(f, source(f), throttler, action)
   }
-  case class REF[R <: Responsible](responsible: EndpointFactory[R], throttler: Throttler,
-                                   action: ThrottlingAction[R]) extends EndpointFactory[ResponsibleThrottlingEndpoint[R]] {
+  case class ResponsibleEF[R <: Responsible](responsible: EndpointFactory[R], throttler: Throttler,
+                                             action: ThrottlingAction[R]) extends EndpointFactory[ResponsibleThrottlingEndpoint[R]] {
     def apply(f) = new ResponsibleThrottlingEndpoint(f, responsible(f), throttler, action)
   }
   /**
    * @usecase def apply[S <: Source](source: EndpointFactory[S])(throttler: Throttler, action: ThrottlingAction[S]): EndpointFactory[SourceThrottlingEndpoint[S]]
    */
-  def apply[S <: Source](source: EndpointFactory[S])(throttler: Throttler, action: ThrottlingAction[S])(implicit d1: DummyImplicit) = SEF(source, throttler, action)
+  def apply[S <: Source](source: EndpointFactory[S])(throttler: Throttler, action: ThrottlingAction[S])(implicit d1: DummyImplicit) = SourceEF(source, throttler, action)
 
   /**
    * @usecase def apply[R <: Responsible](responsible: EndpointFactory[R])(throttler: Throttler, action: ThrottlingAction[R]): EndpointFactory[ResponsibleThrottlingEndpoint[R]]
    */
-  def apply[R <: Responsible](responsible: EndpointFactory[R])(throttler: Throttler, action: ThrottlingAction[R])(implicit d1: DummyImplicit, d2: DummyImplicit) = REF(responsible, throttler, action) //dummies are a hack to have proper overloading despite the java generics
+  def apply[R <: Responsible](responsible: EndpointFactory[R])(throttler: Throttler, action: ThrottlingAction[R])(implicit d1: DummyImplicit, d2: DummyImplicit) = ResponsibleEF(responsible, throttler, action) //dummies are a hack to have proper overloading despite the java generics
 
 
   ////////////////////////
   // Outbound Endpoints
   ////////////////////////
+
+  class SinkThrottlingEndpoint[S <: Sink](val flow: Flow, val underlying: S,
+                                          override val throttler: Throttler,
+                                          val throttlingAction: ThrottlingAction[S]) extends Sink with ThrottlingEndpoint {
+
+    protected type Res = Unit
+    type Throttler = logical.Throttler
+    type Underlying = S
+    protected type HandlerArgs = Unit
+    protected type Payload = Any
+    type SupportedTypes = underlying.SupportedTypes
+
+    def handler(args) = underlying.pushImpl(_)(null)
+    def pushImpl[Payload: SupportedType](msg: Message[Payload]): Future[Unit] = handle(msg, throttlingAction, ())
+  }
+  class AskableThrottlingEndpoint[A <: Askable](val flow: Flow, val underlying: A,
+                                                override val throttler: Throttler,
+                                                val throttlingAction: ThrottlingAction[A]) extends Askable with ThrottlingEndpoint {
+
+    protected type Res = Message[Response]
+    type Throttler = logical.Throttler
+    type Underlying = A
+    protected type HandlerArgs = FiniteDuration
+    protected type Payload = Any
+    type SupportedTypes = underlying.SupportedTypes
+    type Response = underlying.Response
+
+    def handler(timeOut) = underlying.askImpl(_, timeOut)(null)
+    def askImpl[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] =
+      handle(msg, throttlingAction, timeOut)
+  }
+  case class SinkEF[S <: Sink](sink: EndpointFactory[S], throttler: Throttler,
+                               action: ThrottlingAction[S]) extends EndpointFactory[SinkThrottlingEndpoint[S]] {
+    def apply(f) = new SinkThrottlingEndpoint(f, sink(f), throttler, action)
+  }
+  case class AskableEF[A <: Askable](askable: EndpointFactory[A], throttler: Throttler,
+                                     action: ThrottlingAction[A]) extends EndpointFactory[AskableThrottlingEndpoint[A]] {
+    def apply(f) = new AskableThrottlingEndpoint(f, askable(f), throttler, action)
+  }
+  /**
+   * @usecase def apply[S <: Sink](sink: EndpointFactory[S])(throttler: Throttler, action: ThrottlingAction[S]): EndpointFactory[SinkThrottlingEndpoint[S]]
+   */
+  def apply[S <: Sink](sink: EndpointFactory[S])(throttler: Throttler, action: ThrottlingAction[S])(implicit d1: DummyImplicit, d2: DummyImplicit, d3: DummyImplicit) = SinkEF(sink, throttler, action)
+
+  /**
+   * @usecase def apply[A <: Askable](askable: EndpointFactory[A])(throttler: Throttler, action: ThrottlingAction[A]): EndpointFactory[AskableThrottlingEndpoint[A]]
+   */
+  def apply[A <: Askable](askable: EndpointFactory[A])(throttler: Throttler, action: ThrottlingAction[A])(implicit d1: DummyImplicit, d2: DummyImplicit, d3: DummyImplicit, d4: DummyImplicit) = AskableEF(askable, throttler, action) //dummies are a hack to have proper overloading despite the java generics
 
 }
