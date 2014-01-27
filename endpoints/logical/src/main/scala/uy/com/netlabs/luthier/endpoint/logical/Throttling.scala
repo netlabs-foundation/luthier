@@ -40,16 +40,18 @@ import scala.concurrent._, duration._
  * A Throttler is an entity which has state and can tell you whether you should
  * proceed with an operation or backoff somehow.
  */
-trait Throttler {
+trait Throttler extends Disposable {
   /**
-   * Ask the throttler whether bucket is available.
+   * Asks the throttler for an operation slot, which might not be available.
    */
-  def shouldThrottle(): Boolean
-  /**
-   * Submit a performed operation registry to the Throttler so that it can update
-   * its internal state.
-   */
-  def submit()
+  def aquireSlot(): Option[Throttler.Slot]
+  def start()
+}
+object Throttler {
+  trait Slot {
+    def startTime: Long
+    def markCompleted()
+  }
 }
 
 /**
@@ -78,13 +80,18 @@ object Throttling {
                                               val action: ThrottlingAction[S]) extends Source {
 
     underlying.onEvent { evt =>
-      if (throttler.shouldThrottle) {
-        import ThrottlingAction._
-        (action: @unchecked) match {
-          case Drop => log.info(s"Dropping message $evt due to throttling."); Future.successful(())
-          case Backoff(id, f) => backoff(id, f, evt)
-        }
-      } else onEventHandler(evt)
+      throttler.aquireSlot match {
+        case Some(slot) =>
+          val r = onEventHandler(evt)
+          r.onComplete { case _ => slot.markCompleted()}(flow.rawWorkerActorsExecutionContext)
+          r
+        case None =>
+          import ThrottlingAction._
+          (action: @unchecked) match {
+            case Drop => log.info(s"Dropping message $evt due to throttling."); Future.successful(())
+            case Backoff(id, f) => backoff(id, f, evt)
+          }
+      }
     }
 
     type Throttler = logical.Throttler
@@ -94,18 +101,25 @@ object Throttling {
       log.info(s"Backing off for $d message $msg due to throttling.")
       val res = Promise[Unit]
       flow.scheduleOnce(d) {
-        if (throttler.shouldThrottle) next(d) match {
-          case Some(d) => res completeWith backoff(d, next, msg)
-          case None => res.failure(new TimeoutException())
+        throttler.aquireSlot match {
+          case Some(slot) =>
+            val r = onEventHandler(msg)
+            r.onComplete { case _ => slot.markCompleted()}(flow.rawWorkerActorsExecutionContext)
+            res completeWith r
+          case None => next(d) match {
+              case Some(d) => res completeWith backoff(d, next, msg)
+              case None => res.failure(new TimeoutException())
+            }
         }
-        else res completeWith onEventHandler(msg)
       }
       res.future
     }
     def dispose(): Unit = {
       underlying.dispose()
+      throttler.dispose()
     }
     def start(): Unit = {
+      throttler.start()
       underlying.start()
     }
   }
@@ -114,18 +128,23 @@ object Throttling {
                                                         val action: ThrottlingAction[R]) extends Responsible {
 
     underlying.onRequest { evt =>
-      if (throttler.shouldThrottle) {
-        import ThrottlingAction._
-        action match {
-          case Drop =>
-            log.info(s"Dropping message $evt due to throttling.")
-            Future.failed(new Exception("Message dropped"))
-          case Reply(resp) =>
-            log.info(s"Replying with $resp due to throttling.")
-            Future.successful(evt map (_ => new OneOf[Any, underlying.SupportedResponseTypes](resp)(null)))
-          case Backoff(id, f) => backoff(id, f, evt)
-        }
-      } else onRequestHandler(evt)
+      throttler.aquireSlot match {
+        case Some(slot) =>
+          val r = onRequestHandler(evt)
+          r.onComplete { case _ => slot.markCompleted()}(flow.rawWorkerActorsExecutionContext)
+          r
+        case None =>
+          import ThrottlingAction._
+          (action: @unchecked) match {
+            case Drop =>
+              log.info(s"Dropping message $evt due to throttling.")
+              Future.failed(new Exception("Message dropped"))
+            case Reply(resp) =>
+              log.info(s"Replying with $resp due to throttling.")
+              Future.successful(evt map (_ => new OneOf[Any, underlying.SupportedResponseTypes](resp)(null)))
+            case Backoff(id, f) => backoff(id, f, evt)
+          }
+      }
     }
 
     type Throttler = logical.Throttler
@@ -136,18 +155,25 @@ object Throttling {
       log.info(s"Backing off for $d message $msg due to throttling.")
       val res = Promise[Message[OneOf[_, SupportedResponseTypes]]]
       flow.scheduleOnce(d) {
-        if (throttler.shouldThrottle)  next(d) match {
-          case Some(d) => res completeWith backoff(d, next, msg)
-          case None => res.failure(new TimeoutException())
+        throttler.aquireSlot match {
+          case Some(slot) =>
+            val r = onRequestHandler(msg)
+            r.onComplete { case _ => slot.markCompleted()}(flow.rawWorkerActorsExecutionContext)
+            res completeWith r
+          case None => next(d) match {
+              case Some(d) => res completeWith backoff(d, next, msg)
+              case None => res.failure(new TimeoutException())
+            }
         }
-        else res completeWith onRequestHandler(msg)
       }
       res.future
     }
     def dispose(): Unit = {
       underlying.dispose()
+      throttler.dispose()
     }
     def start(): Unit = {
+      throttler.start()
       underlying.start()
     }
   }

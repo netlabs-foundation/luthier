@@ -38,8 +38,9 @@ import scala.concurrent._, duration._
 
 class ThrottlingTest extends BaseFlowsTest {
   val alwaysThrottle = new Throttler {
-    def shouldThrottle = true
-    def submit {}
+    def aquireSlot() = None
+    def start() {}
+    def disposeImpl() {}
   }
   describe("Drop action in Throttler") {
     it("should drop messages in SourceEndpoints") {
