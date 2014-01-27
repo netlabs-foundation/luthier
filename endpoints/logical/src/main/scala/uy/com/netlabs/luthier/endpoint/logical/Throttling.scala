@@ -184,6 +184,11 @@ object Throttling {
     }
   }
 
+  ////////////////////////
+  // Inbound Endpoints
+  ////////////////////////
+
+
   class SourceThrottlingEndpoint[S <: Source](val flow: Flow, val underlying: S,
                                               override val throttler: Throttler,
                                               val throttlingAction: ThrottlingAction[S]) extends Source with ThrottlingEndpoint {
@@ -217,6 +222,19 @@ object Throttling {
                                    action: ThrottlingAction[R]) extends EndpointFactory[ResponsibleThrottlingEndpoint[R]] {
     def apply(f) = new ResponsibleThrottlingEndpoint(f, responsible(f), throttler, action)
   }
-  def apply[S <: Source](source: EndpointFactory[S])(throttler: Throttler, action: ThrottlingAction[S]) = SEF(source, throttler, action)
-  def apply[R <: Responsible](responsible: => EndpointFactory[R])(throttler: Throttler, action: ThrottlingAction[R]) = REF(responsible, throttler, action) //not here that the responsible is a byname just to get past the overloading issue
+  /**
+   * @usecase def apply[S <: Source](source: EndpointFactory[S])(throttler: Throttler, action: ThrottlingAction[S]): EndpointFactory[SourceThrottlingEndpoint[S]]
+   */
+  def apply[S <: Source](source: EndpointFactory[S])(throttler: Throttler, action: ThrottlingAction[S])(implicit d1: DummyImplicit) = SEF(source, throttler, action)
+
+  /**
+   * @usecase def apply[R <: Responsible](responsible: EndpointFactory[R])(throttler: Throttler, action: ThrottlingAction[R]): EndpointFactory[ResponsibleThrottlingEndpoint[R]]
+   */
+  def apply[R <: Responsible](responsible: EndpointFactory[R])(throttler: Throttler, action: ThrottlingAction[R])(implicit d1: DummyImplicit, d2: DummyImplicit) = REF(responsible, throttler, action) //dummies are a hack to have proper overloading despite the java generics
+
+
+  ////////////////////////
+  // Outbound Endpoints
+  ////////////////////////
+
 }
