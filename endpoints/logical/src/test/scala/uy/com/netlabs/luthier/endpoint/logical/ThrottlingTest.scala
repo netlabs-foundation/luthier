@@ -38,7 +38,8 @@ import scala.concurrent._, duration._
 
 class ThrottlingTest extends BaseFlowsTest {
   val alwaysThrottle = new Throttler {
-    def aquireSlot() = None
+    def acquireSlot() = None
+    def isSlotAvailableHint = false
     def start() {}
     def disposeImpl() {}
   }
@@ -94,7 +95,7 @@ class ThrottlingTest extends BaseFlowsTest {
       new Flows {
         val appContext = testApp
         new Flow("t1")(Throttling(FeedableEndpoint(requestor))(alwaysThrottle, ThrottlingAction.Backoff(
-              100.millis, d => if (d < 200.millis) Some(d * 2) else None))) {
+              100.millis, d => if (d < 200.millis) Some(d * 2) else None, ThrottlingAction.Drop))) {
           logic { req =>
             /*nothing will ever reach here*/
             neverToggles = false
@@ -118,7 +119,7 @@ class ThrottlingTest extends BaseFlowsTest {
       new Flows {
         val appContext = testApp
         new Flow("t1")(Throttling(FeedableEndpoint(requestor))(alwaysThrottle, ThrottlingAction.Backoff(
-              100.millis, d => if (d < 200.millis) Some(d * 2) else None))) {
+              100.millis, d => if (d < 200.millis) Some(d * 2) else None, ThrottlingAction.Drop))) {
           logic { req =>
             /*nothing will ever reach here*/
             neverToggles = false

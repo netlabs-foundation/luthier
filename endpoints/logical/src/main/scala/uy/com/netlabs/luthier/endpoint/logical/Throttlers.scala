@@ -42,13 +42,17 @@ object ConcurrentLimit {
 }
 class ConcurrentLimit(@volatile var concurrentLimit: Int) extends Throttler {
   private val concurrentRunning = new java.util.concurrent.atomic.AtomicInteger(0)
-  def aquireSlot() = if (concurrentRunning.get < concurrentLimit) {
+  def acquireSlot() = if (concurrentRunning.get < concurrentLimit) {
     concurrentRunning.incrementAndGet
     Some(new Throttler.Slot {
         val startTime: Long = System.currentTimeMillis
-        def markCompleted() { concurrentRunning.decrementAndGet }
+        def markCompleted() {
+          val cr = concurrentRunning.decrementAndGet
+          if (cr < concurrentLimit) notifySlotAvailable()
+        }
       })
   } else None
+  def isSlotAvailableHint = concurrentRunning.get < concurrentLimit
   def start() {}
   def disposeImpl() {}
 }
@@ -69,7 +73,7 @@ class FixedRateLimit(val maxRate: Double,
   @volatile private var periodEstimationInSeconds: Double = 1 / maxRate
   private val permits = new java.util.concurrent.atomic.AtomicInteger((batchPeriod.toMillis / 1000.0 * maxRate).toInt)
 
-  def aquireSlot() = {
+  def acquireSlot() = {
     if (permits.get() > 0) Some(new Throttler.Slot {
         val startTime: Long = System.currentTimeMillis
         def markCompleted() {
@@ -80,6 +84,7 @@ class FixedRateLimit(val maxRate: Double,
       })
     else None
   }
+  def isSlotAvailableHint = permits.get() > 0
   private def nextEwmaPeriod(deltaMillis: Long): Double = {
     SPEED_ESTIMATION_EWMA_ALPHA * (deltaMillis / 1000.0) + (1 - SPEED_ESTIMATION_EWMA_ALPHA) * periodEstimationInSeconds
   }
@@ -89,7 +94,8 @@ class FixedRateLimit(val maxRate: Double,
     val msgsToSendDbl = batchPeriod.toMillis / 1000.0 * maxRate + remainder
     val msgsToSend = msgsToSendDbl.asInstanceOf[Int]
     remainder = msgsToSendDbl - msgsToSend
-    permits.addAndGet(msgsToSend)
+    val p = permits.addAndGet(msgsToSend)
+    if (p > 0) notifySlotAvailable()
   }(appContext.actorSystem.dispatcher)
   def start() {}
   override def disposeImpl() {
