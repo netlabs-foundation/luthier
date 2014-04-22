@@ -1,7 +1,7 @@
 {
 val jettyVersion = "9.0.3.v20130506"
-val dispatchVersion = "0.10.1"
-val unfilteredVersion = "0.6.8"
+val dispatchVersion = "0.11.0"
+val unfilteredVersion = "0.7.1"
 libraryDependencies ++= Seq (
   "net.databinder.dispatch" %% "dispatch-core" % dispatchVersion,
   "net.databinder.dispatch" %% "dispatch-jsoup" % dispatchVersion,

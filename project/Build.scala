@@ -3,7 +3,7 @@ import sbt._, Keys._
 
 object CocoonBuild extends Build {
 
-  val _scalaVersion = "2.10.3"
+  val _scalaVersion = "2.11.0"
 
   val defSettings = Seq(
     version := "2.0.0-SNAPSHOT",
@@ -18,7 +18,7 @@ object CocoonBuild extends Build {
     ),
     libraryDependencies ++= Seq(
       "org.scala-lang" % "scala-reflect" % _scalaVersion,
-      "org.scalatest" %% "scalatest" % "2.0.M5b" % "test"
+      "org.scalatest" %% "scalatest" % "2.1.3" % "test"
     ),
     scalacOptions ++= Seq(
       "-feature",

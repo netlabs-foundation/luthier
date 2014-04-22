@@ -147,7 +147,7 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String, shar
       import uy.com.netlabs.luthier._
       import uy.com.netlabs.luthier.typelist._
       import scala.language._
-      val app = ${if (shareGlobalActorContext) "sharedAppContext" else """AppContext.build("${appName}", java.nio.file.Paths.get("$file"), config)"""}
+      val app = ${if (shareGlobalActorContext) "sharedAppContext" else s"""AppContext.build("${appName}", java.nio.file.Paths.get("$file"), config)"""}
         val flow = new Flows {
           val appContext = app
 
