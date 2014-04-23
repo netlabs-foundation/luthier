@@ -71,7 +71,7 @@ object MethodRef {
       }
 
       val classExpr = c.Expr[Class[ClassRef]](c.reifyRuntimeClass(classRefType.tpe, true))
-      val methodNameExpr = c.literal(methodName.encoded)
+      val methodNameExpr = c.Expr[String](q"${methodName.encodedName.toString}")
       reify {
         val c = classExpr.splice
         val validMethods = c.getMethods().filter(_.getName == methodNameExpr.splice)

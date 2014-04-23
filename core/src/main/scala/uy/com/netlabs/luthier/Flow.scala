@@ -94,12 +94,12 @@ trait Flow extends FlowPatterns with Disposable {
   var logLifecycle = true
   @volatile private[this] var instantiatedEndpoints = Map.empty[EndpointFactory[_], Endpoint]
 
-  def start() {
+  def start(): Unit = {
     if (logic == null) throw new IllegalStateException(s"Logic has not been defined yet for flow $name.")
     rootEndpoint.start()
     if (logLifecycle) log.info("Flow " + name + " started")
   }
-  protected def disposeImpl() {
+  protected def disposeImpl(): Unit = {
     rootEndpoint.dispose()
     instantiatedEndpoints.values foreach (_.dispose())
     instantiatedEndpoints = Map.empty
@@ -123,10 +123,10 @@ trait Flow extends FlowPatterns with Disposable {
   type Logic <: RootMessage[this.type] => LogicResult
   type LogicResult
   private[this] var logic: Logic = _
-  def logicImpl(l: Logic) {
+  def logicImpl(l: Logic): Unit = {
     logic = l
   }
-  def logic[R](l: RootMessage[this.type] => R) = macro Flow.logicMacroImpl[R, this.type]
+  def logic[R](l: RootMessage[this.type] => R): Unit = macro Flow.logicMacroImpl[R, this.type]
   /**
    * Validates that the passed value of type T is one of the possible response types as defined by the Responsible root endpoint and
    * wraps in a properly typed OneOf instance.
@@ -228,7 +228,7 @@ trait Flow extends FlowPatterns with Disposable {
    * @see workerActorsExecutionContext
    */
   val rawWorkerActorsExecutionContext =  new ExecutionContext {
-    def execute(runnable: Runnable) { doWork(runnable.run) }
+    def execute(runnable: Runnable): Unit = { doWork(runnable.run) }
     def reportFailure(t: Throwable) = appContext.actorSystem.log.error(t, "")
   }
   /**
@@ -239,7 +239,7 @@ trait Flow extends FlowPatterns with Disposable {
   def workerActorsExecutionContext(implicit rm: RootMessage[this.type]): ExecutionContext = new ExecutionContext {
     val frm = rm.asInstanceOf[FlowRootMessage]
     @volatile private var used = false
-    def execute(runnable: Runnable) {
+    def execute(runnable: Runnable): Unit = {
       if (used) throw new IllegalStateException("A materialized worker execution context can only be used once. Instead of reutilizing it, materialize a new one")
       doWork {
         runnable.run
@@ -285,17 +285,17 @@ object Flow {
     protected[Flow] val promise = Promise[R]()
   }
 
-  import scala.reflect.macros.{ Context, Universe }
+  import scala.reflect.macros.blackbox.Context
   def findNearestMessageMacro[F <: Flow](c: Context {type PrefixType <: Flow }): c.Expr[RootMessage[F]] = {
     import c.universe._
     val rootMessageTpe = c.typeOf[RootMessage[_]]
     val collected = c.enclosingClass.collect {
       case a @ Apply(Ident(i), List(Function(List(param @ ValDef(modifiers, paramName, _, _)), _))) if (i.encoded == "logic" || i.encoded == "logicImpl") &&
         modifiers.hasFlag(Flag.PARAM) && param.symbol.typeSignature <:< rootMessageTpe &&
-        !c.typeCheck(c.parse(paramName.encoded), param.symbol.typeSignature, silent = true).isEmpty =>
+        !c.typecheck(c.parse(paramName.encodedName.toString), c.TERMmode, param.symbol.typeSignature, silent = true).isEmpty =>
         paramName
     }.head
-    val selectMessage = c.Expr(c.parse(collected.encoded))
+    val selectMessage = c.Expr(c.parse(collected.encodedName.toString))
     reify(selectMessage.splice)
   }
 
@@ -322,7 +322,7 @@ object Flow {
     }
 
     //if the flow is oneway we always succeed:
-    val logicResultType = subType(c.prefix.actualType, newTypeName("LogicResult"), c.typeOf[Flows#Flow[_, _]])
+    val logicResultType = subType(c.prefix.actualType, TypeName("LogicResult"), c.typeOf[Flows#Flow[_, _]])
     if (logicResultType =:= c.TypeTag.Unit.tpe) {
       reify {
         val flow = c.prefix.splice
@@ -331,9 +331,9 @@ object Flow {
     } else { //its a request response flow, so we must analyse the result
       //calculate the valid responses typelist
       val messageResultType = logicResultType.asInstanceOf[TypeRef].args(0)
-      val rootEndpointType = subType(c.prefix.actualType, newTermName("rootEndpoint"), c.typeOf[Flows#Flow[_, _]])
+      val rootEndpointType = subType(c.prefix.actualType, TermName("rootEndpoint"), c.typeOf[Flows#Flow[_, _]])
       val supportedResponsesTypeListType =
-        subType(rootEndpointType, newTypeName("SupportedResponseTypes"),
+        subType(rootEndpointType, TypeName("SupportedResponseTypes"),
                 rootEndpointType) match {
           case TypeBounds(lo, hi) => hi //in some case with generics, I might get the typelist like this
           case other => other

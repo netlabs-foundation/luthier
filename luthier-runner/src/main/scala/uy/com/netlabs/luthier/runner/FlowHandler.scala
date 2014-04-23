@@ -124,8 +124,10 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String, shar
     } else {
       require(compilerLazy.bind("config", parentAppContext.actorSystem.settings.config) == IR.Success, "Failed compiling flow " + file)
     }
+    
     require(compilerLazy.interpret(script) == IR.Success, "Failed compiling flow " + file)
-    val flows = compilerLazy.lastRequest.getEvalTyped[Flows].getOrElse(throw new IllegalStateException("Could not load flow " + file))
+    val flows = compilerLazy.eval(script).asInstanceOf[Flows]
+
     () => {
       logger.info("Starting App: " + flows.appContext.name)
       val appStartTime = System.nanoTime()
