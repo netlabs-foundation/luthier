@@ -20,12 +20,15 @@ object CocoonBuild extends Build {
       "org.scala-lang" % "scala-reflect" % _scalaVersion,
       "org.scalatest" %% "scalatest" % "2.1.3" % "test"
     ),
+    incOptions := incOptions.value.withNameHashing(true),
     scalacOptions ++= Seq(
       "-feature",
       //"-explaintypes",
       "-unchecked",
       "-deprecation",
-      "-Yinfer-argument-types"
+      "-Yinfer-argument-types",
+      "-Ybackend:GenBCode",
+      "-Ydelambdafy:method"
       //"-Xlog-implicits"
     ),
     scalacOptions in Compile in doc ++= Seq(

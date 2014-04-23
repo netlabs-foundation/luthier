@@ -30,7 +30,7 @@
  */
 package uy.com.netlabs.luthier.util.ws
 
-import scala.reflect.macros._
+import scala.reflect.macros.blackbox._
 import scala.language._, experimental._
 import scala.util._
 import scala.sys.process._
@@ -48,8 +48,8 @@ object WsInvoker {
     val main = new IMain(settings)
     main.initializeSynchronous()
     try {
-      main.quietRun("() => {" + script + "}") match {
-        case Results.Success => main.lastRequest.getEvalTyped[() => Any].get
+      main.eval("() => {" + script + "}") match {
+        case f: Function0[Any] => f
         case other           => throw new Exception("Invalid script")
       }
     } finally {
@@ -59,7 +59,7 @@ object WsInvoker {
 
   def callWsImpl(c: Context)(wsdlLocation: c.Expr[String])(script: c.Expr[String]): c.Expr[Any] = {
     val wsdl = c.universe.show(wsdlLocation.tree).drop(1).dropRight(1)
-    val scriptTest = c.eval(c.Expr[String](c.resetAllAttrs(script.tree)))
+    val scriptTest = c.eval(c.Expr[String](c.untypecheck(script.tree)))
     //    println("Script test: " + scriptTest)
 
     val url = new URL(wsdl)
