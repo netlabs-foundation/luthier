@@ -43,13 +43,13 @@ object MethodRef {
 
   class MethodRefImpl[ClassRef, ArgumentList, ReturnType](val method: Method) extends MethodRef[ClassRef, ArgumentList, ReturnType]
 
-  implicit def methodRef[ClassRef, R](f: () => R) = macro MethodRefMacros.methodRefImpl0[ClassRef, R]
-  implicit def methodRef[ClassRef, P1, R](f: P1 => R) = macro MethodRefMacros.methodRefImpl1[ClassRef, P1, R]
-  implicit def methodRef[ClassRef, P1, P2, R](f: (P1, P2) => R) = macro MethodRefMacros.methodRefImpl2[ClassRef, P1, P2, R]
-  implicit def methodRef[ClassRef, P1, P2, P3, R](f: (P1, P2, P3) => R) = macro MethodRefMacros.methodRefImpl3[ClassRef, P1, P2, P3, R]
-  implicit def methodRef[ClassRef, P1, P2, P3, P4, R](f: (P1, P2, P3, P4) => R) = macro MethodRefMacros.methodRefImpl4[ClassRef, P1, P2, P3, P4, R]
-  implicit def methodRef[ClassRef, P1, P2, P3, P4, P5, R](f: (P1, P2, P3, P4, P5) => R) = macro MethodRefMacros.methodRefImpl5[ClassRef, P1, P2, P3, P4, P5, R]
-  implicit def methodRef[ClassRef, P1, P2, P3, P4, P5, P6, R](f: (P1, P2, P3, P4, P5, P6) => R) = macro MethodRefMacros.methodRefImpl6[ClassRef, P1, P2, P3, P4, P5, P6, R]
+  implicit def methodRef[ClassRef, R](f: () => R): MethodRef[ClassRef, Unit, R] = macro MethodRefMacros.methodRefImpl0[ClassRef, R]
+  implicit def methodRef[ClassRef, P1, R](f: P1 => R): MethodRef[ClassRef, P1, R] = macro MethodRefMacros.methodRefImpl1[ClassRef, P1, R]
+  implicit def methodRef[ClassRef, P1, P2, R](f: (P1, P2) => R): MethodRef[ClassRef, (P1, P2), R] = macro MethodRefMacros.methodRefImpl2[ClassRef, P1, P2, R]
+  implicit def methodRef[ClassRef, P1, P2, P3, R](f: (P1, P2, P3) => R): MethodRef[ClassRef, (P1, P2, P3), R] = macro MethodRefMacros.methodRefImpl3[ClassRef, P1, P2, P3, R]
+  implicit def methodRef[ClassRef, P1, P2, P3, P4, R](f: (P1, P2, P3, P4) => R): MethodRef[ClassRef, (P1, P2, P3, P4), R] = macro MethodRefMacros.methodRefImpl4[ClassRef, P1, P2, P3, P4, R]
+  implicit def methodRef[ClassRef, P1, P2, P3, P4, P5, R](f: (P1, P2, P3, P4, P5) => R): MethodRef[ClassRef, (P1, P2, P3, P4, P5), R] = macro MethodRefMacros.methodRefImpl5[ClassRef, P1, P2, P3, P4, P5, R]
+  implicit def methodRef[ClassRef, P1, P2, P3, P4, P5, P6, R](f: (P1, P2, P3, P4, P5, P6) => R): MethodRef[ClassRef, (P1, P2, P3, P4, P5, P6), R] = macro MethodRefMacros.methodRefImpl6[ClassRef, P1, P2, P3, P4, P5, P6, R]
 
   object MethodRefMacros {
     def methodRefImpl0[ClassRef: c.WeakTypeTag, R: c.WeakTypeTag](c: Context)(f: c.Expr[() => R]) = impl[ClassRef, Unit, R](c)(f)
