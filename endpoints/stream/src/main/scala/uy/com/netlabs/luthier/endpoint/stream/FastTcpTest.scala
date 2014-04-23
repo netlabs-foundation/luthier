@@ -41,13 +41,13 @@ object FastTcpTest extends App {
     val appContext = AppContext.build("streams")
     new Flow("ss")(Server(1500, 1024)) {
       logic { client =>
-        new Flow("clientHandler-" + client.payload)(Handler(client, consumers.lines(), serializers.string, ReadWaitAction.ReadValueData(2000, "lazy client"))) {
+        new Flow("clientHandler-" + client.payload)(Handler.responsible(client, consumers.lines(), serializers.string, ReadWaitAction.ReadValueData(2000, "lazy client"))) {
           logic { m: Message[String] =>
             println("Client message: " + m.payload)
             m
           }
         }
-        new Flow("clientHandler2-" + client.payload)(Handler(client, consumers.lines())) {
+        new Flow("clientHandler2-" + client.payload)(Handler.source(client, consumers.lines())) {
           logic { m: Message[String] =>
             m.payload match {
               case exit if exit.trim == "exit" =>

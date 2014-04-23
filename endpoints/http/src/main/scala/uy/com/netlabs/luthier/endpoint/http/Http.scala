@@ -40,7 +40,7 @@ import typelist._
 
 import com.ning.http.client.{ AsyncHttpClient, AsyncHttpClientConfig,
                              AsyncCompletionHandler, Cookie, RequestBuilder => Request }
-import dispatch.{ Promise => _, Future => _, _ }
+import dispatch.{ Future => _, _ }
 import unfiltered.filter.async.Plan
 import unfiltered.request._
 import unfiltered.response._
@@ -145,8 +145,8 @@ object Http {
     def apply(f: Flow) = new HttpDispatchEndpoint(f, req, ioThreads, httpClientConfig)
   }
   //this two lines are ugly as hell :)
-  def apply[R](req: Request, handler: FunctionHandler[R], ioThreads: Int = 1, httpClientConfig: AsyncHttpClientConfig = new AsyncHttpClientConfig.Builder().build()): EndpointFactory[PullEndpoint { type Payload = R }] = EF(Some(req->handler), ioThreads, httpClientConfig)
-  def apply[R](ioThreads: Int = 1, httpClientConfig: AsyncHttpClientConfig = new AsyncHttpClientConfig.Builder().build()): EndpointFactory[Askable { type Response = R; type SupportedTypes = HttpDispatchEndpoint[R]#SupportedTypes }] = EF(None, ioThreads, httpClientConfig)
+  def pull[R](req: Request, handler: FunctionHandler[R], ioThreads: Int = 1, httpClientConfig: AsyncHttpClientConfig = new AsyncHttpClientConfig.Builder().build()): EndpointFactory[PullEndpoint { type Payload = R }] = EF(Some(req->handler), ioThreads, httpClientConfig)
+  def ask[R](ioThreads: Int = 1, httpClientConfig: AsyncHttpClientConfig = new AsyncHttpClientConfig.Builder().build()): EndpointFactory[Askable { type Response = R; type SupportedTypes = HttpDispatchEndpoint[R]#SupportedTypes }] = EF(None, ioThreads, httpClientConfig)
 
   //Unfiltered part
 

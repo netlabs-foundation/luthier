@@ -105,10 +105,10 @@ object Tcp extends StreamEndpointServerComponent {
   }
 
   object Handler {
-    def apply[S, P, R](message: Message[SocketClient],
+    def source[S, P, R](message: Message[SocketClient],
                        reader: Consumer[S, P],
                        onReadWaitAction: ReadWaitAction[S, P] = ReadWaitAction.DoNothing) = new Handler(message.payload, reader, null, onReadWaitAction).OW
-    def apply[S, P, R](message: Message[SocketClient],
+    def responsible[S, P, R](message: Message[SocketClient],
                        reader: Consumer[S, P],
                        serializer: R => Array[Byte],
                        onReadWaitAction: ReadWaitAction[S, P] = ReadWaitAction.DoNothing) = new Handler(message.payload, reader, serializer, onReadWaitAction).RR

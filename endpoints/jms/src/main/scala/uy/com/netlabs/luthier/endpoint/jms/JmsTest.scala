@@ -67,7 +67,7 @@ object JmsTest extends App {
       logic {req => println("Result to some request: " + req.payload)}
     }
 
-    new Flow("ping")(endpoint.logical.Metronome("ping", 1 seconds)) {
+    new Flow("ping")(endpoint.logical.Metronome(1.seconds, pulse = "ping")) {
       logic {m =>
         println("...pinging")
         Jms.queue("logQuestion").push(m) onComplete (t => println("Ping result " + t))

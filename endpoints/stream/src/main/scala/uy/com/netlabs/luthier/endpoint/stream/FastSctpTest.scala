@@ -42,13 +42,13 @@ object FastSctpTest extends App {
       logic { client =>
         val clientChannel = client.payload.conn
         println(s"Client ${clientChannel}:${clientChannel.association} arrived.")
-        new Flow("clientHandler-" + client.payload)(Handler(client, 0, consumers.lines(), serializers.string)) {
+        new Flow("clientHandler-" + client.payload)(Handler.responsible(client, 0, consumers.lines(), serializers.string)) {
           logic { m: Message[String] =>
             println("Client message: " + m.payload)
             m map (8 -> _)
           }
         }
-        new Flow("clientHandler2-" + client.payload)(Handler(client, 1, consumers.lines())) {
+        new Flow("clientHandler2-" + client.payload)(Handler.source(client, 1, consumers.lines())) {
           logic { m: Message[String] =>
             m.payload match {
               case exit if exit.trim == "exit" =>

@@ -58,6 +58,6 @@ object Function {
   private case class EF[R](function: () => R, ioThreads: Int = 1) extends EndpointFactory[FunctionPull[R]] {
     def apply(f: Flow) = new FunctionPull(f, function, ioThreads)
   }
-  def apply[R](function: => R, ioThreads: Int = 1): EndpointFactory[PullEndpoint {type Payload = R}] = EF[R](() => function, ioThreads)
-  def apply[R](ioThreads: Int = 1): EndpointFactory[Askable {type Response = R; type SupportedTypes = FunctionPull[R]#SupportedTypes}] = EF[R](null, ioThreads)
+  def pull[R](function: => R, ioThreads: Int = 1): EndpointFactory[PullEndpoint {type Payload = R}] = EF[R](() => function, ioThreads)
+  def ask[R](ioThreads: Int = 1): EndpointFactory[Askable {type Response = R; type SupportedTypes = FunctionPull[R]#SupportedTypes}] = EF[R](null, ioThreads)
 }
