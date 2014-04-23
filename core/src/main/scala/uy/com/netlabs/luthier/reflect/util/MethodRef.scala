@@ -34,7 +34,7 @@ import java.lang.reflect.Method
 import scala.language._
 import scala.language.experimental.macros
 import scala.reflect._
-import scala.reflect.macros.Context
+import scala.reflect.macros.blackbox.Context
 
 trait MethodRef[ClassRef, ArgumentList, ReturnType] {
   val method: Method

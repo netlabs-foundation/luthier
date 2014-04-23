@@ -357,7 +357,7 @@ object Flow {
             branch -> branch
           } else {
             val messageSubType = branch.tpe.asInstanceOf[TypeRef].args(0).baseType(messageTypeTag.typeSymbol).asInstanceOf[TypeRef].args(0)
-            val containedType = typeRef(
+            val containedType = c.internal.typeRef(
               containedT.pre, containedT.sym,
               List(supportedResponsesTypeListType, messageSubType))
             val containedTree = c.inferImplicitValue(containedType, true, true, l.tree.pos)
@@ -386,7 +386,7 @@ object Flow {
             //to obtain the subtype directly from the message, I have to first get the view from the Message[_] POV, otherwise,
             //since this is a root message, the first argument to it, is the type of the flow, as in RootMessage[this.type] in flow's Logic.'
             val messageSubType = branch.tpe.baseType(messageTypeTag.typeSymbol).asInstanceOf[TypeRef].args(0)
-            val containedType = typeRef(
+            val containedType = c.internal.typeRef(
               containedT.pre, containedT.sym,
               List(supportedResponsesTypeListType, messageSubType))
             val containedTree = c.inferImplicitValue(containedType, true, true, l.tree.pos)

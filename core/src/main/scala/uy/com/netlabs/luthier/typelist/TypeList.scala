@@ -76,7 +76,7 @@ object TypeList {
     disect(tl.tpe.asInstanceOf[Type])
   }
 }
-
+	
 trait ::[A, T <: TypeList] extends TypeList {
   type Head = A
   type Tail = T
@@ -113,11 +113,11 @@ object Contained extends TypeSelectorImplicits[Contained]
 class OneOf[+E, TL <: TypeList](val value: E)(implicit contained: Contained[TL, E]) {
   override def toString = "OneOf(" + value + ")"
   def valueAs[T](implicit contained: Contained[TL, T]) = value.asInstanceOf[T]
-  def dispatch(f: PartialFunction[E, Any]) = macro OneOf.dispatchMacro[E, TL]
+  def dispatch(f: PartialFunction[E, Any]): Any = macro OneOf.dispatchMacro[E, TL]
 
 }
 object OneOf {
-  import scala.reflect.macros.Context
+  import scala.reflect.macros.whitebox.Context
   def dispatchMacro[E, TL <: TypeList](c: Context { type PrefixType = OneOf[E, TL]})(
     f: c.Expr[PartialFunction[E, Any]])(implicit eEv: c.WeakTypeTag[E], tlEv: c.WeakTypeTag[TL]): c.Expr[Any] = {
     import c.universe._
@@ -132,7 +132,8 @@ object OneOf {
     val TypeRef(pre, sym, _) = typeOf[Contained[TypeNil, Any]]
     val casesMappedTypes = casesAst map { caseAst =>
 //      println(s"Testing $caseAst, pat type: ${caseAst.pat.tpe}, body type: ${caseAst.body.tpe}")
-      if (!(caseAst.pat.tpe =:= eEv.tpe) && c.inferImplicitValue(TypeRef(pre, sym, List(typeList, caseAst.pat.tpe))).isEmpty) {
+      tq"_root_.uy.com.netlabs.luthier.typelist.Contained[$typeList, ${caseAst.pat.tpe}]".tpe
+      if (!(caseAst.pat.tpe =:= eEv.tpe) && c.inferImplicitValue(c.internal.typeRef(pre, sym, List(typeList, caseAst.pat.tpe))).isEmpty) {
         c.abort(caseAst.pos, s"The pattern of a type ${caseAst.pat.tpe} is not defined in the type list with types ${typesInListAsStr.mkString(", ")}.")
       }
       caseAst.body.tpe map {
