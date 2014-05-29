@@ -3,7 +3,7 @@ import sbt._, Keys._
 
 object CocoonBuild extends Build {
 
-  val _scalaVersion = "2.11.0"
+  val _scalaVersion = "2.11.1"
 
   val defSettings = Seq(
     version := "2.0.0-SNAPSHOT",
@@ -18,7 +18,8 @@ object CocoonBuild extends Build {
     ),
     libraryDependencies ++= Seq(
       "org.scala-lang" % "scala-reflect" % _scalaVersion,
-      "org.scalatest" %% "scalatest" % "2.1.3" % "test"
+      "org.scalatest" %% "scalatest" % "2.1.5" % "test",
+      "org.scala-lang.modules" %% "scala-xml" % "1.0.2"
     ),
     incOptions := incOptions.value.withNameHashing(true),
     scalacOptions ++= Seq(

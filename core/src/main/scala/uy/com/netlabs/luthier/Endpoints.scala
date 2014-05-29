@@ -97,8 +97,7 @@ trait OutboundEndpoint extends Endpoint {
 }
 object OutboundEndpoint {
   import scala.reflect.macros.Context
-  def pushMacroImpl[Payload](c: Context {type PrefixType = Sink})(msg: c.Expr[Message[Payload]])
-  (implicit pEv: c.WeakTypeTag[Payload]): c.Expr[Future[Unit]] = {
+  def pushMacroImpl[Payload](c: Context { type PrefixType = Sink })(msg: c.Expr[Message[Payload]])(implicit pEv: c.WeakTypeTag[Payload]): c.Expr[Future[Unit]] = {
     import c.universe._
     type ST = c.prefix.value.SupportedTypes
     val supportedTypesType = c.prefix.actualType.member(newTypeName("SupportedTypes")).typeSignature
@@ -106,9 +105,10 @@ object OutboundEndpoint {
     val supportedTree = c.inferImplicitValue(c.weakTypeOf[TypeSupportedByTransport[ST, Payload]], true, true, c.enclosingPosition)
     val supported = c.Expr[TypeSupportedByTransport[ST, Payload]](supportedTree)
     if (supportedTree == c.universe.EmptyTree) {
-      val expectedTypes = TypeList.describe(etEv)
+      val typeListDescriptor = new TypeList.TypeListDescriptor(c.universe)
+      val expectedTypes = typeListDescriptor.describe(etEv.asInstanceOf[typeListDescriptor.universe.TypeTag[ST]])
       c.abort(msg.tree.pos, "\nYou are trying to push an invalid message type: " + pEv.tpe + ".\n" +
-              "Supported types by this transport are [" + expectedTypes.mkString("\n    ", "\n    ", "\n]"))
+        "Supported types by this transport are [" + expectedTypes.mkString("\n    ", "\n    ", "\n]"))
     } else {
       reify {
         val p = c.prefix.splice
@@ -116,12 +116,10 @@ object OutboundEndpoint {
       }
     }
   }
-  def askMacroImpl[Payload](c: Context {type PrefixType = Askable})(msg: c.Expr[Message[Payload]])
-  (implicit pEv: c.WeakTypeTag[Payload]): c.Expr[Future[Message[c.prefix.value.Response]]] = {
-    askMacroImplWithTimeout(c)(msg, c.universe.reify {10.seconds})
+  def askMacroImpl[Payload](c: Context { type PrefixType = Askable })(msg: c.Expr[Message[Payload]])(implicit pEv: c.WeakTypeTag[Payload]): c.Expr[Future[Message[c.prefix.value.Response]]] = {
+    askMacroImplWithTimeout(c)(msg, c.universe.reify { 10.seconds })
   }
-  def askMacroImplWithTimeout[Payload](c: Context {type PrefixType = Askable})(msg: c.Expr[Message[Payload]], timeOut: c.Expr[FiniteDuration])
-  (implicit pEv: c.WeakTypeTag[Payload]): c.Expr[Future[Message[c.prefix.value.Response]]] = {
+  def askMacroImplWithTimeout[Payload](c: Context { type PrefixType = Askable })(msg: c.Expr[Message[Payload]], timeOut: c.Expr[FiniteDuration])(implicit pEv: c.WeakTypeTag[Payload]): c.Expr[Future[Message[c.prefix.value.Response]]] = {
     import c.universe._
     type ST = c.prefix.value.SupportedTypes
     val supportedTypesType = c.prefix.actualType.member(newTypeName("SupportedTypes")).typeSignature
@@ -129,9 +127,10 @@ object OutboundEndpoint {
     val supportedTree = c.inferImplicitValue(c.weakTypeOf[TypeSupportedByTransport[ST, Payload]], true, true, c.enclosingPosition)
     val supported = c.Expr[TypeSupportedByTransport[ST, Payload]](supportedTree)
     if (supportedTree == c.universe.EmptyTree) {
-      val expectedTypes = TypeList.describe(etEv)
+      val typeListDescriptor = new TypeList.TypeListDescriptor(c.universe)
+      val expectedTypes = typeListDescriptor.describe(etEv.asInstanceOf[typeListDescriptor.universe.TypeTag[ST]])
       c.abort(msg.tree.pos, "\nYou are trying to ask an invalid message type: " + pEv.tpe + ".\n" +
-              "Supported types by this transport are [" + expectedTypes.mkString("\n    ", "\n    ", "\n]"))
+        "Supported types by this transport are [" + expectedTypes.mkString("\n    ", "\n    ", "\n]"))
     } else {
       val r = reify {
         def casted[R](a: Any) = a.asInstanceOf[R]

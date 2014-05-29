@@ -28,12 +28,55 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package uy.com.netlabs.luthier.typelist
-
+package uy.com.netlabs.luthier
+package typelist
 
 import org.scalatest.FunSpec
 
 class TypeListStuffTest extends FunSpec {
+
+  val descriptor = new TypeList.TypeListDescriptor(scala.reflect.runtime.universe)
+  type Aliased = List[String]
+
+  trait TraitA {
+    type B = String :: Long :: List[String] :: TypeNil
+  }
+  import descriptor.universe._
+  describe("TypeListDescriptor") {
+    it("should produce the list of types") {
+      assert(descriptor.describe[Int :: Long :: String :: TypeNil].size === 3)
+    }
+    it("Should resolve aliases") {
+      assert(descriptor.describe[Aliased :: TypeNil].head === typeOf[Aliased].dealias)
+    }
+    it("It should handle reified types") {
+      val List(str, lng, listStr) = descriptor.describe[TraitA#B]
+      assert(str =:= typeOf[String])
+      assert(lng =:= typeOf[Long])
+      assert(listStr =:= typeOf[List[String]])
+    }
+    it("should handle reified types 2") {
+      val List(a, b) = descriptor.describe[({ type TL = Int :: Option[Long] :: TypeNil })#TL]
+      assert(a =:= typeOf[Int])
+      assert(b =:= typeOf[Option[Long]])
+    }
+  }
+  def myMethod[A](implicit ev: Contained[String :: Int :: TypeNil, A]) = "good"
+  
+  describe("TypeSelectorImplicits") {
+    it("should fail for direct implicit searchs of contained") {
+      assertTypeError("implicitly[Contained[String :: Int :: TypeNil, Long]]")
+    }
+    it("should fail for direct implicit search of TypeSupportedByTransport") {
+      assertTypeError("implicitly[TypeSupportedByTransport[String :: Int :: TypeNil, Long]]")
+    }
+    it("should fail for methods requiring a typeselector") {
+      assertTypeError("myMethod[Long]")
+    }
+    it("should fail for classes constructors requiring a typeselector") {
+      assertTypeError("""new OneOf[String, Int :: Long :: TypeNil]("a")""")
+    }
+  }
 
   type TL = Int :: Long :: String :: TypeNil
   def withOnOf[T](v: OneOf[T, TL]): Seq[T] = {

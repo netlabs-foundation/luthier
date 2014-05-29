@@ -340,7 +340,8 @@ object Flow {
         }
       val containedT = typeOf[Contained[String :: TypeNil, String]].asInstanceOf[TypeRef] //obtain a sample typeRef to use its parts
       implicit val possibleTypesTag = c.TypeTag(supportedResponsesTypeListType)
-      val possibleTypesList = TypeList.describe(possibleTypesTag)
+      val typeListDescriptor = new TypeList.TypeListDescriptor(c.universe)
+      val possibleTypesList = typeListDescriptor.describe(possibleTypesTag.asInstanceOf[typeListDescriptor.universe.TypeTag[_ <: TypeList]])
 
       //iterate every exit branch trying to find a valid mapping
       val futureMessageTypeTag = c.typeOf[Future[Message[_]]]
