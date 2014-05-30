@@ -32,7 +32,6 @@ package uy.com.netlabs.luthier
 
 import scala.language._
 import language.experimental.macros
-import scala.reflect.macros.Context
 import scala.concurrent.Future
 import scala.util._
 import typelist._

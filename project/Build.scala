@@ -6,7 +6,7 @@ object CocoonBuild extends Build {
   val _scalaVersion = "2.11.1"
 
   val defSettings = Seq(
-    version := "2.0.0-SNAPSHOT",
+    version := "2.1.0-SNAPSHOT",
     organization := "uy.com.netlabs",
     scalaVersion := _scalaVersion,
     fork := true,

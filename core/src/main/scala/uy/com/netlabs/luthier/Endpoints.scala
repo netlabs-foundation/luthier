@@ -96,11 +96,11 @@ trait OutboundEndpoint extends Endpoint {
   type SupportedType[Payload] = TypeSupportedByTransport[SupportedTypes, Payload]
 }
 object OutboundEndpoint {
-  import scala.reflect.macros.Context
+  import scala.reflect.macros.blackbox.Context
   def pushMacroImpl[Payload](c: Context { type PrefixType = Sink })(msg: c.Expr[Message[Payload]])(implicit pEv: c.WeakTypeTag[Payload]): c.Expr[Future[Unit]] = {
     import c.universe._
     type ST = c.prefix.value.SupportedTypes
-    val supportedTypesType = c.prefix.actualType.member(newTypeName("SupportedTypes")).typeSignature
+    val supportedTypesType = c.prefix.actualType.member(TypeName("SupportedTypes")).typeSignature
     implicit val etEv = c.TypeTag[ST](supportedTypesType.asSeenFrom(c.prefix.actualType, c.prefix.actualType.typeSymbol.asClass))
     val supportedTree = c.inferImplicitValue(c.weakTypeOf[TypeSupportedByTransport[ST, Payload]], true, true, c.enclosingPosition)
     val supported = c.Expr[TypeSupportedByTransport[ST, Payload]](supportedTree)
@@ -122,7 +122,7 @@ object OutboundEndpoint {
   def askMacroImplWithTimeout[Payload](c: Context { type PrefixType = Askable })(msg: c.Expr[Message[Payload]], timeOut: c.Expr[FiniteDuration])(implicit pEv: c.WeakTypeTag[Payload]): c.Expr[Future[Message[c.prefix.value.Response]]] = {
     import c.universe._
     type ST = c.prefix.value.SupportedTypes
-    val supportedTypesType = c.prefix.actualType.member(newTypeName("SupportedTypes")).typeSignature
+    val supportedTypesType = c.prefix.actualType.member(TypeName("SupportedTypes")).typeSignature
     implicit val etEv = c.TypeTag[ST](supportedTypesType.asSeenFrom(c.prefix.actualType, c.prefix.actualType.typeSymbol.asClass))
     val supportedTree = c.inferImplicitValue(c.weakTypeOf[TypeSupportedByTransport[ST, Payload]], true, true, c.enclosingPosition)
     val supported = c.Expr[TypeSupportedByTransport[ST, Payload]](supportedTree)
@@ -143,7 +143,7 @@ object OutboundEndpoint {
 
 trait Sink extends OutboundEndpoint {
   /**
-   * Macro definition for pushImpl that provides nicer error reporting, but in case it succeedes, its equivalent to just call pushImpl
+   * Macro definition for pushImpl that provides nicer error reporting, but in case it succeeds, its equivalent to just call pushImpl
    */
   def pushImpl[Payload: SupportedType](msg: Message[Payload]): Future[Unit]
   /**

@@ -33,7 +33,7 @@ package uy.com.netlabs.luthier
 import scala.language.implicitConversions
 import language.{experimental, existentials}, experimental._
 import akka.actor.{ Actor, Props, Cancellable }
-import akka.routing.RoundRobinRouter
+import akka.routing.RoundRobinPool
 import akka.event.LoggingAdapter
 import scala.concurrent.{ ExecutionContext, Promise, Future, duration }, duration._
 import scala.util._
@@ -93,11 +93,13 @@ trait Flow extends FlowPatterns with Disposable {
   val log: LoggingAdapter
   var logLifecycle = true
   @volatile private[this] var instantiatedEndpoints = Map.empty[EndpointFactory[_], Endpoint]
+  @volatile private[this] var disposed = false
 
   def start(): Unit = {
     if (logic == null) throw new IllegalStateException(s"Logic has not been defined yet for flow $name.")
     rootEndpoint.start()
-    if (logLifecycle) log.info("Flow " + name + " started")
+    if (logLifecycle) log.info(s"Flow $name started")
+    disposed = false
   }
   protected def disposeImpl(): Unit = {
     rootEndpoint.dispose()
@@ -105,7 +107,8 @@ trait Flow extends FlowPatterns with Disposable {
     instantiatedEndpoints = Map.empty
     appContext.actorSystem.stop(workerActors)
     if (blockingExecutorInstantiated) blockingExecutor.shutdown() //avoid instantiating the lazy executor if possible
-    if (logLifecycle) log.info("Flow " + name + " disposed")
+    if (logLifecycle) log.info(s"Flow $name disposed")
+    disposed = true
   }
   /**
    * Bind the life of this flow to that of the disposable.
@@ -199,15 +202,14 @@ trait Flow extends FlowPatterns with Disposable {
 
   lazy val workerActors = appContext.actorSystem.actorOf(Props(new Actor {
         def receive = workerActorsReceive
-      }).withRouter(RoundRobinRouter(nrOfInstances = workers)), workerActorsName)
+      }).withRouter(RoundRobinPool(nrOfInstances = workers)), workerActorsName)
   /**
    * Executes the passed ``task`` asynchronously in a FlowWorker and returns
    * a Future for the computation.
    */
   def doWork[R](task: => R) = {
-    if (workerActors.isTerminated) {
+    if (disposed) {
       val error = "Work was requested for flow actor " + workerActorsName + " but the flow was already shutdown!"
-      log.warning(error)
       Future.failed(new Exception(error))
     } else {
       val res = new Flow.Work(() => task)
@@ -290,7 +292,7 @@ object Flow {
     import c.universe._
     val rootMessageTpe = c.typeOf[RootMessage[_]]
     val collected = c.enclosingClass.collect {
-      case a @ Apply(Ident(i), List(Function(List(param @ ValDef(modifiers, paramName, _, _)), _))) if (i.encoded == "logic" || i.encoded == "logicImpl") &&
+      case a @ Apply(Ident(i), List(Function(List(param @ ValDef(modifiers, paramName, _, _)), _))) if (i.encodedName.toString == "logic" || i.encodedName.toString == "logicImpl") &&
         modifiers.hasFlag(Flag.PARAM) && param.symbol.typeSignature <:< rootMessageTpe &&
         !c.typecheck(c.parse(paramName.encodedName.toString), c.TERMmode, param.symbol.typeSignature, silent = true).isEmpty =>
         paramName
@@ -423,7 +425,7 @@ object Flow {
           }
         }
       }.transform(l.tree)
-      val mappedResult = c.Expr[Any](c resetLocalAttrs resultTree)
+      val mappedResult = c.Expr[Any](c untypecheck resultTree)
       reify {
         val flow = c.prefix.splice
         flow.logicImpl(mappedResult.splice.asInstanceOf[flow.Logic])

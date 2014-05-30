@@ -34,6 +34,6 @@ import scala.sys.process._
 
 object Process {
   def apply(process: ProcessBuilder, ioThreads: Int = 1) = Function.pull(process.!, ioThreads)
-  def lines(process: ProcessBuilder, ioThreads: Int = 1) = Function.pull(process.lines, ioThreads)
-  def string(process: ProcessBuilder, ioThreads: Int = 1) = Function.pull(process.lines.mkString("\n"), ioThreads)
+  def lines(process: ProcessBuilder, ioThreads: Int = 1) = Function.pull(process.lineStream, ioThreads)
+  def string(process: ProcessBuilder, ioThreads: Int = 1) = Function.pull(process.lineStream.mkString("\n"), ioThreads)
 }
