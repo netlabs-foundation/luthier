@@ -18,6 +18,7 @@ object CocoonBuild extends Build {
     ),
     libraryDependencies ++= Seq(
       "org.scala-lang" % "scala-reflect" % _scalaVersion,
+      "org.scala-lang" % "scala-compiler" % _scalaVersion,
       "org.scalatest" %% "scalatest" % "2.1.5" % "test",
       "org.scala-lang.modules" %% "scala-xml" % "1.0.2"
     ),

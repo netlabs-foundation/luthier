@@ -28,50 +28,26 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package uy.com.netlabs.luthier
-package endpoint
+package uy.com.netlabs.luthier.testing
 
-import org.scalatest.{ BeforeAndAfter, FunSpec }
-import scala.concurrent._, duration._
-import typelist._
+import language.experimental.macros
+import scala.reflect.macros.blackbox.Context
+import scala.util.Try
+import scala.reflect.macros.TypecheckException
 
-class FeedableEndpointTest extends BaseFlowsTest {
-  describe("FeedableEndpoints") {
-    it("should support oneway feeding") {
-      new Flows {
-        val appContext = testApp
-        val fakeEndpoint: EndpointFactory[Source] = new base.DummySource
-        val requestor = new FeedableEndpoint.Requestor[String, Unit :: TypeNil]()
-        @volatile var toggled = false
-        new Flow("test")(FeedableEndpoint.source(requestor)) {
-          logic { m =>
-            toggled = true
-          }
-        }.start()
-        Await.ready(requestor.request("toggle that please"), 100.millis)
-        assert(toggled === true)
-      }
-    }
-    it("should support request-response feeding") {
-      new Flows {
-        val appContext = testApp
-        val requestor = new FeedableEndpoint.Requestor[String, Int :: TypeNil]()
-        new Flow("test")(FeedableEndpoint.responsible(requestor)) {
-          logic { m => m.map(_.toInt)}
-        }.start()
-        val res = Await.result(requestor.request("45"), 100.millis).valueAs[Int]
-        assert(res === 45)
-      }
-    }
-    it("should support returning exceptions thrown in the flow") {
-      new Flows {
-        val appContext = testApp
-        val requestor = new FeedableEndpoint.Requestor[String, Int :: TypeNil]()
-        new Flow("test")(FeedableEndpoint.responsible(requestor)) {
-          logic { m => m.map(_.toInt) }
-        }.start()
-        Await.result(requestor.request("not a number").failed, 100.millis)
-      }
+object TestUtils {
+
+  def materializeTypeError(s: String): String = macro materializeTypeErrorImpl
+  
+  def materializeTypeErrorImpl(c: Context)(s: c.Expr[String]): c.Expr[String] = {
+    import c.universe.Quasiquote
+    val code = c.eval(c.Expr[String](c.untypecheck(s.tree)))
+    val codeAst = c.parse(code)
+    try {
+      c.typecheck(codeAst)
+      c.Expr[String](q"""throw new IllegalArgumentException("passed code typechecks")""")
+    } catch { case e: TypecheckException => 
+      c.Expr[String](q"${e.getMessage}") 
     }
   }
 }

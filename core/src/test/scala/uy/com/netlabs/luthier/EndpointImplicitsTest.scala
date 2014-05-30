@@ -29,49 +29,36 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 package uy.com.netlabs.luthier
-package endpoint
 
-import org.scalatest.{ BeforeAndAfter, FunSpec }
-import scala.concurrent._, duration._
+import org.scalatest.FunSuite
 import typelist._
+import testing.TestUtils._
+import scala.reflect.runtime.universe
 
-class FeedableEndpointTest extends BaseFlowsTest {
-  describe("FeedableEndpoints") {
-    it("should support oneway feeding") {
-      new Flows {
-        val appContext = testApp
-        val fakeEndpoint: EndpointFactory[Source] = new base.DummySource
-        val requestor = new FeedableEndpoint.Requestor[String, Unit :: TypeNil]()
-        @volatile var toggled = false
-        new Flow("test")(FeedableEndpoint.source(requestor)) {
-          logic { m =>
-            toggled = true
-          }
-        }.start()
-        Await.ready(requestor.request("toggle that please"), 100.millis)
-        assert(toggled === true)
-      }
-    }
-    it("should support request-response feeding") {
-      new Flows {
-        val appContext = testApp
-        val requestor = new FeedableEndpoint.Requestor[String, Int :: TypeNil]()
-        new Flow("test")(FeedableEndpoint.responsible(requestor)) {
-          logic { m => m.map(_.toInt)}
-        }.start()
-        val res = Await.result(requestor.request("45"), 100.millis).valueAs[Int]
-        assert(res === 45)
-      }
-    }
-    it("should support returning exceptions thrown in the flow") {
-      new Flows {
-        val appContext = testApp
-        val requestor = new FeedableEndpoint.Requestor[String, Int :: TypeNil]()
-        new Flow("test")(FeedableEndpoint.responsible(requestor)) {
-          logic { m => m.map(_.toInt) }
-        }.start()
-        Await.result(requestor.request("not a number").failed, 100.millis)
-      }
-    }
+class EndpointImplicitsTest extends FunSuite {
+
+  val askable: Askable { type SupportedTypes = String :: Long :: TypeNil } = null
+  if (false) { //use false so that the code is not actually executed, just typechecked
+    askable.askImpl(null: Message[Long])
+    askable.askImpl(null: Message[String])
+  }
+  val suffix = "\nError occurred in an application involving default arguments."
+  val expectedError = """This transport does not support messages with payload Int. Supported types are [
+  String,
+  Long
+]"""
+  test("Non supported type should be rejected by askable") {
+    val err = materializeTypeError("askable.askImpl(null: Message[Int])") stripSuffix suffix
+    assert(err == expectedError)
+  }
+
+  val pushable: Sink { type SupportedTypes = String :: Long :: TypeNil } = null
+  if (false) { //use false so that the code is not actually executed, just typechecked
+    pushable.pushImpl(null: Message[Long])
+    pushable.pushImpl(null: Message[String])
+  }
+  test("Non supported type should be rejected by sink") {
+    val err = materializeTypeError("pushable.pushImpl(null: Message[Int])") stripSuffix suffix
+    assert(err == expectedError)
   }
 }

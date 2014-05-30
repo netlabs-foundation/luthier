@@ -32,6 +32,7 @@ package uy.com.netlabs.luthier
 package typelist
 
 import org.scalatest.FunSpec
+import testing.TestUtils
 
 class TypeListStuffTest extends FunSpec {
 
@@ -65,16 +66,32 @@ class TypeListStuffTest extends FunSpec {
   
   describe("TypeSelectorImplicits") {
     it("should fail for direct implicit searchs of contained") {
-      assertTypeError("implicitly[Contained[String :: Int :: TypeNil, Long]]")
+      val err = TestUtils.materializeTypeError("implicitly[Contained[String :: Int :: TypeNil, Long]]")
+      assert(err === """Long is not contained in [
+  String,
+  Int
+]""")
     }
     it("should fail for direct implicit search of TypeSupportedByTransport") {
-      assertTypeError("implicitly[TypeSupportedByTransport[String :: Int :: TypeNil, Long]]")
+      val err = TestUtils.materializeTypeError("implicitly[TypeSupportedByTransport[String :: Int :: TypeNil, Long]]")
+      assert(err === """This transport does not support messages with payload Long. Supported types are [
+  String,
+  Int
+]""")
     }
     it("should fail for methods requiring a typeselector") {
-      assertTypeError("myMethod[Long]")
+      val err = TestUtils.materializeTypeError("myMethod[Long]")
+      assert(err === """Long is not contained in [
+  String,
+  Int
+]""")
     }
     it("should fail for classes constructors requiring a typeselector") {
-      assertTypeError("""new OneOf[String, Int :: Long :: TypeNil]("a")""")
+      val err = TestUtils.materializeTypeError("""new OneOf[String, Int :: Long :: TypeNil]("a")""")
+      assert(err === """String is not contained in [
+  Int,
+  Long
+]""")
     }
   }
 
