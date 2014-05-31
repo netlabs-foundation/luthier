@@ -11,7 +11,7 @@ object CocoonBuild extends Build {
     scalaVersion := _scalaVersion,
     fork := true,
     fork in test := true,
-    exportJars := true,
+    //exportJars := true,
     resolvers ++= Seq(
       //"Local maven repo" at "file://" + Path.userHome + "/.m2/repository/",
       "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/"
@@ -22,7 +22,7 @@ object CocoonBuild extends Build {
       "org.scalatest" %% "scalatest" % "2.1.5" % "test",
       "org.scala-lang.modules" %% "scala-xml" % "1.0.2"
     ),
-    incOptions := incOptions.value.withNameHashing(true),
+    //incOptions := incOptions.value.withNameHashing(true),
     scalacOptions ++= Seq(
       "-feature",
       //"-explaintypes",

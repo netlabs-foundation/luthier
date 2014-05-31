@@ -146,7 +146,7 @@ trait Flows {
       logLifecycle = false
       override def registerInParentFlows = false
       workers = 1 //it doesn't make sense to allocate more actors
-      logicImpl {m =>
+      logic {m =>
         try result.success(code(this, m))
         catch {case ex: Exception => result.failure(ex)}
       }

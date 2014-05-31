@@ -35,19 +35,39 @@ import scala.reflect.macros.blackbox.Context
 import scala.util.Try
 import scala.reflect.macros.TypecheckException
 
-object TestUtils {
+private[testing] class TestUtils(val c: Context) {
+  import c.universe._
 
-  def materializeTypeError(s: String): String = macro materializeTypeErrorImpl
-  
-  def materializeTypeErrorImpl(c: Context)(s: c.Expr[String]): c.Expr[String] = {
+  def materializeTypeErrorImpl(s: c.Expr[String]): c.Expr[String] = {
     import c.universe.Quasiquote
     val code = c.eval(c.Expr[String](c.untypecheck(s.tree)))
     val codeAst = c.parse(code)
     try {
       c.typecheck(codeAst)
-      c.Expr[String](q"""throw new IllegalArgumentException("passed code typechecks")""")
+      c.abort(s.tree.pos, "Passed code typechecks")
     } catch { case e: TypecheckException => 
       c.Expr[String](q"${e.getMessage}") 
     }
   }
+
+  def assertTypeErrorEqualsImpl(code: Tree)(message: Tree): Tree = {
+    val codeToParse = c.eval(c.Expr[String](c.untypecheck(code)))
+    val expectedError = c.eval(c.Expr[String](c.untypecheck(message)))
+    try {
+      c.typecheck(c parse codeToParse)
+      c.abort(code.pos, "Passed code typechecks")
+    } catch {
+      case e: TypecheckException =>
+        if (e.getMessage != expectedError) {
+          println(e.getMessage)
+	  c.abort(code.pos, "Type error did not match expected message:\nType error:\n" + e.getMessage)
+	} else q"()"
+    }
+  }
+}
+object TestUtils {
+
+  def materializeTypeError(s: String): String = macro TestUtils.materializeTypeErrorImpl
+
+  def assertTypeErrorEquals(code: String)(message: String): Unit = macro TestUtils.assertTypeErrorEqualsImpl
 }

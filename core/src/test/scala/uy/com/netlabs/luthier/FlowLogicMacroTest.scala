@@ -31,6 +31,7 @@
 package uy.com.netlabs.luthier
 
 import typelist._
+import testing.TestUtils
 import endpoint.base.VM
 import scala.concurrent._
 
@@ -42,14 +43,39 @@ class FlowLogicMacroTest extends Flows {
 
   val Vm = VM.forAppContext(appContext)
   new Flow("test")(Vm.responsible[Int, String :: Throwable :: TypeNil]("test")) {
-    logicImpl { req =>
-      Future.successful(OneOf("")).recover { case e => OneOf(e)}.map(v => req.map(_ => v))
-    }
+//    logicImpl { req =>
+//      Future.successful(OneOf("")).recover { case e => OneOf(e)}.map(v => req.map(_ => v))
+//    }
     logic { req =>
       (0: Any) match {
         case 0 => Future.successful(OneOf("")).recover { case e => OneOf(e)}.map(v => req.map(_ => v))
         case 1 => req.map(_ => "Hi")
         case 2 => req.map(_ => new Exception("Boom"))
+        case _ =>
+          TestUtils.assertTypeErrorEquals("4: LogicResult")("""Invalid response type for the flow.
+  Found: Int(4)
+  Expected a Message[T] or a Future[Message[T]] where T can be any of [
+    String
+    Throwable
+  ]""")
+          TestUtils.assertTypeErrorEquals("Future.successful(()): LogicResult")("""Invalid message type for the flow.
+ Found: Unit
+ Expected a Message[T] where T can be any of [
+    String
+    Throwable
+  ]""")
+          TestUtils.assertTypeErrorEquals("Future.successful(()).map(_ => req.map(_ => 8)): LogicResult")("""Int is not contained in [
+  String,
+  Throwable
+]""")
+          val f = Future.successful(3f)
+          TestUtils.assertTypeErrorEquals("f: LogicResult")("""Invalid response type for the flow.
+  Found: scala.concurrent.Future[Float]
+  Expected a Message[T] or a Future[Message[T]] where T can be any of [
+    String
+    Throwable
+  ]""")
+          Future.successful(req.map(_ => new Exception("Boom ")))
       }
     }
   }

@@ -31,7 +31,7 @@
 package uy.com.netlabs.luthier
 
 import scala.language.implicitConversions
-import language.{experimental, existentials}, experimental._
+import language.{ experimental, existentials }, experimental._
 import akka.actor.{ Actor, Props, Cancellable }
 import akka.routing.RoundRobinPool
 import akka.event.LoggingAdapter
@@ -65,11 +65,11 @@ import typelist._
  *   }
  *
  *   /**
-      *    * General purpose listUsers, it will find the implicit FlowRun, obtain the endpoint, and call it's listUsers.
-      *    * Note how we defined two parameter lists, and the first one is empty, this is so that the method can be called
-      *    * like listUsers(). Otherwise, if users accidentally write listUsers() the compiler will complain that no FlowRun
-      *    * is being passed.
-      *    **/
+ *    * General purpose listUsers, it will find the implicit FlowRun, obtain the endpoint, and call it's listUsers.
+ *    * Note how we defined two parameter lists, and the first one is empty, this is so that the method can be called
+ *    * like listUsers(). Otherwise, if users accidentally write listUsers() the compiler will complain that no FlowRun
+ *    * is being passed.
+ *    **/
  *   def listUsers[F <: Flow {type InboundEndpoint = SomeInstantMessagingEndpoint}]()(implicit run: FlowRun[F]) = {
  *      run.flow.listUsers()
  *   }
@@ -84,7 +84,7 @@ import typelist._
  *   }
  * }}}
  */
-trait Flow extends FlowPatterns with Disposable {
+trait Flow extends FlowPatterns with Disposable with ErrorReportingImplicits {
   type InboundEndpointTpe <: InboundEndpoint
 
   def name: String
@@ -118,23 +118,29 @@ trait Flow extends FlowPatterns with Disposable {
     this
   }
 
+  implicit def value2OneOf[R, TL <: TypeList](r: R)(implicit ev: Contained[TL, R]): OneOf[R, TL] = new OneOf[R, TL](r)
+  
+  implicit def message2LogicResult[R, TL <: TypeList](m: Message[R])(implicit ev: Contained[TL, R]): Future[Message[OneOf[R, TL]]] =
+    Future.successful(m.map(r => new OneOf[R, TL](r)))
 
-//  implicit def genericInvalidMessage[V <: Message[_], TL <: TypeList](value: V): Future[Message[OneOf[_, TL]]] = macro Flow.genericInvalidMessageImpl[V, TL]
-//  implicit def genericInvalidFutureMessage[V <: Future[Message[_]], TL <: TypeList](value: V): Future[Message[OneOf[_, TL]]] = macro Flow.genericInvalidFutureMessageImpl[V, TL]
-//  implicit def genericInvalidResponse[V, TL <: TypeList](value: V): Future[Message[OneOf[_, TL]]] = macro Flow.genericInvalidResponseImpl[V, TL]
+  implicit def message2OneOf[R, TL <: TypeList](m: Message[R])(implicit ev: Contained[TL, R]): Message[OneOf[R, TL]] =
+    m.map(r => new OneOf[R, TL](r))
+
+  implicit def futureMessage2LogicResult[R, TL <: TypeList](f: Future[Message[R]])(implicit ev: Contained[TL, R]): Future[Message[OneOf[R, TL]]] =
+    f.map(_.map(r => new OneOf[R, TL](r)))(rawWorkerActorsExecutionContext)
 
   type Logic <: RootMessage[this.type] => LogicResult
   type LogicResult
   private[this] var logic: Logic = _
-  def logicImpl(l: Logic): Unit = {
+  def logic(l: Logic): Unit = {
     logic = l
   }
-  def logic[R](l: RootMessage[this.type] => R): Unit = macro Flow.logicMacroImpl[R, this.type]
+  //  def logic[R](l: RootMessage[this.type] => R): Unit = macro Flow.logicMacroImpl[R, this.type]
   /**
    * Validates that the passed value of type T is one of the possible response types as defined by the Responsible root endpoint and
    * wraps in a properly typed OneOf instance.
    */
-  def OneOf[T, FT <: Flow {type InboundEndpointTpe <: Responsible}](t: T)(implicit fr: FlowRun[FT], ev: Contained[FT#InboundEndpointTpe#SupportedResponseTypes, T]) = {
+  def OneOf[T, FT <: Flow { type InboundEndpointTpe <: Responsible }](t: T)(implicit fr: FlowRun[FT], ev: Contained[FT#InboundEndpointTpe#SupportedResponseTypes, T]) = {
     new OneOf(t)(ev)
   }
 
@@ -155,7 +161,7 @@ trait Flow extends FlowPatterns with Disposable {
       val res = logic(msg)
       res match {
         case res: Future[_] => //result from a Responsible
-          res.onComplete{ _ =>
+          res.onComplete { _ =>
             msg.flowRun.flowResponseCompleted()
           }(workerActorsExecutionContext(msg))
         case _ =>
@@ -166,7 +172,7 @@ trait Flow extends FlowPatterns with Disposable {
   }
 
   implicit val self: this.type = this
-  implicit def messageInLogicImplicit: RootMessage[this.type] = macro Flow.findNearestMessageMacro[this.type]
+  implicit def messageInLogicImplicit: RootMessage[this.type] = macro FlowMacros.findNearestMessageMacro[this.type]
   implicit def flowRun(implicit rootMessage: RootMessage[this.type]) = rootMessage.flowRun
   implicit def endpointFactory2Endpoint[T <: Endpoint](ef: EndpointFactory[T]): T = {
     instantiatedEndpoints.get(ef) match {
@@ -201,8 +207,8 @@ trait Flow extends FlowPatterns with Disposable {
   protected def workerActorsName = name.replace(' ', '-') + "-actors"
 
   lazy val workerActors = appContext.actorSystem.actorOf(Props(new Actor {
-        def receive = workerActorsReceive
-      }).withRouter(RoundRobinPool(nrOfInstances = workers)), workerActorsName)
+    def receive = workerActorsReceive
+  }).withRouter(RoundRobinPool(nrOfInstances = workers)), workerActorsName)
   /**
    * Executes the passed ``task`` asynchronously in a FlowWorker and returns
    * a Future for the computation.
@@ -229,11 +235,12 @@ trait Flow extends FlowPatterns with Disposable {
    * the continuations in the flowRun.
    * @see workerActorsExecutionContext
    */
-  val rawWorkerActorsExecutionContext =  new ExecutionContext {
+  val rawWorkerActorsExecutionContext = new ExecutionContext {
     def execute(runnable: Runnable): Unit = { doWork(runnable.run) }
     def reportFailure(t: Throwable) = appContext.actorSystem.log.error(t, "")
   }
   /**
+   * TODO: remove this EC, its bad.
    * ExecutionContext for concatenation based on flowRuns. This is the execution context selected
    * inside the logic method if none is specified (and if you are using a flow run you should always
    * pick this one).
@@ -260,11 +267,11 @@ trait Flow extends FlowPatterns with Disposable {
   private lazy val blockingExecutor = {
     blockingExecutorInstantiated = true
     java.util.concurrent.Executors.newFixedThreadPool(blockingWorkers, new java.util.concurrent.ThreadFactory {
-        val num = new java.util.concurrent.atomic.AtomicInteger
-        def newThread(r: Runnable) = {
-          new Thread(r, name + "-blocking-worker-" + num.incrementAndGet)
-        }
-      })
+      val num = new java.util.concurrent.atomic.AtomicInteger
+      def newThread(r: Runnable) = {
+        new Thread(r, name + "-blocking-worker-" + num.incrementAndGet)
+      }
+    })
   }
   /**
    * Private executor meant for IO
@@ -282,28 +289,23 @@ trait Flow extends FlowPatterns with Disposable {
   }
 }
 
+trait ErrorReportingImplicits { self: Flow =>
+  
+  implicit def errorForLogicResult[TL <: TypeList](a: Any): Future[Message[OneOf[_, TL]]] = macro FlowMacros.errorForLogicResultImpl[TL]
+
+  implicit def errorForMessage[TL <: TypeList](a: Any): Message[OneOf[_, TL]] = macro FlowMacros.errorForMessage[TL]
+
+  //implicit def errorForOneOf[TL <: TypeList](a: Any): OneOf[_, TL] = macro FlowMacros.errorForOneOf[TL]
+}
+
+
 object Flow {
   class Work[R](val task: () => R) {
     protected[Flow] val promise = Promise[R]()
   }
 
   import scala.reflect.macros.blackbox.Context
-  def findNearestMessageMacro[F <: Flow](c: Context {type PrefixType <: Flow }): c.Expr[RootMessage[F]] = {
-    import c.universe._
-    val rootMessageTpe = c.typeOf[RootMessage[_]]
-    val collected = c.enclosingClass.collect {
-      case a @ Apply(Ident(i), List(Function(List(param @ ValDef(modifiers, paramName, _, _)), _))) if (i.encodedName.toString == "logic" || i.encodedName.toString == "logicImpl") &&
-        modifiers.hasFlag(Flag.PARAM) && param.symbol.typeSignature <:< rootMessageTpe &&
-        !c.typecheck(c.parse(paramName.encodedName.toString), c.TERMmode, param.symbol.typeSignature, silent = true).isEmpty =>
-        paramName
-    }.head
-    val selectMessage = c.Expr(c.parse(collected.encodedName.toString))
-    reify(selectMessage.splice)
-  }
-
-
-  def logicMacroImpl[R, F <: Flow](c: Context {type PrefixType = F})(l: c.Expr[RootMessage[F] => R])
-  (fEv: c.WeakTypeTag[F]): c.Expr[Unit] = {
+  def logicMacroImpl[R, F <: Flow](c: Context { type PrefixType = F })(l: c.Expr[RootMessage[F] => R])(fEv: c.WeakTypeTag[F]): c.Expr[Unit] = {
     import c.universe._
     def subType(t: Type, tName: Name, inClass: Type) = {
       val ts = t.member(tName)
@@ -311,12 +313,12 @@ object Flow {
     }
 
     def results(tree: Tree): List[Tree] = tree match {
-      case Block(_, expr)      => results(expr)
-      case Match(_, cases)     => cases flatMap (cd => results(cd.body))
+      case Block(_, expr) => results(expr)
+      case Match(_, cases) => cases flatMap (cd => results(cd.body))
       case If(_, thenp, elsep) => results(thenp) ::: results(elsep)
-      case Typed(expr, _)      => results(expr)
-      case Return(ret)         => results(ret)
-      case t                   => List(t)
+      case Typed(expr, _) => results(expr)
+      case Return(ret) => results(ret)
+      case t => List(t)
     }
 
     val exitBranches = l.tree match {
@@ -328,7 +330,7 @@ object Flow {
     if (logicResultType =:= c.TypeTag.Unit.tpe) {
       reify {
         val flow = c.prefix.splice
-        flow.logicImpl(l.splice.asInstanceOf[flow.Logic])
+        flow.logic(l.splice.asInstanceOf[flow.Logic])
       }
     } else { //its a request response flow, so we must analyse the result
       //calculate the valid responses typelist
@@ -336,10 +338,10 @@ object Flow {
       val rootEndpointType = subType(c.prefix.actualType, TermName("rootEndpoint"), c.typeOf[Flows#Flow[_, _]])
       val supportedResponsesTypeListType =
         subType(rootEndpointType, TypeName("SupportedResponseTypes"),
-                rootEndpointType) match {
-          case TypeBounds(lo, hi) => hi //in some case with generics, I might get the typelist like this
-          case other => other
-        }
+          rootEndpointType) match {
+            case TypeBounds(lo, hi) => hi //in some case with generics, I might get the typelist like this
+            case other => other
+          }
       val containedT = typeOf[Contained[String :: TypeNil, String]].asInstanceOf[TypeRef] //obtain a sample typeRef to use its parts
       implicit val possibleTypesTag = c.TypeTag(supportedResponsesTypeListType)
       val typeListDescriptor = new TypeList.TypeListDescriptor(c.universe)
@@ -353,7 +355,7 @@ object Flow {
           branch -> branch
         } else if (branch.tpe <:< futureMessageTypeTag) {
           val branchExpr = c.Expr[Future[Message[_]]](branch)
-//          println(s"result($branch) is a type of future message")
+          //          println(s"result($branch) is a type of future message")
           //to obtain the subtype directly from the message, I have to first get the view from the Message[_] POV, otherwise,
           //since this is a root message, the first argument to it, is the type of the flow, as in RootMessage[this.type] in flow's Logic.'
           if (branch.tpe <:< logicResultType) {
@@ -376,8 +378,8 @@ object Flow {
               branch -> r.tree
             } else {
               c.abort(branch.pos, "Found flow's resulting future of message of type: " + messageSubType + "\n" +
-                      "Expected a Message[T] or Future[Message[T]] where T can be any of [\n    " +
-                      possibleTypesList.mkString("\n    ") + "\n]")
+                "Expected a Message[T] or Future[Message[T]] where T can be any of [\n    " +
+                possibleTypesList.mkString("\n    ") + "\n]")
             }
           }
 
@@ -405,20 +407,20 @@ object Flow {
               branch -> r.tree
             } else {
               c.abort(branch.pos, "Found flow's resulting message of type: " + messageSubType + "\n" +
-                      "Expected a Message[T] or Future[Message[T]] where T can be any of [\n    " +
-                      possibleTypesList.mkString("\n    ") + "\n]")
+                "Expected a Message[T] or Future[Message[T]] where T can be any of [\n    " +
+                possibleTypesList.mkString("\n    ") + "\n]")
             }
           }
 
         } else {
           c.abort(branch.pos, "Found flow's result of type: " + branch.tpe + "\n" +
-                  "Expected a Message[T] or Future[Message[T]] where T can be any of [\n    " +
-                  possibleTypesList.mkString("\n    ") + "\n]")
+            "Expected a Message[T] or Future[Message[T]] where T can be any of [\n    " +
+            possibleTypesList.mkString("\n    ") + "\n]")
         }
       }
       val resultTree = new Transformer {
         override def transform(tree: Tree) = {
-//          super.transform(tree)
+          //          super.transform(tree)
           mappedBranches.find(e => e._1 == tree) match {
             case Some((_, mapped)) => mapped
             case None => super.transform(tree)
@@ -428,7 +430,7 @@ object Flow {
       val mappedResult = c.Expr[Any](c untypecheck resultTree)
       reify {
         val flow = c.prefix.splice
-        flow.logicImpl(mappedResult.splice.asInstanceOf[flow.Logic])
+        flow.logic(mappedResult.splice.asInstanceOf[flow.Logic])
       }
     }
   }
