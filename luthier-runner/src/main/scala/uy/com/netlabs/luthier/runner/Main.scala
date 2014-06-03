@@ -61,9 +61,9 @@ object Main {
 
       require(compiler.bind("interpreter", compiler) == IR.Success, "Could not bind interpreter")
       //declare basic imports
-      if (compiler.addImports("uy.com.netlabs.luthier._",
-                              "uy.com.netlabs.luthier.typelist._",
-                              "scala.language._") != IR.Success) initialized.failure(new IllegalStateException("Could not add default imports"))
+      if (compiler.interpret("""import uy.com.netlabs.luthier._
+                                import uy.com.netlabs.luthier.typelist._
+                                import scala.language._""") != IR.Success) initialized.failure(new IllegalStateException("Could not add default imports"))
       else initialized.success(())
     }
 

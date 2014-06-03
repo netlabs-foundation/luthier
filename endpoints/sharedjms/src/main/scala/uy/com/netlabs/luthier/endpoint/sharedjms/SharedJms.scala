@@ -90,12 +90,10 @@ object SharedJms {
     val referenceCount = new java.util.concurrent.atomic.AtomicLong(0)
     @volatile var temporaryQueue: TemporaryQueue = null
     var temporaryQueueRegistration: endpoint.jms.TemporaryQueueRegistration = null
-    val activeTransactions = new mutable.HashMap[Long, (Promise[Message[Response]], Message[Any], Cancellable)]()
-                    with mutable.SynchronizedMap[Long, (Promise[Message[Response]], Message[Any], Cancellable)]
+    val activeTransactions = new concurrent.TrieMap[Long, (Promise[Message[Response]], Message[Any], Cancellable)]()
 
     val messageListener = new MessageListener {
-      @Override
-      def onMessage(m: jmsMessage) {
+      override def onMessage(m: jmsMessage) {
         val correlationId: String = try {m.getJMSCorrelationID} catch { case ex: Exception =>
           log.error(ex, "Reading correlationId (response messages must come with utf-8 correlationId)")
           return
@@ -145,8 +143,7 @@ object SharedJms {
       }
     }
 
-    @Override
-    def askImpl[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
+    override def askImpl[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
       val promise = Promise[Message[Response]]()
       val id = atomicLong.incrementAndGet
       msg.correlationId = f"${correlationIdPrefix}%s-$id%x"

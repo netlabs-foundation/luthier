@@ -212,11 +212,11 @@ class FlowHandler(compiler: => IMain, logger: LoggingAdapter, file: String, shar
             val appContext = if (shareGlobalActorContext) parentAppContext else AppContext.build(appName, filePath, parentAppContext.actorSystem.settings.config)
             val flowss = possibleFlows map {
               case Right((flowsSymbol, argumentsSymbols)) =>
-                def loadClass(c: String) = compilerLazy.getInterpreterClassLoader.loadClass(c)
+                def loadClass(c: String) = compilerLazy.classLoader.loadClass(c)
                 val argumentClasses = classOf[AppContext] +: argumentsSymbols.map(s => loadClass(s.typeSignature.typeSymbol.javaClassName)) toArray;
                 val c = loadClass(flowsSymbol.javaClassName).getConstructor(argumentClasses: _*)
                 logger.debug(s"Constructor $c")
-                val arguments = argumentsSymbols map (s => compilerLazy.requestForName(s.asTerm.name).flatMap(_.getEval).getOrElse(throw new IllegalStateException(s"Could not obtain value $s from the compiler!")))
+                val arguments = argumentsSymbols map (s => compilerLazy.prevRequestList.find(r => r.termNames contains s.asTerm.name).flatMap(_.lineRep.evalEither.right.toOption).getOrElse(throw new IllegalStateException(s"Could not obtain value $s from the compiler!")))
                 c.newInstance((appContext +: arguments).toArray[Object]: _*).asInstanceOf[Flows]
             }
 
