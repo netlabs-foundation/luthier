@@ -160,8 +160,6 @@ object TreeDescriptor {
         case PackageDef(pid, stats) =>
           res.getChildren.add(toJfxTreeItem(pid))
           res.getChildren.add(listTreeItem("stats", stats map toJfxTreeItem))
-        case ReferenceToBoxed(ident) =>
-          res.getChildren.add(toJfxTreeItem(ident))
         case Select(qual, name) =>
           res.getChildren.add(toJfxTreeItem(qual))
           res.getChildren.add(treeItem(name))
@@ -236,10 +234,9 @@ object TreeDescriptor {
     def toJfxTreeItem(tpe: Types#TypeApi): scene.control.TreeItem[Any] = {
       val res = treeItem(tpe.getClass.getName)
       tpe match {
-        case AnnotatedType(annotations, underlying, selfsym) =>
+        case AnnotatedType(annotations, underlying) =>
           res.getChildren.add(listTreeItem("annotations", annotations map treeItem))
           res.getChildren.add(toJfxTreeItem(underlying))
-          res.getChildren.add(symbolToJfxTreeItem(selfsym))
         case BoundedWildcardType(bounds) =>
           res.getChildren.add(toJfxTreeItem(bounds))
         case ClassInfoType(parents, decls, clazz) =>
