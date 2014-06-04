@@ -53,7 +53,7 @@ object Http {
   class HttpDispatchEndpoint[R] private[Http] (f: Flow,
                                                req: Option[(Request, FunctionHandler[R])],
                                                ioThreads: Int,
-                                               httpClientConfig: AsyncHttpClientConfig) extends PullEndpoint with Askable {
+                                               httpClientConfig: AsyncHttpClientConfig) extends Pullable with Askable {
     val flow = f
     type Payload = R
     type Response = R
@@ -145,7 +145,7 @@ object Http {
     def apply(f: Flow) = new HttpDispatchEndpoint(f, req, ioThreads, httpClientConfig)
   }
   //this two lines are ugly as hell :)
-  def pull[R](req: Request, handler: FunctionHandler[R], ioThreads: Int = 1, httpClientConfig: AsyncHttpClientConfig = new AsyncHttpClientConfig.Builder().build()): EndpointFactory[PullEndpoint { type Payload = R }] = EF(Some(req->handler), ioThreads, httpClientConfig)
+  def pull[R](req: Request, handler: FunctionHandler[R], ioThreads: Int = 1, httpClientConfig: AsyncHttpClientConfig = new AsyncHttpClientConfig.Builder().build()): EndpointFactory[Pullable { type Payload = R }] = EF(Some(req->handler), ioThreads, httpClientConfig)
   def ask[R](ioThreads: Int = 1, httpClientConfig: AsyncHttpClientConfig = new AsyncHttpClientConfig.Builder().build()): EndpointFactory[Askable { type Response = R; type SupportedTypes = HttpDispatchEndpoint[R]#SupportedTypes }] = EF(None, ioThreads, httpClientConfig)
 
   //Unfiltered part

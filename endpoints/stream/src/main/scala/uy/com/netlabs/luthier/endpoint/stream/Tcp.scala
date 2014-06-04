@@ -137,7 +137,7 @@ object Tcp extends StreamEndpointServerComponent {
                                         val writer: P => Array[Byte],
                                         val onReadWaitAction: ReadWaitAction[S, R],
                                         val readBuffer: Int,
-                                        val ioWorkers: Int) extends IO.IOChannelEndpoint with base.BasePullEndpoint {
+                                        val ioWorkers: Int) extends IO.IOChannelEndpoint with base.BasePullable {
 
       type ConsumerState = S
       type ConsumerProd = R

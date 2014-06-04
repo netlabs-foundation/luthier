@@ -36,7 +36,7 @@ import scala.concurrent._
 import typelist._
 
 object Function {
-  class FunctionPull[R] private[Function] (f: Flow, function: () => R, ioThreads: Int) extends endpoint.base.BasePullEndpoint with Askable {
+  class FunctionPull[R] private[Function] (f: Flow, function: () => R, ioThreads: Int) extends endpoint.base.BasePullable with Askable {
     val flow = f
     type Payload = R
     type Response = R
@@ -58,6 +58,6 @@ object Function {
   private case class EF[R](function: () => R, ioThreads: Int = 1) extends EndpointFactory[FunctionPull[R]] {
     def apply(f: Flow) = new FunctionPull(f, function, ioThreads)
   }
-  def pull[R](function: => R, ioThreads: Int = 1): EndpointFactory[PullEndpoint {type Payload = R}] = EF[R](() => function, ioThreads)
+  def pull[R](function: => R, ioThreads: Int = 1): EndpointFactory[Pullable {type Payload = R}] = EF[R](() => function, ioThreads)
   def ask[R](ioThreads: Int = 1): EndpointFactory[Askable {type Response = R; type SupportedTypes = FunctionPull[R]#SupportedTypes}] = EF[R](null, ioThreads)
 }

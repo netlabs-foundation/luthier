@@ -124,7 +124,7 @@ class AmqpInEndpoint(val flow: Flow, val manager: Amqp, val bindingKeys: Seq[Str
 
 class AmqpOutEndpoint(val flow: Flow, val manager: Amqp, val bindingKeys: Seq[String], val queue: Queue,
                       val exchange: Exchange, val messageProperties: AMQP.BasicProperties, ioThreads: Int)
-extends AmqpEndpoint with BasePullEndpoint with BaseSink /*with Askable*/ {
+extends AmqpEndpoint with BasePullable with BasePushable /*with Askable*/ {
   val ioProfile = IoProfile.threadPool(ioThreads, flow.name + "-amqp-ep")
   type Payload = Option[Array[Byte]]
   type Response = Array[Byte]

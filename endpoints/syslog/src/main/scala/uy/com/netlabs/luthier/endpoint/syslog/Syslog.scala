@@ -47,7 +47,7 @@ object Syslog {
                        val protocol: String,
                        val host: String,
                        val port: Int,
-                       val ioWorkers: Int) extends base.BaseSink {
+                       val ioWorkers: Int) extends base.BasePushable {
     type SupportedTypes = (Int, String) :: String :: SyslogMessageIF :: (Int, SyslogMessageIF) :: TypeNil
 
     var syslogInstance: SyslogIF = _

@@ -40,7 +40,7 @@ import scala.concurrent.duration._
 import scala.util.{ Try, Success, Failure }
 import language._
 
-private[jms] trait BaseJmsEndpoint extends endpoint.base.BaseSource with endpoint.base.BaseSink {
+private[jms] trait BaseJmsEndpoint extends endpoint.base.BaseSource with endpoint.base.BasePushable {
   val flow: Flow
   def createDestination(): javax.jms.Destination
   val jmsOperations: JmsOperations

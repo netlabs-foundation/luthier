@@ -52,7 +52,7 @@ class EndpointImplicitsTest extends FunSuite {
     assert(err == expectedError)
   }
 
-  val pushable: Sink { type SupportedTypes = String :: Long :: TypeNil } = null
+  val pushable: Pushable { type SupportedTypes = String :: Long :: TypeNil } = null
   if (false) { //use false so that the code is not actually executed, just typechecked
     pushable.pushImpl(null: Message[Long])
     pushable.pushImpl(null: Message[String])

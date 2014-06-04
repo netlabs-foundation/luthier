@@ -47,7 +47,7 @@ class JdbcPull[R](val flow: Flow,
                   val query: String,
                   val rowMapper: Row => R,
                   val dataSource: DataSource,
-                  ioThreads: Int) extends endpoint.base.BasePullEndpoint {
+                  ioThreads: Int) extends endpoint.base.BasePullable {
   type Payload = IndexedSeq[R]
 
   def dispose(): Unit = {}

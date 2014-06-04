@@ -154,7 +154,7 @@ class VM private[VM] (val appContext: AppContext) {
   //////////////////////////////////////////////////////////////////////
 
   class VmOutboundEndpoint[OutSupportedTypes <: TypeList, ExpectedResponse] private[VM] (
-    val flow: Flow, val actorPath: String) extends Sink with Askable {
+    val flow: Flow, val actorPath: String) extends Pushable with Askable {
     type SupportedTypes = OutSupportedTypes
     type Response = ExpectedResponse
     protected def destActor = appContext.actorSystem.actorSelection(actorPath)

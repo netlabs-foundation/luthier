@@ -103,7 +103,7 @@ class Amqp(val connectionFactory: ConnectionFactory,
 //              apply(Seq(bindingKey), exchange, queue, messageProperties, ioThreads)
 
   /**
-   * Creates an `EndpointFactory` for a Pull/Sink endpoint.
+   * Creates an `EndpointFactory` for a Pull/Pushable endpoint.
    * Except for the binding keys all other parameters are optional: the exchange defaults to the nameless exchange,
    * the queue defaults to a queue with the same name of the first binding key, the `AMQP.BasicProperties` defaults to
    * `MessageProperties.BASIC`.

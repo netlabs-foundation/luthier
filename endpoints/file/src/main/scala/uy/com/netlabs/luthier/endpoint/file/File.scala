@@ -44,7 +44,7 @@ object File {
   def apply(path: String, charset: String = "UTF-8",
             ioThreads: Int = 1)(implicit appContext: AppContext): EndpointFactory[FileEndpoint] = EF(appContext.rootLocation.resolve(path), charset, ioThreads)
 }
-class FileEndpoint(f: Flow, path: Path, charset: String, ioThreads: Int) extends endpoint.base.BaseSink with endpoint.base.BasePullEndpoint {
+class FileEndpoint(f: Flow, path: Path, charset: String, ioThreads: Int) extends endpoint.base.BasePushable with endpoint.base.BasePullable {
   type Payload = Array[Byte]
   type SupportedTypes = Iterable[Byte] :: Array[Byte] :: String :: java.io.Serializable :: TypeNil
 

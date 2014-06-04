@@ -109,7 +109,7 @@ object IO {
       scala.util.Try(channel.close())
     }
   }
-  trait OutputChannelEndpoint extends base.BaseSink {
+  trait OutputChannelEndpoint extends base.BasePushable {
     type OutPayload
     type SupportedTypes = OutPayload :: TypeNil
 
@@ -167,7 +167,7 @@ object IO {
                                                    val reader: Consumer[S, P],
                                                    val onReadWaitAction: ReadWaitAction[S, P],
                                                    val readBuffer: Int,
-                                                   val ioWorkers: Int) extends InputStreamEndpoint with base.BasePullEndpoint {
+                                                   val ioWorkers: Int) extends InputStreamEndpoint with base.BasePullable {
     type ConsumerState = S
     type ConsumerProd = P
 
@@ -221,7 +221,7 @@ object IO {
                                              val readBuffer: Int,
                                              val output: WritableByteChannel,
                                              val serializer: O => ByteBuffer,
-                                             val ioWorkers: Int) extends IOChannelEndpoint with InputStreamEndpoint with OutputStreamEndpoint with base.BasePullEndpoint {
+                                             val ioWorkers: Int) extends IOChannelEndpoint with InputStreamEndpoint with OutputStreamEndpoint with base.BasePullable {
     type ConsumerState = S
     type ConsumerProd = P
     type OutPayload = O

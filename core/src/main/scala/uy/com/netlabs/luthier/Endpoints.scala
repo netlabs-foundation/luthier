@@ -97,7 +97,7 @@ trait OutboundEndpoint extends Endpoint {
 }
 object OutboundEndpoint {
   import scala.reflect.macros.blackbox.Context
-  def pushMacroImpl[Payload](c: Context { type PrefixType = Sink })(msg: c.Expr[Message[Payload]])(implicit pEv: c.WeakTypeTag[Payload]): c.Expr[Future[Unit]] = {
+  def pushMacroImpl[Payload](c: Context { type PrefixType = Pushable })(msg: c.Expr[Message[Payload]])(implicit pEv: c.WeakTypeTag[Payload]): c.Expr[Future[Unit]] = {
     import c.universe._
     type ST = c.prefix.value.SupportedTypes
     val supportedTypesType = c.prefix.actualType.member(TypeName("SupportedTypes")).typeSignature
@@ -141,7 +141,7 @@ object OutboundEndpoint {
   }
 }
 
-trait Sink extends OutboundEndpoint {
+trait Pushable extends OutboundEndpoint {
   /**
    * Macro definition for pushImpl that provides nicer error reporting, but in case it succeeds, its equivalent to just call pushImpl
    */
@@ -181,7 +181,7 @@ object Askable {
 
 /* ******* Other Endpoints ****** */
 
-trait PullEndpoint extends Endpoint {
+trait Pullable extends Endpoint {
   type Payload <: Any
   def pull()(implicit mf: MessageFactory): Future[Message[Payload]]
 }

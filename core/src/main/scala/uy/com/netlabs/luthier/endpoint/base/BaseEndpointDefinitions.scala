@@ -98,12 +98,12 @@ trait BaseResponsible extends Responsible with IoExecutionContext {
 }
 
 /**
- * Base implementation of PullEndpoint.
+ * Base implementation of Pullable.
  * It implements pull by delegating to the ioExecutionContext a call to the
  * abstract `retrieveMessage()`
  *
  */
-trait BasePullEndpoint extends PullEndpoint with IoExecutionContext {
+trait BasePullable extends Pullable with IoExecutionContext {
   def pull()(implicit mf: MessageFactory): Future[Message[Payload]] = {
     Future { retrieveMessage(mf) }
   }
@@ -112,12 +112,12 @@ trait BasePullEndpoint extends PullEndpoint with IoExecutionContext {
 }
 
 /**
- * Base implementation of Sink.
+ * Base implementation of Pushable.
  * It implements push by delegating to the ioExecutionContext a call to the
  * abstract `pushMessage()`
  *
  */
-trait BaseSink extends Sink with IoExecutionContext {
+trait BasePushable extends Pushable with IoExecutionContext {
   def pushImpl[Payload: SupportedType](msg: Message[Payload]): Future[Unit] = {
     Future { pushMessage(msg) }
   }

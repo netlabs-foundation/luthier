@@ -240,9 +240,9 @@ object Throttling {
   // Outbound Endpoints
   ////////////////////////
 
-  class SinkThrottlingEndpoint[S <: Sink](val flow: Flow, val underlying: S,
+  class PushableThrottlingEndpoint[S <: Pushable](val flow: Flow, val underlying: S,
                                           override val throttler: Throttler,
-                                          val throttlingAction: ThrottlingAction[S]) extends Sink with ThrottlingEndpoint {
+                                          val throttlingAction: ThrottlingAction[S]) extends Pushable with ThrottlingEndpoint {
 
     protected type Res = Unit
     type Throttler = logical.Throttler
@@ -270,18 +270,18 @@ object Throttling {
     def askImpl[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] =
       handle(msg, throttlingAction, timeOut)
   }
-  case class SinkEF[S <: Sink](sink: EndpointFactory[S], throttler: Throttler,
-                               action: ThrottlingAction[S]) extends EndpointFactory[SinkThrottlingEndpoint[S]] {
-    def apply(f) = new SinkThrottlingEndpoint(f, sink(f), throttler, action)
+  case class PushableEF[S <: Pushable](sink: EndpointFactory[S], throttler: Throttler,
+                               action: ThrottlingAction[S]) extends EndpointFactory[PushableThrottlingEndpoint[S]] {
+    def apply(f) = new PushableThrottlingEndpoint(f, sink(f), throttler, action)
   }
   case class AskableEF[A <: Askable](askable: EndpointFactory[A], throttler: Throttler,
                                      action: ThrottlingAction[A]) extends EndpointFactory[AskableThrottlingEndpoint[A]] {
     def apply(f) = new AskableThrottlingEndpoint(f, askable(f), throttler, action)
   }
   /**
-   * @usecase def apply[S <: Sink](sink: EndpointFactory[S])(throttler: Throttler, action: ThrottlingAction[S]): EndpointFactory[SinkThrottlingEndpoint[S]]
+   * @usecase def apply[S <: Pushable](sink: EndpointFactory[S])(throttler: Throttler, action: ThrottlingAction[S]): EndpointFactory[PushableThrottlingEndpoint[S]]
    */
-  def apply[S <: Sink](sink: EndpointFactory[S])(throttler: Throttler, action: ThrottlingAction[S])(implicit d1: DummyImplicit, d2: DummyImplicit, d3: DummyImplicit) = SinkEF(sink, throttler, action)
+  def apply[S <: Pushable](sink: EndpointFactory[S])(throttler: Throttler, action: ThrottlingAction[S])(implicit d1: DummyImplicit, d2: DummyImplicit, d3: DummyImplicit) = PushableEF(sink, throttler, action)
 
   /**
    * @usecase def apply[A <: Askable](askable: EndpointFactory[A])(throttler: Throttler, action: ThrottlingAction[A]): EndpointFactory[AskableThrottlingEndpoint[A]]
