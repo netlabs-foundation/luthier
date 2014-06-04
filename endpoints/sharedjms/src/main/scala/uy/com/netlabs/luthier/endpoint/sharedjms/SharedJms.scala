@@ -143,7 +143,7 @@ object SharedJms {
       }
     }
 
-    override def askImpl[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
+    override def ask[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
       val promise = Promise[Message[Response]]()
       val id = atomicLong.incrementAndGet
       msg.correlationId = f"${correlationIdPrefix}%s-$id%x"

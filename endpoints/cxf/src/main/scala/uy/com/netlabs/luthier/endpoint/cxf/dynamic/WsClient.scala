@@ -95,7 +95,7 @@ object WsInvoker {
     type SupportedTypes = Seq[_] :: Product :: TypeNil
     type Response = Result
     val resultRuntimeClass = resultClassTag.runtimeClass.asInstanceOf[Class[Result]]
-    def askImpl[Payload: SupportedType](msg, timeout) = {
+    def ask[Payload: SupportedType](msg, timeout) = {
       flow.blocking {
         val res = msg.payload match {
           case traversable: Seq[Any] => client.dynamicClient.invoke(operation, traversable.asInstanceOf[Seq[AnyRef]].toArray: _*)

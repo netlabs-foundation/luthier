@@ -125,7 +125,7 @@ object Http {
       }(ioProfile.executionContext)
       promise.future
     }
-    def askImpl[Payload: SupportedType](msg, timeOut): Future[Message[Response]] = {
+    def ask[Payload: SupportedType](msg, timeOut): Future[Message[Response]] = {
       val promise = Promise[Message[Response]]()
       val req = msg.as[(Request, FunctionHandler[R])].payload
       val cookies = msg.header.outbound.getOrElse("Cookies", Seq.empty).asInstanceOf[Seq[Cookie]]

@@ -251,8 +251,8 @@ object Throttling {
     protected type Payload = Any
     type SupportedTypes = underlying.SupportedTypes
 
-    def handler(args) = underlying.pushImpl(_)(null)
-    def pushImpl[Payload: SupportedType](msg: Message[Payload]): Future[Unit] = handle(msg, throttlingAction, ())
+    def handler(args) = underlying.push(_)(null)
+    override def push[Payload: SupportedType](msg: Message[Payload]): Future[Unit] = handle(msg, throttlingAction, ())
   }
   class AskableThrottlingEndpoint[A <: Askable](val flow: Flow, val underlying: A,
                                                 override val throttler: Throttler,
@@ -266,8 +266,8 @@ object Throttling {
     type SupportedTypes = underlying.SupportedTypes
     type Response = underlying.Response
 
-    def handler(timeOut) = underlying.askImpl(_, timeOut)(null)
-    def askImpl[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] =
+    def handler(timeOut) = underlying.ask(_, timeOut)(null)
+    override def ask[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] =
       handle(msg, throttlingAction, timeOut)
   }
   case class PushableEF[S <: Pushable](sink: EndpointFactory[S], throttler: Throttler,

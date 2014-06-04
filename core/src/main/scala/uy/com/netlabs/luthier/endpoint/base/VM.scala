@@ -144,7 +144,7 @@ class VM private[VM] (val appContext: AppContext) {
     }
   }
   case class ResponsibleEndpointFactory[ReqType: ClassTag, ResponseType <: TypeList] private[VM] (actorPath: String) extends EndpointFactory[VMResponsibleEndpoint[ReqType, ResponseType]] {
-    def apply(f) = new VMResponsibleEndpoint[ReqType, ResponseType](f, actorPath)
+    override def apply(f) = new VMResponsibleEndpoint[ReqType, ResponseType](f, actorPath)
   }
 
   def responsible[ReqType: ClassTag, ResponseType <: TypeList](actorPath: String) = ResponsibleEndpointFactory[ReqType, ResponseType](actorPath)
@@ -155,19 +155,19 @@ class VM private[VM] (val appContext: AppContext) {
 
   class VmOutboundEndpoint[OutSupportedTypes <: TypeList, ExpectedResponse] private[VM] (
     val flow: Flow, val actorPath: String) extends Pushable with Askable {
-    type SupportedTypes = OutSupportedTypes
-    type Response = ExpectedResponse
+    override type SupportedTypes = OutSupportedTypes
+    override type Response = ExpectedResponse
     protected def destActor = appContext.actorSystem.actorSelection(actorPath)
-    def start() {}
-    def dispose() {}
-    def pushImpl[Payload: SupportedType](msg: Message[Payload]): Future[Unit] = Future.successful(destActor.tell(msg.payload, null))
-    def askImpl[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
+    override def start() {}
+    override def dispose() {}
+    override def push[Payload: SupportedType](msg: Message[Payload]): Future[Unit] = Future.successful(destActor.tell(msg.payload, null))
+    override def ask[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
       akka.pattern.ask(destActor).?(msg.payload)(timeOut).map(r => msg.map(_ => r.asInstanceOf[Response]))(appContext.actorSystem.dispatcher)
     }
   }
   case class VmOutboundEndpointFactory[OutSupportedTypes <: TypeList, ExpectedResponse] private[VM] (
     actorPath: String) extends EndpointFactory[VmOutboundEndpoint[OutSupportedTypes, ExpectedResponse]] {
-    def apply(f) = new VmOutboundEndpoint[OutSupportedTypes, ExpectedResponse](f, actorPath)
+    override def apply(f) = new VmOutboundEndpoint[OutSupportedTypes, ExpectedResponse](f, actorPath)
   }
 
   def sink[Out](actorPath: String) = VmOutboundEndpointFactory[Out :: TypeNil, Any](actorPath)

@@ -45,7 +45,7 @@ object Function {
     val ioProfile = base.IoProfile.threadPool(ioThreads, flow.name + "-function-ep")
     protected def retrieveMessage(mf): Message[Payload] = mf(function())
 
-    def askImpl[Payload: SupportedType](msg, timeOut): Future[Message[Response]] = {
+    override def ask[Payload: SupportedType](msg, timeOut): Future[Message[Response]] = {
       Future(msg.as[Function0[R]] map (_()))
     }
 

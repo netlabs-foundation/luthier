@@ -118,7 +118,7 @@ trait BasePullable extends Pullable with IoExecutionContext {
  *
  */
 trait BasePushable extends Pushable with IoExecutionContext {
-  def pushImpl[Payload: SupportedType](msg: Message[Payload]): Future[Unit] = {
+  override def push[Payload: SupportedType](msg: Message[Payload]): Future[Unit] = {
     Future { pushMessage(msg) }
   }
 

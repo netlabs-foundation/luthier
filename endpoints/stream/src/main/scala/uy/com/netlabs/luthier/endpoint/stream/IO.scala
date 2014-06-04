@@ -138,7 +138,7 @@ object IO {
         case Failure(err) => log.error(err, s"Error processing request $m")
       }
     }
-    def askImpl[MT](msg: Message[MT], timeOut: FiniteDuration)(implicit ev: SupportedType[MT]): Future[Message[Response]] = Future {
+    def ask[MT](msg: Message[MT], timeOut: FiniteDuration)(implicit ev: SupportedType[MT]): Future[Message[Response]] = Future {
       pushMessage(msg)(ev)
       msg map (_ => syncConsumer.consume(readBytes).get)
     }(ioExecutionContext)
