@@ -62,7 +62,7 @@ class AmqpTest extends BaseFlowsTest {
 
         }.flatMap(identity)(testApp.actorSystem.dispatcher)
         val msg = Await.result(flowRun, 0.25.seconds)
-        assert(msg.payload.flatMap(new String(_) === "msg"))
+        msg.payload.map(b => assert(new String(b) === "msg"))
       }
     }
     val msgCount = 1000
@@ -109,7 +109,7 @@ class AmqpTest extends BaseFlowsTest {
           } yield resp
         }.flatMap(identity)(testApp.actorSystem.dispatcher)
         val msg = Await.result(flowRun, 20.millis)
-        assert(msg.payload.flatMap(new String(_) === "Hello world"))
+        msg.payload.map(b => assert(new String(b) === "Hello world"))
       }
     }
   }
