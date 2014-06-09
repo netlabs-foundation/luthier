@@ -48,7 +48,7 @@ class EndpointImplicitsTest extends FunSuite {
   Long
 ]"""
   test("Non supported type should be rejected by askable") {
-    val err = materializeTypeError("askable.askImpl(null: Message[Int])") stripSuffix suffix
+    val err = materializeTypeError("askable.ask(null: Message[Int])") stripSuffix suffix
     assert(err == expectedError)
   }
 
@@ -58,7 +58,7 @@ class EndpointImplicitsTest extends FunSuite {
     pushable.push(null: Message[String])
   }
   test("Non supported type should be rejected by sink") {
-    val err = materializeTypeError("pushable.pushImpl(null: Message[Int])") stripSuffix suffix
+    val err = materializeTypeError("pushable.push(null: Message[Int])") stripSuffix suffix
     assert(err == expectedError)
   }
 }
