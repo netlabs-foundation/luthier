@@ -41,7 +41,7 @@ import language._
 import logical.Polling._
 
 import org.scalatest._
-import dispatch.{ Promise => _, _ }
+import dispatch.{ Future => _, _ }
 
 class HttpTest extends BaseFlowsTest {
   describe("An Http client Endpoint") {

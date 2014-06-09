@@ -39,8 +39,8 @@ class EndpointImplicitsTest extends FunSuite {
 
   val askable: Askable { type SupportedTypes = String :: Long :: TypeNil } = null
   if (false) { //use false so that the code is not actually executed, just typechecked
-    askable.askImpl(null: Message[Long])
-    askable.askImpl(null: Message[String])
+    askable.ask(null: Message[Long])
+    askable.ask(null: Message[String])
   }
   val suffix = "\nError occurred in an application involving default arguments."
   val expectedError = """This transport does not support messages with payload Int. Supported types are [
@@ -54,8 +54,8 @@ class EndpointImplicitsTest extends FunSuite {
 
   val pushable: Pushable { type SupportedTypes = String :: Long :: TypeNil } = null
   if (false) { //use false so that the code is not actually executed, just typechecked
-    pushable.pushImpl(null: Message[Long])
-    pushable.pushImpl(null: Message[String])
+    pushable.push(null: Message[Long])
+    pushable.push(null: Message[String])
   }
   test("Non supported type should be rejected by sink") {
     val err = materializeTypeError("pushable.pushImpl(null: Message[Int])") stripSuffix suffix

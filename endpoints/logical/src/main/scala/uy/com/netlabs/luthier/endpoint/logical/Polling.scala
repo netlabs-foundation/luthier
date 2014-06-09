@@ -35,7 +35,7 @@ import scala.concurrent.duration._
 import scala.util._
 import language._
 
-object Polling {
+object Poll extends {
 
   class PollAskableEndpoint[A <: Askable, P](f: Flow, endpoint: EndpointFactory[A], initialDelay: FiniteDuration, every: FiniteDuration, message: P)(implicit ev: TypeSupportedByTransport[A#SupportedTypes, P]) extends endpoint.base.BaseSource {
     lazy val dest = endpoint(f)
@@ -70,7 +70,8 @@ object Polling {
         flow.log.debug(s"Flow ${flow.name} polling")
         dest.pull()(newReceviedMessage(())) onComplete {
           case Success(response)  => messageArrived(response.asInstanceOf[Message[Payload]])
-          case Failure(err) => flow.log.error(err, s"Poller ${flow.name} failed")
+    
+      case Failure(err) => flow.log.error(err, s"Poller ${flow.name} failed")
         }
       }
     }
@@ -83,10 +84,10 @@ object Polling {
   private case class EFA[A <: Askable, P](endpoint: EndpointFactory[A], every: FiniteDuration, message: P, initialDelay: FiniteDuration)(implicit ev: TypeSupportedByTransport[A#SupportedTypes, P]) extends EndpointFactory[PollAskableEndpoint[A, P]] {
     def apply(f: Flow) = new PollAskableEndpoint(f, endpoint, initialDelay, every, message)
   }
-  def PollAskable[A <: Askable, P](endpoint: EndpointFactory[A], every: FiniteDuration, message: P, initialDelay: FiniteDuration = Duration.Zero)(implicit ev: TypeSupportedByTransport[A#SupportedTypes, P]): EndpointFactory[PollAskableEndpoint[A, P]] = EFA(endpoint, every, message, initialDelay)
   private case class EFP[A <: Pullable, P](endpoint: EndpointFactory[A], every: FiniteDuration, initialDelay: FiniteDuration) extends EndpointFactory[PollPullable[A]] {
     def apply(f: Flow) = new PollPullable(f, endpoint, initialDelay, every)
   }
-  def PollPullable[A <: Pullable](endpoint: EndpointFactory[A], every: FiniteDuration, initialDelay: FiniteDuration = Duration.Zero): EndpointFactory[PollPullable[A]] = EFP(endpoint, every, initialDelay)
 
+  def asking[A <: Askable, P](endpoint: EndpointFactory[A], every: FiniteDuration, message: P, initialDelay: FiniteDuration = Duration.Zero)(implicit ev: TypeSupportedByTransport[A#SupportedTypes, P]): EndpointFactory[PollAskableEndpoint[A, P]] = EFA(endpoint, every, message, initialDelay)
+  def pulling[A <: Pullable](endpoint: EndpointFactory[A], every: FiniteDuration, initialDelay: FiniteDuration = Duration.Zero): EndpointFactory[PollPullable[A]] = EFP(endpoint, every, initialDelay)
 }

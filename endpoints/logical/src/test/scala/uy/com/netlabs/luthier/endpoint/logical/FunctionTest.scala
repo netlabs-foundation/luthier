@@ -55,17 +55,17 @@ class FunctionTest extends FunSpec with BeforeAndAfter {
       new Flows {
         val appContext = myApp
 
-        val result = Promise[Option[String]]()
+        val result = Promise[Unit]()
         val flow = new Flow("Poll Function")(Metronome(1.seconds)) { //initial delay is 0
           logic { m =>
             val msg = "this is a function that returns a text"
-            result completeWith (Function(msg).pull map (m => m.payload === msg))
+            result completeWith (Function.pull(msg).pull map (m => assert(m.payload === msg)))
           }
         }
         flow.start
         val res = Try(Await.result(result.future, 0.25.seconds))
         flow.dispose
-        assert(res.get)
+        res.get
       }
     }
 
@@ -77,9 +77,9 @@ class FunctionTest extends FunSpec with BeforeAndAfter {
           import flow._
           implicit val fr = m.flowRun
           val msg = "this is a function that returns a text"
-          Await.result(Function[String]().ask(m.map(_ => () => msg)) map (m => m.payload === msg), 0.3.seconds)
+          Function.ask[String]().ask(m.map(_ => () => msg)) map (m => assert(m.payload === msg))
         }
-        Try(assert(Await.result(res, 0.3.seconds)))
+        Await.result(res, 0.3.seconds)
       }
     }
   }
@@ -95,9 +95,9 @@ class FunctionTest extends FunSpec with BeforeAndAfter {
           implicit val fr = m.flowRun
           import scala.sys.process.{ Process => _, _ }
           Process.string("ifconfig" #| Seq("grep", "inet addr")).pull()(m) onSuccess { case r => println(r) }
-          Await.result(Process.string("echo hi there!").pull()(m) map (m => m.payload === "hi there!"), 0.3.seconds)
+          Process.string("echo hi there!").pull()(m) map (m => assert(m.payload === "hi there!"))
         }
-        Try(assert(Await.result(res, 0.3.seconds)))
+        Await.result(res, 0.3.seconds)
       }
     }
   }
