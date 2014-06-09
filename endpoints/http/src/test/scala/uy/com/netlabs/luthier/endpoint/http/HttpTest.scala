@@ -38,7 +38,7 @@ import scala.concurrent._, duration._
 import scala.util._
 import language._
 
-import logical.Polling._
+import logical.Poll
 
 import org.scalatest._
 import dispatch.{ Future => _, _ }
@@ -48,19 +48,16 @@ class HttpTest extends BaseFlowsTest {
     it("Should be able to perform HTTP request and transform its result") {
       new Flows {
         val appContext = testApp
-        val result = Promise[Option[String]]()
-        val flow = new Flow("Poll Http")(Poll(Http(url("http://www.google.com/").setFollowRedirects(true), new OkFunctionHandler(as.jsoup.Document)), 1.seconds)) { //initial delay is 0
+        val result = Promise[Unit]()
+        val flow = new Flow("Poll Http")(Poll.pulling(Http.pulling(url("http://www.google.com/").setFollowRedirects(true), new OkFunctionHandler(as.jsoup.Document)), 1.seconds)) { //initial delay is 0
           logic { m =>
-            result success {
-              if (m.payload.select("a[href]").size != 0) None
-              else Some("payload with 0 links?")
-            }
+            result complete Try( if (m.payload.select("a[href]").size == 0) fail("payload with 0 links?"))
           }
         }
         flow.start
         val res = Try(Await.result(result.future, 5.seconds))
         flow.dispose
-        assert(res.get)
+        res.get
       }
     }
     it("Should be able to ask HTTP request and transform its result") {
@@ -71,15 +68,13 @@ class HttpTest extends BaseFlowsTest {
           import flow._
           implicit val fr = m.flowRun
           val req = url("http://www.google.com/").setFollowRedirects(true) -> new OkFunctionHandler(as.jsoup.Document)
-          Await.result(Http[org.jsoup.nodes.Document]().ask(m.map(_ => req)) map { m =>
-              println("Cookies: ")
-              println(m.header.inbound.get("Cookies"))
-
-              if (m.payload.select("a[href]").size != 0) None
-              else Some("payload with 0 links?")
-            }, 5.seconds)
-        }
-        assert(Await.result(res, 6.seconds))
+          Http[org.jsoup.nodes.Document]().ask(m.map(_ => req)) map { m =>
+            println("Cookies: ")
+            println(m.header.inbound.get("Cookies"))
+            if (m.payload.select("a[href]").size == 0) fail("payload with 0 links?")
+          }
+        }.flatMap(identity)(appContext.actorSystem.dispatcher)
+        Await.result(res, 6.seconds)
       }
     }
     if (scala.util.Properties.userName == "rcano") {
@@ -107,9 +102,10 @@ class HttpTest extends BaseFlowsTest {
 //              redmine[String].ask(res map (_ => (url("https://redmine.netlabs.com.uy/time_entries.csv"), new OkFunctionHandler(as.String))))
 //            }
 
-            println("Request result: " + Await.result(request, 3.seconds))
-          }
-          Await.result(res, 6.seconds)
+            request
+          }.flatMap(identity)(appContext.actorSystem.dispatcher)
+
+          println(Await.result(res, 6.seconds))
         }
       }
     }
@@ -131,7 +127,7 @@ class HttpTest extends BaseFlowsTest {
         val reqResponse = inFlow { (flow, m) =>
           import flow._
           implicit val flowRun = m.flowRun
-          val res = Await.result(Http(url("http://localhost:3987/some/path"), new OkFunctionHandler(as.String)).pull(), 3.seconds).payload
+          val res = Await.result(Http.pull(url("http://localhost:3987/some/path"), new OkFunctionHandler(as.String)).pull(), 3.seconds).payload
           println("Res gotten " + res)
           res
         }

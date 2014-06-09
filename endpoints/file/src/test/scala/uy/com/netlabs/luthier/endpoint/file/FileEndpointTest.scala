@@ -43,31 +43,31 @@ class FileEndpointTest extends BaseFlowsTest {
     it("should be able to write content") {
       new Flows {
         val appContext = testApp
-        val result = Promise[Option[String]]()
+        val result = Promise[Unit]()
         val flow = new Flow("test")(logical.Metronome(0.seconds)) {
           logic { m =>
-            result completeWith File(file.toString).push(m.map(_ => "someContent")).map[Option[String]](_ => None).recover{case e => Some(e.toString)}
+            result completeWith File(file.toString).push(m.map(_ => "someContent")).recover { case e => Some(e.toString) }
           }
         }
         flow.start
         val res = Try(Await.result(result.future, 0.25.seconds))
         flow.dispose()
-        assert(res.get)
+        res.get
       }
     }
     it("should be able to read content") {
       new Flows {
         implicit val appContext = testApp
-        val result = Promise[Option[String]]()
+        val result = Promise[Unit]()
         val flow = new Flow("test")(logical.Metronome(0.seconds)) {
           logic { m =>
-            result completeWith File(file.toString).pull.map(m => new String(m.payload) === content).recover{case e => Some(e.toString)}
+            result completeWith File(file.toString).pull.map(m => assert(new String(m.payload) === content)).recover { case e => fail(e.toString) }
           }
         }
         flow.start
         val res = Try(Await.result(result.future, 0.25.seconds))
         flow.dispose()
-        assert(res.get)
+        res.get
       }
     }
   }
