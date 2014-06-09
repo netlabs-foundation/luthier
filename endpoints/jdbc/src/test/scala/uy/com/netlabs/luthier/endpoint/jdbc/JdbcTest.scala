@@ -38,7 +38,7 @@ import scala.concurrent._, duration._
 import scala.util._
 import language._
 
-import endpoint.logical.Polling._
+import endpoint.logical.Poll
 import endpoint.logical.Metronome
 
 import org.h2.jdbcx.JdbcConnectionPool
@@ -74,17 +74,17 @@ class JdbcTest extends FunSpec with BeforeAndAfter {
       new Flows {
         val appContext = myApp
 
-        val result = Promise[Option[String]]()
+        val result = Promise[Unit]()
 
-        val flow = new Flow("Poll DB")(Poll(Jdbc.const("SELECT * FROM Coffees", rowMapper, dataSource), 1.seconds)) { //initial delay is 0
+        val flow = new Flow("Poll DB")(Poll.pulling(Jdbc.const("SELECT * FROM Coffees", rowMapper, dataSource), 1.seconds)) { //initial delay is 0
           logic { m =>
-            result.success(m.payload.length === 3)
+            result complete Try(assert(m.payload.length === 3))
           }
         }
         flow.start
         val res = Try(Await.result(result.future, 0.25.seconds))
         flow.dispose()
-        assert(res.get)
+        res.get
       }
     }
 
@@ -92,12 +92,12 @@ class JdbcTest extends FunSpec with BeforeAndAfter {
       new Flows {
         val appContext = myApp
 
-        val result = Promise[Option[String]]()
+        val result = Promise[Unit]()
         val flow = new Flow("Ask DB")(Metronome(1.seconds)) { //initial delay is 0
           logic { m =>
             result completeWith {
               Jdbc.parameterized("SELECT * FROM Coffees WHERE cofName = ?", rowMapper, dataSource).ask(Message(IndexedSeq("Colombian_Decaf"))) map { resp =>
-                resp.payload.head === Coffee("Colombian_Decaf", "101", 8.99)
+                assert(resp.payload.head === Coffee("Colombian_Decaf", "101", 8.99))
               }
             }
           }
@@ -105,7 +105,7 @@ class JdbcTest extends FunSpec with BeforeAndAfter {
         flow.start
         val res = Try(Await.result(result.future, 0.25.seconds))
         flow.dispose()
-        assert(res.get)
+        res.get
       }
     }
   }
