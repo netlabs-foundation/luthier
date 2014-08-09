@@ -49,7 +49,7 @@ class HttpTest extends BaseFlowsTest {
       new Flows {
         val appContext = testApp
         val result = Promise[Unit]()
-        val flow = new Flow("Poll Http")(Poll.pulling(Http.pulling(url("http://www.google.com/").setFollowRedirects(true), new OkFunctionHandler(as.jsoup.Document)), 1.seconds)) { //initial delay is 0
+        val flow = new Flow("Poll Http")(Poll.pulling(Http.pulling(url("http://www.google.com/").setFollowRedirects(true) OK as.jsoup.Document), every = 1.second)) { //initial delay is 0
           logic { m =>
             result complete Try( if (m.payload.select("a[href]").size == 0) fail("payload with 0 links?"))
           }
@@ -67,7 +67,7 @@ class HttpTest extends BaseFlowsTest {
         val res = inFlow { (flow, m) =>
           import flow._
           implicit val fr = m.flowRun
-          val req = url("http://www.google.com/").setFollowRedirects(true) -> new OkFunctionHandler(as.jsoup.Document)
+          val req = url("http://www.google.com/").setFollowRedirects(true) OK as.jsoup.Document
           Http[org.jsoup.nodes.Document]().ask(m.map(_ => req)) map { m =>
             println("Cookies: ")
             println(m.header.inbound.get("Cookies"))
@@ -93,7 +93,7 @@ class HttpTest extends BaseFlowsTest {
             def redmine[T] = Http[T](httpClientConfig = ClientConfig(sslContext = sslContext))
             val postParams = Map("username"->"someUser", "password"->new String("somePass"))
             val request =
-              redmine[String].ask(m map (_ => (url("https://redmine.netlabs.com.uy/login").setFollowRedirects(true) << postParams, new FunctionHandler(as.String))))
+              redmine[String].ask(m map (_ => (url("https://redmine.netlabs.com.uy/login").setFollowRedirects(true) << postParams > as.String)))
 
             //example that after login, would download the time_entries csv (it works :) )
 //          val request =
@@ -127,7 +127,7 @@ class HttpTest extends BaseFlowsTest {
         val reqResponse = inFlow { (flow, m) =>
           import flow._
           implicit val flowRun = m.flowRun
-          val res = Await.result(Http.pull(url("http://localhost:3987/some/path"), new OkFunctionHandler(as.String)).pull(), 3.seconds).payload
+          val res = Await.result(Http.pulling(url("http://localhost:3987/some/path") OK as.String).pull(), 3.seconds).payload
           println("Res gotten " + res)
           res
         }

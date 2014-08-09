@@ -31,6 +31,7 @@
 package uy.com.netlabs.luthier
 package endpoint.http
 
+import language.{ higherKinds, implicitConversions }
 import scala.util._
 import scala.concurrent._, duration._
 import scala.collection.mutable.Map
@@ -38,8 +39,15 @@ import scala.collection.JavaConversions._
 
 import typelist._
 
-import com.ning.http.client.{ AsyncHttpClient, AsyncHttpClientConfig,
-                             AsyncCompletionHandler, Cookie, RequestBuilder => Request }
+import com.ning.http.client.{
+  AsyncHttpClient,
+  AsyncHttpClientConfig,
+  AsyncCompletionHandler,
+  Cookie,
+  RequestBuilder,
+  Request,
+  Response
+}
 import dispatch.{ Future => _, _ }
 import unfiltered.filter.async.Plan
 import unfiltered.request._
@@ -51,13 +59,13 @@ import javax.servlet._, http._
 object Http {
 
   class HttpDispatchEndpoint[R] private[Http] (f: Flow,
-                                               req: Option[(Request, FunctionHandler[R])],
+                                               req: Option[(RequestBuilder, FunctionHandler[R])],
                                                ioThreads: Int,
                                                httpClientConfig: AsyncHttpClientConfig) extends Pullable with Askable {
     val flow = f
     type Payload = R
     type Response = R
-    type SupportedTypes = (Request, FunctionHandler[R]) :: TypeNil
+    type SupportedTypes = (RequestBuilder, FunctionHandler[R]) :: (Request, FunctionHandler[R]) :: TypeNil
 
     val threadPoolSize = ioThreads
 
@@ -74,7 +82,7 @@ object Http {
 
     private type HeaderBaggage = Seq[Cookie]
 
-    private def wrapRequest(r: (Request, FunctionHandler[R])) = {
+    private def wrapRequest(r: (RequestBuilder, FunctionHandler[R])) = {
       r._1.build() -> new AsyncCompletionHandler[(R, HeaderBaggage)] {
 
         def onCompleted(response) = r._2.onCompleted(response) -> response.getCookies
@@ -121,32 +129,66 @@ object Http {
       val promise = Promise[Message[Payload]]()
       dispatcher(wrapRequest(req.get))(ioProfile.executionContext).onComplete {
         case Success(res) => promise.success(toMessage(res, mf))
-        case Failure(err)  => promise.failure(err)
+        case Failure(err) => promise.failure(err)
       }(ioProfile.executionContext)
       promise.future
     }
     def ask[Payload: SupportedType](msg, timeOut): Future[Message[Response]] = {
       val promise = Promise[Message[Response]]()
-      val req = msg.as[(Request, FunctionHandler[R])].payload
+      val req = msg.payload match {
+        case (r: RequestBuilder, f: FunctionHandler[Response]) => (r, f)
+        case (r: Request, f: FunctionHandler[Response]) => (new RequestBuilder(r), f)
+      }
       val cookies = msg.header.outbound.getOrElse("Cookies", Seq.empty).asInstanceOf[Seq[Cookie]]
       cookies foreach req._1.addOrReplaceCookie
-//      println("Sending cookies: " + cookies)
+      //      println("Sending cookies: " + cookies)
 
       dispatcher(wrapRequest(req))(ioProfile.executionContext).onComplete {
         case Success(res) => promise.success(toMessage(res, msg))
-        case Failure(err)  => promise.failure(err)
+        case Failure(err) => promise.failure(err)
       }(ioProfile.executionContext)
       promise.future
     }
   }
 
-  private case class EF[R](req: Option[(Request, FunctionHandler[R])], ioThreads: Int,
+  private case class EF[R](req: Option[(RequestBuilder, FunctionHandler[R])], ioThreads: Int,
                            httpClientConfig: AsyncHttpClientConfig) extends EndpointFactory[HttpDispatchEndpoint[R]] {
     def apply(f: Flow) = new HttpDispatchEndpoint(f, req, ioThreads, httpClientConfig)
   }
-  //this two lines are ugly as hell :)
-  def pulling[R](req: Request, handler: FunctionHandler[R], ioThreads: Int = 1, httpClientConfig: AsyncHttpClientConfig = new AsyncHttpClientConfig.Builder().build()): EndpointFactory[Pullable { type Payload = R }] = EF(Some(req->handler), ioThreads, httpClientConfig)
-  def apply[R](ioThreads: Int = 1, httpClientConfig: AsyncHttpClientConfig = new AsyncHttpClientConfig.Builder().build()): EndpointFactory[Askable { type Response = R; type SupportedTypes = HttpDispatchEndpoint[R]#SupportedTypes }] = EF(None, ioThreads, httpClientConfig)
+
+  type HttpPullableEF[R] = EndpointFactory[Pullable { type Payload = R }]
+  type HttpAskableEF[R] = EndpointFactory[Askable {
+    type Response = R
+    type SupportedTypes = HttpDispatchEndpoint[R]#SupportedTypes
+  }]
+
+  //implicit class RequestBuilderAndHandler[R](val r: (RequestBuilder, FunctionHandler[R])) extends ReqType[R]
+
+  def pulling[Req, HandlerType](req: Req, ioThreads: Int = 1,
+                                httpClientConfig: AsyncHttpClientConfig = new AsyncHttpClientConfig.Builder().build())(
+                                  implicit supported: ReqType[Req, HandlerType]): HttpPullableEF[HandlerType] =
+    EF(Some(supported(req)), ioThreads, httpClientConfig)
+
+  def apply[R](ioThreads: Int = 1, httpClientConfig: AsyncHttpClientConfig = new AsyncHttpClientConfig.Builder().build()): HttpAskableEF[R] =
+    EF(None, ioThreads, httpClientConfig)
+
+  sealed trait ReqType[R, HandlerType] {
+    def apply(r: R): (RequestBuilder, FunctionHandler[HandlerType])
+  }
+  implicit def requestBuilderAndHandlerReqType[R] = allRequestBuilderAndHandlerReqType.asInstanceOf[ReqType[(RequestBuilder, FunctionHandler[R]), R]]
+  private val allRequestBuilderAndHandlerReqType = new ReqType[(RequestBuilder, FunctionHandler[Any]), Any] {
+    type HandlerType = Any
+    def apply(r) = r
+  }
+  implicit def requestAndHandlerReqType[R, F[X] <: FunctionHandler[X]] = allRequestAndHandlerReqType.asInstanceOf[ReqType[(Request, F[R]), R]]
+  private val allRequestAndHandlerReqType = new ReqType[(Request, FunctionHandler[Any]), Any] {
+    type HandlerType = Any
+    def apply(r) = (new RequestBuilder(r._1), r._2)
+  }
+  implicit val allRequestReqType = new ReqType[Req, Response] {
+    type HandlerType = Response
+    def apply(r) = (r.toRequestBuilder, new FunctionHandler[Response](identity))
+  }
 
   //Unfiltered part
 
@@ -154,18 +196,18 @@ object Http {
     def start(name: String, filter: Filter)
     def stop()
   }
-//  private[Http] case class ServletServerRepr(servletContext: ServletContext) extends ServerRepr {
-//    def start(name, filter) {
-//      val enka = servletContext.addFilter(name, filter)
-//      enka.setAsyncSupported(true)
-//      enka.addMappingForServletNames(java.util.EnumSet.allOf(classOf[DispatcherType]), false, "*")
-//      enka.addMappingForUrlPatterns(java.util.EnumSet.allOf(classOf[DispatcherType]), false, "*")
-//      println(Console.RED + "Enka data" + Console.RESET)
-//      enka.getServletNameMappings() foreach (s => println(s"Mapping for filter $name: $s"))
-//      enka.getUrlPatternMappings() foreach (s => println(s"Mapping for filter $name: $s"))
-//    }
-//    def stop() {} //cannot stop :(
-//  }
+  //  private[Http] case class ServletServerRepr(servletContext: ServletContext) extends ServerRepr {
+  //    def start(name, filter) {
+  //      val enka = servletContext.addFilter(name, filter)
+  //      enka.setAsyncSupported(true)
+  //      enka.addMappingForServletNames(java.util.EnumSet.allOf(classOf[DispatcherType]), false, "*")
+  //      enka.addMappingForUrlPatterns(java.util.EnumSet.allOf(classOf[DispatcherType]), false, "*")
+  //      println(Console.RED + "Enka data" + Console.RESET)
+  //      enka.getServletNameMappings() foreach (s => println(s"Mapping for filter $name: $s"))
+  //      enka.getUrlPatternMappings() foreach (s => println(s"Mapping for filter $name: $s"))
+  //    }
+  //    def stop() {} //cannot stop :(
+  //  }
   private[Http] case class JettyServerRepr(port: Int) extends ServerRepr {
     var server: unfiltered.jetty.Http = _
     def start(name, filter) {
@@ -185,16 +227,16 @@ object Http {
       def intent = {
         case req =>
           try {
-          onRequestHandler(newReceviedMessage(req)).onComplete {
-            case Success(m) => m.payload.value match {
+            onRequestHandler(newReceviedMessage(req)).onComplete {
+              case Success(m) => m.payload.value match {
                 case s: String => req.respond(ResponseString(s))
                 case rf: ResponseFunction[HttpServletResponse @unchecked] => req.respond(rf)
               }
-            case Failure(ex) =>
-              log.error(ex, "Unexpected exception in code handling request")
-              req.respond(InternalServerError ~> ResponseString(ex.toString))
-          }(flow.rawWorkerActorsExecutionContext)
-        } catch {case ex: Throwable => log.error(ex, "Could not process message"); throw ex}
+              case Failure(ex) =>
+                log.error(ex, "Unexpected exception in code handling request")
+                req.respond(InternalServerError ~> ResponseString(ex.toString))
+            }(flow.rawWorkerActorsExecutionContext)
+          } catch { case ex: Throwable => log.error(ex, "Could not process message"); throw ex }
       }
     }
 
@@ -210,5 +252,5 @@ object Http {
     def apply(f: Flow) = new HttpUnfilteredEndpoint(f, repr)
   }
   def server(port: Int) = HttpUnfilteredEF(JettyServerRepr(port))
-//  def server(servletContext: ServletContext) = HttpUnfilteredEF(ServletServerRepr(servletContext))
+  //  def server(servletContext: ServletContext) = HttpUnfilteredEF(ServletServerRepr(servletContext))
 }
