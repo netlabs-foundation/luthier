@@ -3,7 +3,7 @@ import sbt._, Keys._
 
 object CocoonBuild extends Build {
 
-  val _scalaVersion = "2.11.1"
+  val _scalaVersion = "2.11.2"
 
   val defSettings = Seq(
     version := "2.1.0-SNAPSHOT",

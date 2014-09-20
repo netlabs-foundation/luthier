@@ -63,7 +63,7 @@ class TypeListStuffTest extends FunSpec {
     }
   }
   def myMethod[A](implicit ev: Contained[String :: Int :: TypeNil, A]) = "good"
-  
+
   describe("TypeSelectorImplicits") {
     it("should fail for direct implicit searchs of contained") {
       val err = TestUtils.materializeTypeError("implicitly[Contained[String :: Int :: TypeNil, Long]]")
@@ -96,8 +96,16 @@ class TypeListStuffTest extends FunSpec {
   }
 
   type TL = Int :: Long :: String :: TypeNil
-  def withOnOf[T](v: OneOf[T, TL]): Seq[T] = {
-    v.dispatch {
+  def withOneOf[T](v: OneOf[T, TL]): Seq[T] = {
+    val err = TestUtils.materializeTypeError("""
+		  v match_ {
+		  case i: Int => List(i + 3)
+		  case p: Long => Vector(p + 5)
+		  case p: Array[Byte] => p
+		  case foo => Seq(foo)
+		  }""")
+    assert(err === "The pattern of a type Array[Byte] is not defined in the type list with types Int, Long, String.")
+    v match_ {
       case i: Int => List(i + 3)
       case p: Long => Vector(p + 5)
       case foo => Seq(foo)
@@ -105,9 +113,9 @@ class TypeListStuffTest extends FunSpec {
   }
   describe("OneOf") {
     they("should dispatch values based on the type") {
-      assert(withOnOf(new OneOf[Int, TL](3)) === List(6))
-      assert(withOnOf(new OneOf[Long, TL](10l)) === List(15l))
-      assert(withOnOf(new OneOf[String, TL]("foo")) === List("foo"))
+      assert(withOneOf(new OneOf(3)) === List(6))
+      assert(withOneOf(new OneOf(10l)) === List(15l))
+      assert(withOneOf(new OneOf("foo")) === List("foo"))
     }
   }
 }

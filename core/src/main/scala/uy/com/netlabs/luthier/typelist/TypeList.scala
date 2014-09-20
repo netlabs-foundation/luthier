@@ -110,33 +110,44 @@ object TypeSelectorImplicits {
 trait Contained[-TL <: TypeList, E] //declared TL as contravariant, to deal with java generics.
 object Contained extends TypeSelectorImplicits[Contained]
 
-class OneOf[+E, TL <: TypeList](val value: E)(implicit contained: Contained[TL, E]) {
-  override def toString = "OneOf(" + value + ")"
-  def valueAs[T](implicit contained: Contained[TL, T]) = value.asInstanceOf[T]
-  def dispatch(f: PartialFunction[E, Any]): Any = macro OneOf.dispatchMacro[E, TL]
+class OneOf[+E, TL <: TypeList](_value: E)(implicit contained: Contained[TL, E]) {
+  val unsafeValue = _value
+  def value(implicit ev: OneOf.TypeListHasSizeOne[TL]): ev.TheType = unsafeValue.asInstanceOf[ev.TheType]
+  
+  override def toString = "OneOf(" + unsafeValue + ")"
+  def valueAs[T](implicit contained: Contained[TL, T]) = unsafeValue.asInstanceOf[T]
+  def match_(f: PartialFunction[E, Any]): Any = macro OneOf.dispatchMacro[E, TL]
 
 }
 object OneOf {
+  
+  @annotation.implicitNotFound("This OneOf has more than one possible type ${T}, you should be using method match_ to properly evaluate the value")
+  trait TypeListHasSizeOne[T <: TypeList] { type TheType }
+  implicit def typeListHasSizeOne[H]: TypeListHasSizeOne[H :: TypeNil] {type TheType = H} = null
+  
+  implicit def oneOfSingleType2Type[H](o: OneOf[_, H :: TypeNil]): H = o.value
+  
   import scala.reflect.macros.whitebox.Context
   def dispatchMacro[E, TL <: TypeList](c: Context { type PrefixType = OneOf[E, TL] })(
-    f: c.Expr[PartialFunction[E, Any]])(implicit eEv: c.WeakTypeTag[E], tlEv: c.WeakTypeTag[TL]): c.Expr[Any] = {
+		  f: c.Tree)(implicit eEv: c.WeakTypeTag[E], tlEv: c.WeakTypeTag[TL]): c.Tree = {
     import c.universe._
-    val typeList = tlEv.tpe.baseType(c.typeOf[_ :: _].typeSymbol)
-    //get the match AST corresponding to the partial function
-    val casesAst = f.tree.collect {
-      case DefDef(mods, name, tparams, vparamss, tpt, Match(selector, cases)) if name.toString == "applyOrElse" => cases.init //discard last case because thats the partial function synthetic default case
+//    println(f)
+    val casesAst = f.collect {
+      case q"{case ..$cases}" => cases
     }.flatten
 
     val typeListDescriptor = new TypeList.TypeListDescriptor(c.universe)
     val typesInListAsStr = typeListDescriptor.describe(c.TypeTag(tlEv.tpe).asInstanceOf[typeListDescriptor.universe.TypeTag[TL]])
+    
     //validate that every pattern is contained in the type list and accumulate the case result type
-    val TypeRef(pre, sym, _) = typeOf[Contained[TypeNil, Any]]
     val casesMappedTypes = casesAst map { caseAst =>
       //      println(s"Testing $caseAst, pat type: ${caseAst.pat.tpe}, body type: ${caseAst.body.tpe}")
-      //      tq"_root_.uy.com.netlabs.luthier.typelist.Contained[$typeList, ${caseAst.pat.tpe}]".tpe
-      if (!(caseAst.pat.tpe =:= eEv.tpe) && c.inferImplicitValue(c.internal.typeRef(pre, sym, List(typeList, caseAst.pat.tpe))).isEmpty) {
+      val typeToInfer = c.typecheck(tq"_root_.uy.com.netlabs.luthier.typelist.Contained[${tlEv.tpe}, ${caseAst.pat.tpe}]", c.TYPEmode).tpe
+      lazy val typeIsContained = c.inferImplicitValue(typeToInfer, withMacrosDisabled = true)
+      if (!(caseAst.pat.tpe =:= eEv.tpe) && typeIsContained.isEmpty) {
         c.abort(caseAst.pos, s"The pattern of a type ${caseAst.pat.tpe} is not defined in the type list with types ${typesInListAsStr.mkString(", ")}.")
       }
+//      println("case " + caseAst.pat + " is valid in " + typeList + " proved by " + typeIsContained)
       caseAst.body.tpe map {
         case t if t <:< caseAst.pat.tpe => eEv.tpe
         case other => other
@@ -144,12 +155,7 @@ object OneOf {
     }
     val patternMatchRes = lub(casesMappedTypes)
     //    println(s"Lubbing $casesMappedTypes == $patternMatchRes")
-    val selector = reify { c.prefix.splice.value }.tree
-    val resMatch = c.Expr[Any](Match(selector, casesAst))
-    def res[LUB](implicit ev: c.WeakTypeTag[LUB]) = reify { (resMatch.splice).asInstanceOf[LUB] }
-    val r = res(c.WeakTypeTag(patternMatchRes))
-    //    println(r)
-    r
+    q"(${c.prefix.tree}.unsafeValue match { case ..$casesAst }).asInstanceOf[$patternMatchRes]"
   }
   //  implicit def anyToOneOf[E, TL <: TypeList](e: E)(implicit contained: Contained[TL, E]) = new OneOf[E, TL](e)
 }
