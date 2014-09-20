@@ -33,21 +33,15 @@ package uy.com.netlabs.luthier.typelist
 import language.{ higherKinds, implicitConversions }
 import language.experimental.macros
 import scala.reflect.api.{ Universe, TypeTags, Types }
-
-trait TypeList {
-  type Head
-  type Tail <: TypeList
-}
+import shapeless._
 
 object TypeList {
-  private[TypeList] val typeListFullName = scala.reflect.runtime.universe.typeTag[::[_, _]].tpe.typeSymbol.fullName
-  private[TypeList] val typeNilFullName = scala.reflect.runtime.universe.typeTag[TypeNil].tpe.typeSymbol.fullName
   class TypeListDescriptor(val universe: Universe) {
     import universe._
     val ConsType = typeOf[::[_, _]]
-    val NilType = typeOf[TypeNil]
+    val NilType = typeOf[HNil]
 
-    def describe[TL <: TypeList](implicit tl: TypeTag[TL]): List[Type] = {
+    def describe[TL <: HList](implicit tl: TypeTag[TL]): List[Type] = {
       def describe(t: Type): List[Type] = {
         val t2 = t.dealias
         if (t2 == NilType) Nil
@@ -63,31 +57,16 @@ object TypeList {
   }
 }
 
-trait ::[A, T <: TypeList] extends TypeList {
-  type Head = A
-  type Tail = T
-}
-
-final class TypeNil extends TypeList {
-  type Head = Nothing
-  type Tail = TypeNil
-}
-
-sealed trait ErrorSelectorImplicits[Selector[TL <: TypeList, A]] {
+sealed trait ErrorSelectorImplicits[Selector[TL <: HList, A]] {
   self: TypeSelectorImplicits[Selector] =>
-  implicit def noContains[H, T <: TypeList, A]: Selector[H :: T, A] = macro TypeSelectorImplicits.noSelectorErrorImpl[Selector, H :: T, A]
+  implicit def noContains[TL <: HList, A]: Selector[TL, A] = macro TypeSelectorImplicits.noSelectorErrorImpl[Selector, TL, A]
 }
-sealed trait LowPrioritySelectorImplicits[Selector[TL <: TypeList, A]] extends ErrorSelectorImplicits[Selector] {
-  self: TypeSelectorImplicits[Selector] =>
-  implicit def tailContains[H, T <: TypeList, A](implicit c: Selector[T, A]): Selector[H :: T, A] = impl
-}
-trait TypeSelectorImplicits[Selector[TL <: TypeList, A]] extends LowPrioritySelectorImplicits[Selector] {
-  implicit def containsExactly[H, T <: TypeList, A](implicit x: A <:< H): Selector[H :: T, A] = impl
-  def impl[H <: TypeList, A]: Selector[H, A] = null.asInstanceOf[Selector[H, A]]
+trait TypeSelectorImplicits[Selector[TL <: HList, A]] extends ErrorSelectorImplicits[Selector] {
+  implicit def select[TL <: HList, A](implicit s: shapeless.ops.hlist.Selector[TL, A]): Selector[TL, A] = null.asInstanceOf[Selector[TL, A]]
 }
 object TypeSelectorImplicits {
   import scala.reflect.macros.blackbox.Context
-  def noSelectorErrorImpl[Selector[_ <: TypeList, _], T <: TypeList, A](c: Context)(
+  def noSelectorErrorImpl[Selector[_ <: HList, _], T <: HList, A](c: Context)(
     implicit selectorEv: c.WeakTypeTag[Selector[T, A]], tEv: c.WeakTypeTag[T], aEv: c.WeakTypeTag[A]): c.Expr[Selector[T, A]] = {
     import c.universe._
     // detect the typelist that we are searching a selector for
@@ -97,7 +76,7 @@ object TypeSelectorImplicits {
     val typesDescription = types.mkString("[\n  ", ",\n  ", "\n]")
     val failError = selectorEv.tpe.typeSymbol.annotations.find(a => a.tree.tpe =:= typeOf[scala.annotation.implicitNotFound]) map { a =>
       val List(Literal(Constant(msg: String))) = a.tree.children.tail
-      val (List(tl), List(e)) = selectorEv.tpe.typeParams partition { tp => tp.asType.toType <:< typeOf[TypeList] }
+      val (List(tl), List(e)) = selectorEv.tpe.typeParams partition { tp => tp.asType.toType <:< typeOf[HList] }
       msg.replace("${" + e.name.toString + '}', element.dealias.toString).
         replace("${" + tl.name.toString + '}', typesDescription)
     } getOrElse s"Type ${aEv.tpe} was not found in typelist $typesDescription"
@@ -107,10 +86,10 @@ object TypeSelectorImplicits {
 }
 
 @annotation.implicitNotFound("${E} is not contained in ${TL}")
-trait Contained[-TL <: TypeList, E] //declared TL as contravariant, to deal with java generics.
+trait Contained[-TL <: HList, E] //declared TL as contravariant, to deal with java generics.
 object Contained extends TypeSelectorImplicits[Contained]
 
-class OneOf[+E, TL <: TypeList](_value: E)(implicit contained: Contained[TL, E]) {
+class OneOf[+E, TL <: HList](_value: E)(implicit contained: Contained[TL, E]) {
   val unsafeValue = _value
   def value(implicit ev: OneOf.TypeListHasSizeOne[TL]): ev.TheType = unsafeValue.asInstanceOf[ev.TheType]
   
@@ -122,13 +101,13 @@ class OneOf[+E, TL <: TypeList](_value: E)(implicit contained: Contained[TL, E])
 object OneOf {
   
   @annotation.implicitNotFound("This OneOf has more than one possible type ${T}, you should be using method match_ to properly evaluate the value")
-  trait TypeListHasSizeOne[T <: TypeList] { type TheType }
-  implicit def typeListHasSizeOne[H]: TypeListHasSizeOne[H :: TypeNil] {type TheType = H} = null
+  trait TypeListHasSizeOne[T <: HList] { type TheType }
+  implicit def typeListHasSizeOne[H]: TypeListHasSizeOne[H :: HNil] {type TheType = H} = null
   
-  implicit def oneOfSingleType2Type[H](o: OneOf[_, H :: TypeNil]): H = o.value
+  implicit def oneOfSingleType2Type[H](o: OneOf[_, H :: HNil]): H = o.value
   
   import scala.reflect.macros.whitebox.Context
-  def dispatchMacro[E, TL <: TypeList](c: Context { type PrefixType = OneOf[E, TL] })(
+  def dispatchMacro[E, TL <: HList](c: Context { type PrefixType = OneOf[E, TL] })(
 		  f: c.Tree)(implicit eEv: c.WeakTypeTag[E], tlEv: c.WeakTypeTag[TL]): c.Tree = {
     import c.universe._
 //    println(f)

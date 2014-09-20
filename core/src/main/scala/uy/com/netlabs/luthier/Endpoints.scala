@@ -34,6 +34,7 @@ import scala.concurrent._
 import scala.concurrent.duration._
 import language._, language.experimental._
 import typelist._
+import shapeless._
 
 trait Endpoint {
   def start(): Unit
@@ -78,7 +79,7 @@ trait Source extends InboundEndpoint {
 }
 
 trait Responsible extends InboundEndpoint {
-  type SupportedResponseTypes <: TypeList
+  type SupportedResponseTypes <: HList
   private[this] var onRequestHandler0: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]] = _
   protected def onRequestHandler: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]] = onRequestHandler0
   def onRequest(thunk: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]]) { onRequestHandler0 = thunk }
@@ -87,12 +88,12 @@ trait Responsible extends InboundEndpoint {
 /* ****** Outgoing endpoints ****** */
 
 @scala.annotation.implicitNotFound("This transport does not support messages with payload ${A}. Supported types are ${TL}")
-trait TypeSupportedByTransport[TL <: TypeList, A]
+trait TypeSupportedByTransport[TL <: HList, A]
 
 object TypeSupportedByTransport extends TypeSelectorImplicits[TypeSupportedByTransport]
 
 trait OutboundEndpoint extends Endpoint {
-  type SupportedTypes <: TypeList
+  type SupportedTypes <: HList
   type SupportedType[Payload] = TypeSupportedByTransport[SupportedTypes, Payload]
 }
 object OutboundEndpoint {

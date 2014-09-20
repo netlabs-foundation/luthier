@@ -32,7 +32,7 @@ package uy.com.netlabs.luthier
 package endpoint
 
 import scala.concurrent._
-
+import shapeless._
 import typelist._
 
 object Function {
@@ -40,7 +40,7 @@ object Function {
     val flow = f
     type Payload = R
     type Response = R
-    type SupportedTypes = Function0[R] :: TypeNil
+    type SupportedTypes = Function0[R] :: HNil
 
     val ioProfile = base.IoProfile.threadPool(ioThreads, flow.name + "-function-ep")
     protected def retrieveMessage(mf): Message[Payload] = mf(function())

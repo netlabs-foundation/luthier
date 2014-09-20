@@ -36,6 +36,7 @@ import typelist._
 import akka.actor._
 import scala.concurrent._, scala.util._, scala.concurrent.duration._
 import scala.reflect.{ ClassTag, classTag }
+import shapeless._
 
 /**
  * TODO: document
@@ -116,7 +117,7 @@ class VM private[VM] (val appContext: AppContext) {
 
   def source[ExpectedType: ClassTag](actorPath: String) = SourceEndpointFactory[ExpectedType](actorPath)
 
-  class VMResponsibleEndpoint[ReqType: ClassTag, ResponseType <: TypeList] private[VM] (
+  class VMResponsibleEndpoint[ReqType: ClassTag, ResponseType <: HList] private[VM] (
     val flow: Flow, val actorPath: String) extends Responsible with VmInboundEndpointBase {
     type Payload = ReqType
     type SupportedResponseTypes <: ResponseType
@@ -143,17 +144,17 @@ class VM private[VM] (val appContext: AppContext) {
       f onFailure { case ex => log.error(ex, "Error on flow " + flow) }
     }
   }
-  case class ResponsibleEndpointFactory[ReqType: ClassTag, ResponseType <: TypeList] private[VM] (actorPath: String) extends EndpointFactory[VMResponsibleEndpoint[ReqType, ResponseType]] {
+  case class ResponsibleEndpointFactory[ReqType: ClassTag, ResponseType <: HList] private[VM] (actorPath: String) extends EndpointFactory[VMResponsibleEndpoint[ReqType, ResponseType]] {
     override def apply(f) = new VMResponsibleEndpoint[ReqType, ResponseType](f, actorPath)
   }
 
-  def responsible[ReqType: ClassTag, ResponseType <: TypeList](actorPath: String) = ResponsibleEndpointFactory[ReqType, ResponseType](actorPath)
+  def responsible[ReqType: ClassTag, ResponseType <: HList](actorPath: String) = ResponsibleEndpointFactory[ReqType, ResponseType](actorPath)
 
   //////////////////////////////////////////////////////////////////////
   // Outbound endpoints
   //////////////////////////////////////////////////////////////////////
 
-  class VmOutboundEndpoint[OutSupportedTypes <: TypeList, ExpectedResponse] private[VM] (
+  class VmOutboundEndpoint[OutSupportedTypes <: HList, ExpectedResponse] private[VM] (
     val flow: Flow, val actorPath: String) extends Pushable with Askable {
     override type SupportedTypes = OutSupportedTypes
     override type Response = ExpectedResponse
@@ -165,13 +166,13 @@ class VM private[VM] (val appContext: AppContext) {
       akka.pattern.ask(destActor).?(msg.payload)(timeOut).map(r => msg.map(_ => r.asInstanceOf[Response]))(appContext.actorSystem.dispatcher)
     }
   }
-  case class VmOutboundEndpointFactory[OutSupportedTypes <: TypeList, ExpectedResponse] private[VM] (
+  case class VmOutboundEndpointFactory[OutSupportedTypes <: HList, ExpectedResponse] private[VM] (
     actorPath: String) extends EndpointFactory[VmOutboundEndpoint[OutSupportedTypes, ExpectedResponse]] {
     override def apply(f) = new VmOutboundEndpoint[OutSupportedTypes, ExpectedResponse](f, actorPath)
   }
 
-  def sink[Out](actorPath: String) = VmOutboundEndpointFactory[Out :: TypeNil, Any](actorPath)
-  def ref[Out, ExpectedResponse](actorPath: String) = VmOutboundEndpointFactory[Out :: TypeNil, ExpectedResponse](actorPath)
+  def sink[Out](actorPath: String) = VmOutboundEndpointFactory[Out :: HNil, Any](actorPath)
+  def ref[Out, ExpectedResponse](actorPath: String) = VmOutboundEndpointFactory[Out :: HNil, ExpectedResponse](actorPath)
 }
 object VM {
   def forAppContext(ac: AppContext) = new VM(ac)

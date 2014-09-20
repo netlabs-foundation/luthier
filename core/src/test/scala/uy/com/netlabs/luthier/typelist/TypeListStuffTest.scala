@@ -32,6 +32,7 @@ package uy.com.netlabs.luthier
 package typelist
 
 import org.scalatest.FunSpec
+import shapeless._
 import testing.TestUtils
 
 class TypeListStuffTest extends FunSpec {
@@ -40,15 +41,15 @@ class TypeListStuffTest extends FunSpec {
   type Aliased = List[String]
 
   trait TraitA {
-    type B = String :: Long :: List[String] :: TypeNil
+    type B = String :: Long :: List[String] :: HNil
   }
   import descriptor.universe._
   describe("TypeListDescriptor") {
     it("should produce the list of types") {
-      assert(descriptor.describe[Int :: Long :: String :: TypeNil].size === 3)
+      assert(descriptor.describe[Int :: Long :: String :: HNil].size === 3)
     }
     it("Should resolve aliases") {
-      assert(descriptor.describe[Aliased :: TypeNil].head === typeOf[Aliased].dealias)
+      assert(descriptor.describe[Aliased :: HNil].head === typeOf[Aliased].dealias)
     }
     it("It should handle reified types") {
       val List(str, lng, listStr) = descriptor.describe[TraitA#B]
@@ -57,23 +58,23 @@ class TypeListStuffTest extends FunSpec {
       assert(listStr =:= typeOf[List[String]])
     }
     it("should handle reified types 2") {
-      val List(a, b) = descriptor.describe[({ type TL = Int :: Option[Long] :: TypeNil })#TL]
+      val List(a, b) = descriptor.describe[({ type TL = Int :: Option[Long] :: HNil })#TL]
       assert(a =:= typeOf[Int])
       assert(b =:= typeOf[Option[Long]])
     }
   }
-  def myMethod[A](implicit ev: Contained[String :: Int :: TypeNil, A]) = "good"
+  def myMethod[A](implicit ev: Contained[String :: Int :: HNil, A]) = "good"
 
   describe("TypeSelectorImplicits") {
     it("should fail for direct implicit searchs of contained") {
-      val err = TestUtils.materializeTypeError("implicitly[Contained[String :: Int :: TypeNil, Long]]")
+      val err = TestUtils.materializeTypeError("implicitly[Contained[String :: Int :: HNil, Long]]")
       assert(err === """Long is not contained in [
   String,
   Int
 ]""")
     }
     it("should fail for direct implicit search of TypeSupportedByTransport") {
-      val err = TestUtils.materializeTypeError("implicitly[TypeSupportedByTransport[String :: Int :: TypeNil, Long]]")
+      val err = TestUtils.materializeTypeError("implicitly[TypeSupportedByTransport[String :: Int :: HNil, Long]]")
       assert(err === """This transport does not support messages with payload Long. Supported types are [
   String,
   Int
@@ -87,7 +88,7 @@ class TypeListStuffTest extends FunSpec {
 ]""")
     }
     it("should fail for classes constructors requiring a typeselector") {
-      val err = TestUtils.materializeTypeError("""new OneOf[String, Int :: Long :: TypeNil]("a")""")
+      val err = TestUtils.materializeTypeError("""new OneOf[String, Int :: Long :: HNil]("a")""")
       assert(err === """String is not contained in [
   Int,
   Long
@@ -95,7 +96,7 @@ class TypeListStuffTest extends FunSpec {
     }
   }
 
-  type TL = Int :: Long :: String :: TypeNil
+  type TL = Int :: Long :: String :: HNil
   def withOneOf[T](v: OneOf[T, TL]): Seq[T] = {
     val err = TestUtils.materializeTypeError("""
 		  v match_ {

@@ -32,6 +32,7 @@ package uy.com.netlabs.luthier
 
 import language.experimental.macros
 import typelist._
+import shapeless._
 import scala.concurrent._
 import scala.reflect.macros.blackbox.Context
 
@@ -51,7 +52,7 @@ private[luthier] class FlowMacros(val c: Context { type PrefixType <: Flow }) {
     reify(selectMessage.splice)
   }
 
-  def errorForLogicResultImpl[TL <: TypeList](a: c.Expr[Any]): c.Expr[Future[Message[OneOf[_, TL]]]] = {
+  def errorForLogicResultImpl[TL <: HList](a: c.Expr[Any]): c.Expr[Future[Message[OneOf[_, TL]]]] = {
     val expectedType = c.macroApplication.tpe
     val typeList = expectedType.baseType(symbolOf[Future[_]]).typeArgs.head.baseType(symbolOf[Message[_]]).typeArgs.head.baseType(symbolOf[OneOf[_, _]]).typeArgs.tail.head
 
@@ -60,7 +61,7 @@ private[luthier] class FlowMacros(val c: Context { type PrefixType <: Flow }) {
       s"Expected a Message[T] or a Future[Message[T]] where T can be any of ${types.mkString("[\n    ", "\n    ", "\n  ]")}")
   }
 
-  def errorForMessage[TL <: TypeList](a: c.Expr[Any]): c.Expr[Message[OneOf[_, TL]]] = {
+  def errorForMessage[TL <: HList](a: c.Expr[Any]): c.Expr[Message[OneOf[_, TL]]] = {
     val typeList = c.macroApplication.tpe.baseType(symbolOf[Message[_]]).typeArgs.head.baseType(symbolOf[OneOf[_, _]]).typeArgs.tail.head
 
     val types = descriptor.describe(c.TypeTag(typeList).asInstanceOf[descriptor.universe.TypeTag[TL]])
@@ -68,7 +69,7 @@ private[luthier] class FlowMacros(val c: Context { type PrefixType <: Flow }) {
       s"Expected a Message[T] where T can be any of ${types.mkString("[\n    ", "\n    ", "\n  ]")}")
   }
 
-  def errorForOneOf[TL <: TypeList](a: Tree): Tree = {
+  def errorForOneOf[TL <: HList](a: Tree): Tree = {
     val typeList = c.macroApplication.tpe.baseType(symbolOf[OneOf[_, _]]).typeArgs.tail.head
 
     val types = descriptor.describe(c.TypeTag(typeList).asInstanceOf[descriptor.universe.TypeTag[TL]])

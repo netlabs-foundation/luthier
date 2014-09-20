@@ -37,6 +37,7 @@ import akka.routing.RoundRobinPool
 import akka.event.LoggingAdapter
 import scala.concurrent.{ ExecutionContext, Promise, Future, duration }, duration._
 import scala.util._
+import shapeless._
 import typelist._
 
 /**
@@ -118,15 +119,15 @@ trait Flow extends FlowPatterns with Disposable with ErrorReportingImplicits {
     this
   }
 
-  implicit def value2OneOf[R, TL <: TypeList](r: R)(implicit ev: Contained[TL, R]): OneOf[R, TL] = new OneOf[R, TL](r)
+  implicit def value2OneOf[R, TL <: HList](r: R)(implicit ev: Contained[TL, R]): OneOf[R, TL] = new OneOf[R, TL](r)
   
-  implicit def message2LogicResult[R, TL <: TypeList](m: Message[R])(implicit ev: Contained[TL, R]): Future[Message[OneOf[R, TL]]] =
+  implicit def message2LogicResult[R, TL <: HList](m: Message[R])(implicit ev: Contained[TL, R]): Future[Message[OneOf[R, TL]]] =
     Future.successful(m.map(r => new OneOf[R, TL](r)))
 
-  implicit def message2OneOf[R, TL <: TypeList](m: Message[R])(implicit ev: Contained[TL, R]): Message[OneOf[R, TL]] =
+  implicit def message2OneOf[R, TL <: HList](m: Message[R])(implicit ev: Contained[TL, R]): Message[OneOf[R, TL]] =
     m.map(r => new OneOf[R, TL](r))
 
-  implicit def futureMessage2LogicResult[R, TL <: TypeList](f: Future[Message[R]])(implicit ev: Contained[TL, R]): Future[Message[OneOf[R, TL]]] =
+  implicit def futureMessage2LogicResult[R, TL <: HList](f: Future[Message[R]])(implicit ev: Contained[TL, R]): Future[Message[OneOf[R, TL]]] =
     f.map(_.map(r => new OneOf[R, TL](r)))(rawWorkerActorsExecutionContext)
 
   type Logic <: RootMessage[this.type] => LogicResult
@@ -291,11 +292,11 @@ trait Flow extends FlowPatterns with Disposable with ErrorReportingImplicits {
 
 trait ErrorReportingImplicits { self: Flow =>
   
-  implicit def errorForLogicResult[TL <: TypeList](a: Any): Future[Message[OneOf[_, TL]]] = macro FlowMacros.errorForLogicResultImpl[TL]
+  implicit def errorForLogicResult[TL <: HList](a: Any): Future[Message[OneOf[_, TL]]] = macro FlowMacros.errorForLogicResultImpl[TL]
 
-  implicit def errorForMessage[TL <: TypeList](a: Any): Message[OneOf[_, TL]] = macro FlowMacros.errorForMessage[TL]
+  implicit def errorForMessage[TL <: HList](a: Any): Message[OneOf[_, TL]] = macro FlowMacros.errorForMessage[TL]
 
-  //implicit def errorForOneOf[TL <: TypeList](a: Any): OneOf[_, TL] = macro FlowMacros.errorForOneOf[TL]
+  //implicit def errorForOneOf[TL <: HList](a: Any): OneOf[_, TL] = macro FlowMacros.errorForOneOf[TL]
 }
 
 
