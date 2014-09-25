@@ -29,8 +29,8 @@ object CocoonBuild extends Build {
       "-unchecked",
       "-deprecation",
       "-Yinfer-argument-types",
-      "-Ybackend:GenBCode",
-      "-Ydelambdafy:method"
+      "-Ybackend:GenBCode"
+      //"-Ydelambdafy:method"
       //"-Xlog-implicits"
     ),
     scalacOptions in Compile in doc ++= Seq(

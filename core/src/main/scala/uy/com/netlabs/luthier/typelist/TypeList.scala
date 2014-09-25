@@ -34,6 +34,7 @@ import language.{ higherKinds, implicitConversions }
 import language.experimental.macros
 import scala.reflect.api.{ Universe, TypeTags, Types }
 import shapeless._
+import scala.annotation.implicitNotFound
 
 object TypeList {
   class TypeListDescriptor(val universe: Universe) {
@@ -57,31 +58,97 @@ object TypeList {
   }
 }
 
-sealed trait ErrorSelectorImplicits[Selector[TL <: HList, A]] {
-  self: TypeSelectorImplicits[Selector] =>
-  implicit def noContains[TL <: HList, A]: Selector[TL, A] = macro TypeSelectorImplicits.noSelectorErrorImpl[Selector, TL, A]
+@implicitNotFound("Could not prove that type ${T} can be a ${T2}")
+trait CanBe[T, T2]
+object CanBe {
+  implicit def equalsCanBe[T]: CanBe[T, T] = null
+  implicit def bytesCanBeBoxed: CanBe[Byte, java.lang.Byte] = null
+  implicit def shortsCanBeBoxed: CanBe[Short, java.lang.Short] = null
+  implicit def intsCanBeBoxed: CanBe[Int, java.lang.Integer] = null
+  implicit def longsCanBeBoxed: CanBe[Long, java.lang.Long] = null
+  implicit def floatsCanBeBoxed: CanBe[Float, java.lang.Float] = null
+  implicit def doublesCanBeBoxed: CanBe[Double, java.lang.Double] = null
+  implicit def charsCanBeBoxed: CanBe[Char, java.lang.Character] = null
+  implicit def BytesCanBeUnboxed: CanBe[java.lang.Byte, Byte] = null
+  implicit def ShortsCanUnboxed: CanBe[java.lang.Short, Short] = null
+  implicit def IntsCanBeUnboxed: CanBe[java.lang.Integer, Int] = null
+  implicit def LongsCanUnbeBoxed: CanBe[java.lang.Long, Long] = null
+  implicit def FloatsCanBeUnboxed: CanBe[java.lang.Float, Float] = null
+  implicit def DoublesCanBeUnboxed: CanBe[java.lang.Double, Double] = null
+  implicit def CharsCanBeUnboxed: CanBe[java.lang.Character, Char] = null
+}
+
+/**
+ * Special type that accomplishes negation.
+ * Usage as (for example is you want to exclude Nothing):
+ * {{{ def myMethod[T](implicit ev: CanBe[T, T IsNot Nothing]) = ??? }}}
+ */
+trait Not[U]
+object Not {
+  implicit def tCanBeNotU[T, U]: CanBe[T, Not[U]] = null
+  implicit def tCannotBeT[T]: CanBe[T, Not[T]] = null
+  implicit def tCannotBeT2[T]: CanBe[T, Not[T]] = null
+  implicit def tCannotBeU[T, U](implicit ev: CanBe[T, U]): CanBe[T, Not[U]] = null
+  implicit def tCannotBeU2[T, U](implicit ev: CanBe[T, U]): CanBe[T, Not[U]] = null
+}
+
+/**
+ * Special type that accomplishes covariance with regard to two types
+ */
+trait <::<[U]
+object <::< {
+  implicit def tIsCoWithU[T <: U, U]: CanBe[T, <::<[U]] = null
+}
+
+/**
+ * Special type that accomplishes contravariance with regard to two types
+ */
+trait >::>[U]
+object >::> {
+  implicit def tIsContraWithU[T >: U, U]: CanBe[T, >::>[U]] = null
+}
+
+@implicitNotFound("The target type ${T} is not supported by this method. If you are bold, read here are the supported types\n${H}")
+trait Supported[T, H <: HList]
+object Supported extends LowPrioSupportedImplicits {
+  implicit def headIsSupported[T, H, HL <: HList](implicit canBe: CanBe[T, H]): Supported[T, H :: HL] = null
+  implicit def tailIsSupported[T, H, HL <: HList](implicit ev: Supported[T, HL]): Supported[T, H :: HL] = null
+
+  class SupportedOps[T](val t: T) extends AnyVal {
+    def math_[H <: HList](pf: PartialFunction[T, Any])(implicit ev: Supported[T, H]): Any = macro supportedDispatchBasedOnValue[T, H]
+  }
+
+  def supportedDispatchBasedOnValue[T, H <: HList](c: scala.reflect.macros.whitebox.Context { type PrefixType = SupportedOps[T] })(pf: c.Tree)(ev: c.Tree)(implicit tEv: c.WeakTypeTag[T], hEv: c.WeakTypeTag[H]): c.Tree = {
+    import c.universe._
+    new Macros[c.type](c).matchImpl(q"${c.prefix.tree}.t")(pf)(tEv.tpe, hEv.tpe)
+  }
+  def notSupportedImpl[T, HL <: HList](c: scala.reflect.macros.blackbox.Context)(implicit tEv: c.WeakTypeTag[T], hlEv: c.WeakTypeTag[HL]): c.Tree = {
+    new Macros[c.type](c).noSelectorErrorImpl(None, tEv.tpe, hlEv.tpe)
+  }
+}
+private[typelist] trait LowPrioSupportedImplicits {
+  implicit def notSupported[T, HL <: HList]: Supported[T, HL] = macro Supported.notSupportedImpl[T, HL]
+
+}
+
+sealed trait ErrorSelectorImplicits[Selector[TL <: HList, A]] { self: TypeSelectorImplicits[Selector] =>
+  
+  // aux is a hack to force the type inferencer to bind the HList before the macro, otherwise given its covariant it will pass in the most general shapeless.HList
+  implicit def noContains[T <: HList, A](implicit aux: TypeSelectorImplicits.Aux[T]): Selector[T, A] = macro TypeSelectorImplicits.noSelectorErrorImpl[Selector, T, A]
 }
 trait TypeSelectorImplicits[Selector[TL <: HList, A]] extends ErrorSelectorImplicits[Selector] {
-  implicit def select[TL <: HList, A](implicit s: shapeless.ops.hlist.Selector[TL, A]): Selector[TL, A] = null.asInstanceOf[Selector[TL, A]]
+  implicit def select[H <: HList, T](implicit supp: Supported[T, H]): Selector[H, T] = null.asInstanceOf[Selector[H, T]]
 }
 object TypeSelectorImplicits {
   import scala.reflect.macros.blackbox.Context
-  def noSelectorErrorImpl[Selector[_ <: HList, _], T <: HList, A](c: Context)(
-    implicit selectorEv: c.WeakTypeTag[Selector[T, A]], tEv: c.WeakTypeTag[T], aEv: c.WeakTypeTag[A]): c.Expr[Selector[T, A]] = {
-    import c.universe._
-    // detect the typelist that we are searching a selector for
-    val TypeRef(_, _, List(typelist, element)) = c.macroApplication.tpe.baseType(selectorEv.tpe.typeSymbol)
-    val typelistDescriptor = new TypeList.TypeListDescriptor(c.universe)
-    val types = typelistDescriptor.describe(c.TypeTag(typelist).asInstanceOf[typelistDescriptor.universe.TypeTag[T]])
-    val typesDescription = types.mkString("[\n  ", ",\n  ", "\n]")
-    val failError = selectorEv.tpe.typeSymbol.annotations.find(a => a.tree.tpe =:= typeOf[scala.annotation.implicitNotFound]) map { a =>
-      val List(Literal(Constant(msg: String))) = a.tree.children.tail
-      val (List(tl), List(e)) = selectorEv.tpe.typeParams partition { tp => tp.asType.toType <:< typeOf[HList] }
-      msg.replace("${" + e.name.toString + '}', element.dealias.toString).
-        replace("${" + tl.name.toString + '}', typesDescription)
-    } getOrElse s"Type ${aEv.tpe} was not found in typelist $typesDescription"
+  sealed trait Aux[T]
+  implicit def aux[T]: Aux[T] = null
 
-    c.abort(c.enclosingPosition, failError)
+  def noSelectorErrorImpl[Selector[_ <: HList, _], T <: HList, A](c: Context)(aux: c.Tree)(
+    implicit selectorEv: c.WeakTypeTag[Selector[_, _]], aEv: c.WeakTypeTag[A], tEv: c.WeakTypeTag[T]): c.Tree = {
+    import c.universe._
+    val List(typelist, element) = c.macroApplication.tpe.typeArgs.map(_.dealias)
+    new Macros[c.type](c).noSelectorErrorImpl(Some(selectorEv.tpe), element, typelist)
   }
 }
 
@@ -92,49 +159,25 @@ object Contained extends TypeSelectorImplicits[Contained]
 class OneOf[+E, TL <: HList](_value: E)(implicit contained: Contained[TL, E]) {
   val unsafeValue = _value
   def value(implicit ev: OneOf.TypeListHasSizeOne[TL]): ev.TheType = unsafeValue.asInstanceOf[ev.TheType]
-  
+
   override def toString = "OneOf(" + unsafeValue + ")"
   def valueAs[T](implicit contained: Contained[TL, T]) = unsafeValue.asInstanceOf[T]
   def match_(f: PartialFunction[E, Any]): Any = macro OneOf.dispatchMacro[E, TL]
 
 }
 object OneOf {
-  
+
   @annotation.implicitNotFound("This OneOf has more than one possible type ${T}, you should be using method match_ to properly evaluate the value")
   trait TypeListHasSizeOne[T <: HList] { type TheType }
-  implicit def typeListHasSizeOne[H]: TypeListHasSizeOne[H :: HNil] {type TheType = H} = null
-  
+  implicit def typeListHasSizeOne[H]: TypeListHasSizeOne[H :: HNil] { type TheType = H } = null
+
   implicit def oneOfSingleType2Type[H](o: OneOf[_, H :: HNil]): H = o.value
-  
+
   import scala.reflect.macros.whitebox.Context
   def dispatchMacro[E, TL <: HList](c: Context { type PrefixType = OneOf[E, TL] })(
-		  f: c.Tree)(implicit eEv: c.WeakTypeTag[E], tlEv: c.WeakTypeTag[TL]): c.Tree = {
+    f: c.Tree)(implicit eEv: c.WeakTypeTag[E], tlEv: c.WeakTypeTag[TL]): c.Tree = {
     import c.universe._
-//    println(f)
-    val casesAst = f.collect {
-      case q"{case ..$cases}" => cases
-    }.flatten
-
-    val typeListDescriptor = new TypeList.TypeListDescriptor(c.universe)
-    val typesInListAsStr = typeListDescriptor.describe(c.TypeTag(tlEv.tpe).asInstanceOf[typeListDescriptor.universe.TypeTag[TL]])
-    
-    //validate that every pattern is contained in the type list and accumulate the case result type
-    val casesMappedTypes = casesAst map { caseAst =>
-      //      println(s"Testing $caseAst, pat type: ${caseAst.pat.tpe}, body type: ${caseAst.body.tpe}")
-      val typeToInfer = c.typecheck(tq"_root_.uy.com.netlabs.luthier.typelist.Contained[${tlEv.tpe}, ${caseAst.pat.tpe}]", c.TYPEmode).tpe
-      lazy val typeIsContained = c.inferImplicitValue(typeToInfer, withMacrosDisabled = true)
-      if (!(caseAst.pat.tpe =:= eEv.tpe) && typeIsContained.isEmpty) {
-        c.abort(caseAst.pos, s"The pattern of a type ${caseAst.pat.tpe} is not defined in the type list with types ${typesInListAsStr.mkString(", ")}.")
-      }
-//      println("case " + caseAst.pat + " is valid in " + typeList + " proved by " + typeIsContained)
-      caseAst.body.tpe map {
-        case t if t <:< caseAst.pat.tpe => eEv.tpe
-        case other => other
-      }
-    }
-    val patternMatchRes = lub(casesMappedTypes)
-    //    println(s"Lubbing $casesMappedTypes == $patternMatchRes")
-    q"(${c.prefix.tree}.unsafeValue match { case ..$casesAst }).asInstanceOf[$patternMatchRes]"
+    new Macros[c.type](c).matchImpl(q"${c.prefix.tree}.unsafeValue")(f)(eEv.tpe, tlEv.tpe)
   }
   //  implicit def anyToOneOf[E, TL <: TypeList](e: E)(implicit contained: Contained[TL, E]) = new OneOf[E, TL](e)
 }

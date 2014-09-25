@@ -31,13 +31,13 @@
 package uy.com.netlabs.luthier
 
 import org.scalatest.FunSuite
-import typelist._
+import shapeless._
 import testing.TestUtils._
 import scala.reflect.runtime.universe
 
 class EndpointImplicitsTest extends FunSuite {
 
-  val askable: Askable { type SupportedTypes = String :: Long :: TypeNil } = null
+  val askable: Askable { type SupportedTypes = String :: Long :: HNil } = null
   if (false) { //use false so that the code is not actually executed, just typechecked
     askable.ask(null: Message[Long])
     askable.ask(null: Message[String])
@@ -52,7 +52,7 @@ class EndpointImplicitsTest extends FunSuite {
     assert(err == expectedError)
   }
 
-  val pushable: Pushable { type SupportedTypes = String :: Long :: TypeNil } = null
+  val pushable: Pushable { type SupportedTypes = String :: Long :: HNil } = null
   if (false) { //use false so that the code is not actually executed, just typechecked
     pushable.push(null: Message[Long])
     pushable.push(null: Message[String])

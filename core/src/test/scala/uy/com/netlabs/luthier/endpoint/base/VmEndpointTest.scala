@@ -34,6 +34,7 @@ package base
 
 import typelist._
 import scala.concurrent._, duration._, scala.util._
+import shapeless._
 
 class VmEndpointTest extends BaseFlowsTest {
   describe("VM endpoints") {
@@ -63,7 +64,7 @@ class VmEndpointTest extends BaseFlowsTest {
         val appContext = testApp
         val Vm = VM.forAppContext(appContext)
         val p = Promise[String]()
-        new Flow("responsible")(Vm.responsible[String, String :: TypeNil]("the-test-actor")) {
+        new Flow("responsible")(Vm.responsible[String, String :: HNil]("the-test-actor")) {
           logic { msg =>
             if (true)
               msg.map(m => "Hello " + m)

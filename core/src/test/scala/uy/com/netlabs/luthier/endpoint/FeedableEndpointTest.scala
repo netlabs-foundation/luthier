@@ -34,6 +34,7 @@ package endpoint
 import org.scalatest.{ BeforeAndAfter, FunSpec }
 import scala.concurrent._, duration._
 import typelist._
+import shapeless._
 
 class FeedableEndpointTest extends BaseFlowsTest {
   describe("FeedableEndpoints") {
@@ -41,7 +42,7 @@ class FeedableEndpointTest extends BaseFlowsTest {
       new Flows {
         val appContext = testApp
         val fakeEndpoint: EndpointFactory[Source] = new base.DummySource
-        val requestor = new FeedableEndpoint.Requestor[String, Unit :: TypeNil]()
+        val requestor = new FeedableEndpoint.Requestor[String, Unit :: HNil]()
         @volatile var toggled = false
         new Flow("test")(FeedableEndpoint.source(requestor)) {
           logic { m =>
@@ -55,7 +56,7 @@ class FeedableEndpointTest extends BaseFlowsTest {
     it("should support request-response feeding") {
       new Flows {
         val appContext = testApp
-        val requestor = new FeedableEndpoint.Requestor[String, Int :: TypeNil]()
+        val requestor = new FeedableEndpoint.Requestor[String, Int :: HNil]()
         new Flow("test")(FeedableEndpoint.responsible(requestor)) {
           logic { m => m.map(_.toInt)}
         }.start()
@@ -66,7 +67,7 @@ class FeedableEndpointTest extends BaseFlowsTest {
     it("should support returning exceptions thrown in the flow") {
       new Flows {
         val appContext = testApp
-        val requestor = new FeedableEndpoint.Requestor[String, Int :: TypeNil]()
+        val requestor = new FeedableEndpoint.Requestor[String, Int :: HNil]()
         new Flow("test")(FeedableEndpoint.responsible(requestor)) {
           logic { m => m.map(_.toInt) }
         }.start()

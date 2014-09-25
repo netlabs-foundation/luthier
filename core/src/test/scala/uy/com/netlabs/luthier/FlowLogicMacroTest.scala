@@ -34,6 +34,7 @@ import typelist._
 import testing.TestUtils
 import endpoint.base.VM
 import scala.concurrent._
+import shapeless._
 
 /**
  * This test only needs to compile, not to be run.
@@ -42,7 +43,7 @@ class FlowLogicMacroTest extends Flows {
   val appContext = AppContext.build("test")
 
   val Vm = VM.forAppContext(appContext)
-  new Flow("test")(Vm.responsible[Int, String :: Throwable :: TypeNil]("test")) {
+  new Flow("test")(Vm.responsible[Int, String :: Throwable :: HNil]("test")) {
 //    logicImpl { req =>
 //      Future.successful(OneOf("")).recover { case e => OneOf(e)}.map(v => req.map(_ => v))
 //    }
