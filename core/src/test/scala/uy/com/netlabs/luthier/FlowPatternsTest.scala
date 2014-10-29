@@ -30,6 +30,7 @@
  */
 package uy.com.netlabs.luthier
 
+import typelist._
 import shapeless._
 import scala.concurrent._, duration._
 
@@ -79,7 +80,7 @@ class FlowPatternsTest extends endpoint.BaseFlowsTest {
   def pagingFlow(flows: Flows, throwExceptionOnIndexOutOfBound: Boolean): Flow = {
     import flows._
     val Vm = endpoint.base.VM.forAppContext(appContext)
-    new Flow("paging endpoint")(Vm.responsible[java.lang.Integer, Seq[Person] :: HNil]("pagingEndpoint")) {
+    new Flow("paging endpoint")(Vm.responsible[java.lang.Integer, <::<[Seq[Person]] :: HNil]("pagingEndpoint")) {
       logic {in =>
         if (in.payload >= 10) {
           if (throwExceptionOnIndexOutOfBound) throw new Exception("Invalid index exception")

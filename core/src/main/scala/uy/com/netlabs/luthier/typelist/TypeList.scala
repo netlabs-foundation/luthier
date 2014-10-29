@@ -55,6 +55,8 @@ object TypeList {
       }
       describe(tl.tpe)
     }
+
+    def describeAsString[TL <: HList](implicit tl: TypeTag[TL]): List[String] = describe[TL].map(_.toString.replace("uy.com.netlabs.luthier.typelist.", ""))
   }
 }
 
@@ -108,7 +110,7 @@ object >::> {
   implicit def tIsContraWithU[T >: U, U]: CanBe[T, >::>[U]] = null
 }
 
-@implicitNotFound("The target type ${T} is not supported by this method. If you are bold, read here are the supported types\n${H}")
+@implicitNotFound("${T} is not compatible with the specified typelist:\n${H}")
 trait Supported[T, H <: HList]
 object Supported extends LowPrioSupportedImplicits {
   implicit def headIsSupported[T, H, HL <: HList](implicit canBe: CanBe[T, H]): Supported[T, H :: HL] = null
@@ -132,7 +134,7 @@ private[typelist] trait LowPrioSupportedImplicits {
 }
 
 sealed trait ErrorSelectorImplicits[Selector[TL <: HList, A]] { self: TypeSelectorImplicits[Selector] =>
-  
+
   // aux is a hack to force the type inferencer to bind the HList before the macro, otherwise given its covariant it will pass in the most general shapeless.HList
   implicit def noContains[T <: HList, A](implicit aux: TypeSelectorImplicits.Aux[T]): Selector[T, A] = macro TypeSelectorImplicits.noSelectorErrorImpl[Selector, T, A]
 }
@@ -152,6 +154,9 @@ object TypeSelectorImplicits {
   }
 }
 
+/**
+ * Simple generic contained typeselector, note that it doesn't add much with respect to simply using Supported.
+ */
 @annotation.implicitNotFound("${E} is not contained in ${TL}")
 trait Contained[-TL <: HList, E] //declared TL as contravariant, to deal with java generics.
 object Contained extends TypeSelectorImplicits[Contained]
@@ -177,7 +182,7 @@ object OneOf {
   def dispatchMacro[E, TL <: HList](c: Context { type PrefixType = OneOf[E, TL] })(
     f: c.Tree)(implicit eEv: c.WeakTypeTag[E], tlEv: c.WeakTypeTag[TL]): c.Tree = {
     import c.universe._
-    new Macros[c.type](c).matchImpl(q"${c.prefix.tree}.unsafeValue")(f)(eEv.tpe, tlEv.tpe)
+    new Macros[c.type](c).matchImpl(q"${c.prefix.tree}.unsafeValue")(f)(eEv.tpe.dealias, tlEv.tpe.dealias)
   }
   //  implicit def anyToOneOf[E, TL <: TypeList](e: E)(implicit contained: Contained[TL, E]) = new OneOf[E, TL](e)
 }

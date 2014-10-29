@@ -56,7 +56,7 @@ private[luthier] class FlowMacros(val c: Context { type PrefixType <: Flow }) {
     val expectedType = c.macroApplication.tpe
     val typeList = expectedType.baseType(symbolOf[Future[_]]).typeArgs.head.baseType(symbolOf[Message[_]]).typeArgs.head.baseType(symbolOf[OneOf[_, _]]).typeArgs.tail.head
 
-    val types = descriptor.describe(c.TypeTag(typeList).asInstanceOf[descriptor.universe.TypeTag[TL]])
+    val types = descriptor.describeAsString(c.TypeTag(typeList).asInstanceOf[descriptor.universe.TypeTag[TL]])
     c.abort(a.tree.pos, s"Invalid response type for the flow.\n  Found: ${a.tree.tpe}\n  " +
       s"Expected a Message[T] or a Future[Message[T]] where T can be any of ${types.mkString("[\n    ", "\n    ", "\n  ]")}")
   }
@@ -64,7 +64,7 @@ private[luthier] class FlowMacros(val c: Context { type PrefixType <: Flow }) {
   def errorForMessage[TL <: HList](a: c.Expr[Any]): c.Expr[Message[OneOf[_, TL]]] = {
     val typeList = c.macroApplication.tpe.baseType(symbolOf[Message[_]]).typeArgs.head.baseType(symbolOf[OneOf[_, _]]).typeArgs.tail.head
 
-    val types = descriptor.describe(c.TypeTag(typeList).asInstanceOf[descriptor.universe.TypeTag[TL]])
+    val types = descriptor.describeAsString(c.TypeTag(typeList).asInstanceOf[descriptor.universe.TypeTag[TL]])
     c.abort(a.tree.pos, s"Invalid message type for the flow.\n Found: ${a.tree.tpe}\n " +
       s"Expected a Message[T] where T can be any of ${types.mkString("[\n    ", "\n    ", "\n  ]")}")
   }
@@ -72,7 +72,7 @@ private[luthier] class FlowMacros(val c: Context { type PrefixType <: Flow }) {
   def errorForOneOf[TL <: HList](a: Tree): Tree = {
     val typeList = c.macroApplication.tpe.baseType(symbolOf[OneOf[_, _]]).typeArgs.tail.head
 
-    val types = descriptor.describe(c.TypeTag(typeList).asInstanceOf[descriptor.universe.TypeTag[TL]])
+    val types = descriptor.describeAsString(c.TypeTag(typeList).asInstanceOf[descriptor.universe.TypeTag[TL]])
     c.abort(a.pos, s"Invalid type for the flow.\n Found: ${a.tpe}\n " +
       s"Expected one of ${types.mkString("[\n    ", "\n    ", "\n  ]")}")
   }

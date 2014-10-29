@@ -52,7 +52,7 @@ class VmEndpointTest extends BaseFlowsTest {
         }.start()
         inFlow { (f, msg) =>
           import f._
-          val dest = Vm.sink[Any]("user/VM/the-test-actor")
+          val dest = Vm.sink[<::<[Any]]("user/VM/the-test-actor")
           dest.push(msg.map(_ => 42)) //wrong message
           dest.push(msg.map(_ => "42 - hellooooooo"))
         }

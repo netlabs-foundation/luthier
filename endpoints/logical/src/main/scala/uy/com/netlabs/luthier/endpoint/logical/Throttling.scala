@@ -34,6 +34,7 @@ package endpoint
 package logical
 
 import typelist._
+import shapeless._
 import scala.concurrent._, duration._
 
 /**
@@ -120,7 +121,7 @@ object Throttling {
               Future.failed(new Exception("Message dropped"))
             case Reply(resp) =>
               log.info(s"Replying with $resp due to throttling.")
-              Future.successful(msg.map (_ => new OneOf[Any, TypeNil](resp)(null)).asInstanceOf[Res])
+              Future.successful(msg.map (_ => new OneOf[Any, HNil](resp)(null)).asInstanceOf[Res])
             case Backoff(id, f, rejectAction) => backoff(id, f, msg, rejectAction, args)
             case e@Enqueue(_, rejectAction) =>
               val res = Promise[Res]

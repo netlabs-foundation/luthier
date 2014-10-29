@@ -43,13 +43,15 @@ class FlowLogicMacroTest extends Flows {
   val appContext = AppContext.build("test")
 
   val Vm = VM.forAppContext(appContext)
-  new Flow("test")(Vm.responsible[Int, String :: Throwable :: HNil]("test")) {
-//    logicImpl { req =>
-//      Future.successful(OneOf("")).recover { case e => OneOf(e)}.map(v => req.map(_ => v))
-//    }
+  new Flow("test")(Vm.responsible[Int, String :: <::<[Throwable] :: HNil]("test")) {
     logic { req =>
+      implicitly[rootEndpoint.SupportedResponseTypes =:= InboundEndpointTpe#SupportedResponseTypes]
+      implicitly[rootEndpoint.SupportedResponseTypes =:= (String :: <::<[Throwable] :: HNil)]
+      implicitly[InboundEndpointTpe#SupportedResponseTypes =:= (String :: <::<[Throwable] :: HNil)]
+      implicitly[Supported[String, InboundEndpointTpe#SupportedResponseTypes]]
+      val v = OneOf[String, this.type]("")
       (0: Any) match {
-        case 0 => Future.successful(OneOf("")).recover { case e => OneOf(e)}.map(v => req.map(_ => v))
+        case 0 => Future.successful(OneOf("")).recover { case e => OneOf(e) }.map(v => req.map(_ => v))
         case 1 => req.map(_ => "Hi")
         case 2 => req.map(_ => new Exception("Boom"))
         case _ =>
@@ -57,24 +59,24 @@ class FlowLogicMacroTest extends Flows {
   Found: Int(4)
   Expected a Message[T] or a Future[Message[T]] where T can be any of [
     String
-    Throwable
+    <::<[Throwable]
   ]""")
           TestUtils.assertTypeErrorEquals("Future.successful(()): LogicResult")("""Invalid message type for the flow.
  Found: Unit
  Expected a Message[T] where T can be any of [
     String
-    Throwable
+    <::<[Throwable]
   ]""")
           TestUtils.assertTypeErrorEquals("Future.successful(()).map(_ => req.map(_ => 8)): LogicResult")("""Int is not contained in [
   String,
-  Throwable
+  <::<[Throwable]
 ]""")
           val f = Future.successful(3f)
           TestUtils.assertTypeErrorEquals("f: LogicResult")("""Invalid response type for the flow.
   Found: scala.concurrent.Future[Float]
   Expected a Message[T] or a Future[Message[T]] where T can be any of [
     String
-    Throwable
+    <::<[Throwable]
   ]""")
           Future.successful(req.map(_ => new Exception("Boom ")))
       }

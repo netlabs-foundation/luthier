@@ -120,7 +120,7 @@ class VM private[VM] (val appContext: AppContext) {
   class VMResponsibleEndpoint[ReqType: ClassTag, ResponseType <: HList] private[VM] (
     val flow: Flow, val actorPath: String) extends Responsible with VmInboundEndpointBase {
     type Payload = ReqType
-    type SupportedResponseTypes <: ResponseType
+    type SupportedResponseTypes = ResponseType
     val expectedTypeClass = classTag[ReqType].runtimeClass
     def newReceiverActor = new Actor {
       def receive = {
