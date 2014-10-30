@@ -137,15 +137,21 @@ trait FlowPatterns {
     }
   }
 
-  def paging[S, R](initialState: S)(pager: S => Future[Option[(R, S)]])(implicit fc: FlowRun.Any): Paging[R] = new Paging[R] {
-    private[this] var lastCall: Future[Option[(R, S)]] = null
+  /**
+   * Creates a paging using the intial state and a function that given an state, fetchs a page of data, optionally returning a new state of data.
+   * @param intialState Initial state, possibly the starting index, or whatever makes sense for your paging.
+   * @param pager Function that takes a state and optionally produces a page (if data is foud). When a page is produced, you can optionally return a new State
+   *        representing the next page, or None of there is no more pages after this one.
+   */
+  def paging[S, R](initialState: S)(pager: S => Future[Option[(R, Option[S])]])(implicit fc: FlowRun.Any): Paging[R] = new Paging[R] {
+    private[this] var lastCall: Future[Option[(R, Option[S])]] = null
     def next: Future[Option[R]] = synchronized {
       lastCall = if (lastCall == null) {
         pager(initialState)
       } else {
         lastCall.flatMap {
-          case Some((r, s)) => pager(s)
-          case None         => lastCall
+          case Some((_, Some(s))) => pager(s)
+          case other => lastCall
         }
       }
       lastCall map (_.map(_._1))
@@ -192,6 +198,13 @@ trait FlowPatterns {
     }
   }
 
+  /**
+   * Produces a Paging representation that supports indexed fetching.
+   * The initial state is whatever makes sense for the paging, often it is some kind of index.
+   * @param initialState Initial state for the paging, possible an index of some sort.
+   * @param cache Weather or not it should cache pages already accessed by index or fetch them again when requested.
+   * @param pager Function that takes the initial state and returns a function that can be queried for an index to possible obtain a Page.
+   */
   def indexedPaging[S, R](initialState: S, cache: Boolean = false)(pager: S => (Int => Future[Option[R]]))(implicit fc: FlowRun.Any): IndexedPaging[R] = new IndexedPaging[R] {
     import fc.flow._
     private[this] val retrievedPages = if (cache) new java.util.HashMap[Int, Future[Option[R]]]() else null
