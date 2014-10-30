@@ -103,7 +103,7 @@ class FlowPatternsTest extends endpoint.BaseFlowsTest {
           val ep = Vm.ref[Int, Seq[Person]]("user/VM/pagingEndpoint")
           val pages = paging(0){i => ep.ask(msg.map(_ => i)) map {
               case Message(ex: Exception) => None
-              case Message(persons) if persons.nonEmpty => Some(persons->(i+1))
+              case Message(persons) if persons.nonEmpty => Some(persons->Some(i+1))
               case _ => None
             }}
           pages.fold(Seq.empty[Person])((msg, acc) => acc ++ msg)
@@ -123,7 +123,7 @@ class FlowPatternsTest extends endpoint.BaseFlowsTest {
           implicit val fr = msg.flowRun
           val ep = Vm.ref[Int, Seq[Person]]("user/VM/pagingEndpoint")
           val pages = paging(0){i => ep.ask(msg.map(_ => i)) map {
-              case Message(persons) if persons.nonEmpty => Some(persons->(i+1))
+              case Message(persons) if persons.nonEmpty => Some(persons->Some(i+1))
               case _ => None
             }}
           pages.fold(Seq.empty[Person])((msg, acc) => acc ++ msg)
@@ -144,7 +144,7 @@ class FlowPatternsTest extends endpoint.BaseFlowsTest {
           implicit val fr = msg.flowRun
           val ep = Vm.ref[Int, Seq[Person]]("user/VM/pagingEndpoint")
           val pages = paging(0){i => lastRequestedIndex = i; ep.ask(msg.map(_ => i)) map {
-              case Message(persons) if persons.nonEmpty => Some(persons->(i+1))
+              case Message(persons) if persons.nonEmpty => Some(persons->Some(i+1))
               case _ => None
             }}
           pages.map(_ map (_.name)).next
@@ -166,7 +166,7 @@ class FlowPatternsTest extends endpoint.BaseFlowsTest {
           implicit val fr = msg.flowRun
           val ep = Vm.ref[Int, Seq[Person]]("user/VM/pagingEndpoint")
           val pages = paging(0){i => lastRequestedIndex = i; ep.ask(msg.map(_ => i)) map {
-              case Message(persons) if persons.nonEmpty => Some(persons->(i+1))
+              case Message(persons) if persons.nonEmpty => Some(persons->Some(i+1))
               case _ => None
             }}
           pages.filter(_.find(_.name endsWith "55").isDefined).next
@@ -187,7 +187,7 @@ class FlowPatternsTest extends endpoint.BaseFlowsTest {
           implicit val fr = msg.flowRun
           val ep = Vm.ref[Int, Seq[Person]]("user/VM/pagingEndpoint")
           val pages = paging(0){i => ep.ask(msg.map(_ => i)) map {
-              case Message(persons) if persons.nonEmpty => Some(persons->(i+1))
+              case Message(persons) if persons.nonEmpty => Some(persons->Some(i+1))
               case _ => None
             }}
           pages.filter(_.find(_.name.init.head == '2').isDefined).fold(Seq.empty[Person])((msg, acc) => acc ++ msg)
@@ -207,7 +207,7 @@ class FlowPatternsTest extends endpoint.BaseFlowsTest {
           implicit val fr = msg.flowRun
           val ep = Vm.ref[Int, Seq[Person]]("user/VM/pagingEndpoint")
           val pages = paging(0){i => ep.ask(msg.map(_ => i)) map {
-              case Message(persons) if persons.nonEmpty => Some(persons->(i+1))
+              case Message(persons) if persons.nonEmpty => Some(persons->Some(i+1))
               case _ => None
             }}
           pages.map(_.filter(_.name endsWith "5")).fold(Seq.empty[Person])((msg, acc) => acc ++ msg)
@@ -227,7 +227,7 @@ class FlowPatternsTest extends endpoint.BaseFlowsTest {
           implicit val fr = msg.flowRun
           val ep = Vm.ref[Int, Seq[Person]]("user/VM/pagingEndpoint")
           val pages = paging(0){i => ep.ask(msg.map(_ => i)) map {
-              case Message(persons) if persons.nonEmpty => Some(persons->(i+1))
+              case Message(persons) if persons.nonEmpty => Some(persons->Some(i+1))
               case _ => None
             }}
           pages.flatMap(s => Future.successful(s.filter(_.name endsWith "5"))).fold(Seq.empty[Person])((msg, acc) => acc ++ msg)
