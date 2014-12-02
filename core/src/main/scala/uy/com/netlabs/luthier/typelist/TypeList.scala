@@ -163,7 +163,7 @@ object Contained extends TypeSelectorImplicits[Contained]
 
 class OneOf[+E, TL <: HList](_value: E)(implicit contained: Contained[TL, E]) {
   val unsafeValue = _value
-  def value(implicit ev: OneOf.TypeListHasSizeOne[TL]): ev.TheType = unsafeValue.asInstanceOf[ev.TheType]
+  def value[Out](implicit ev: OneOf.TypeListHasSizeOne[TL, Out]): Out = unsafeValue.asInstanceOf[Out]
 
   override def toString = "OneOf(" + unsafeValue + ")"
   def valueAs[T](implicit contained: Contained[TL, T]) = unsafeValue.asInstanceOf[T]
@@ -173,8 +173,8 @@ class OneOf[+E, TL <: HList](_value: E)(implicit contained: Contained[TL, E]) {
 object OneOf {
 
   @annotation.implicitNotFound("This OneOf has more than one possible type ${T}, you should be using method match_ to properly evaluate the value")
-  trait TypeListHasSizeOne[T <: HList] { type TheType }
-  implicit def typeListHasSizeOne[H]: TypeListHasSizeOne[H :: HNil] { type TheType = H } = null
+  trait TypeListHasSizeOne[T <: HList, TheType]
+  implicit def typeListHasSizeOne[H]: TypeListHasSizeOne[H :: HNil, H] = null
 
   implicit def oneOfSingleType2Type[H](o: OneOf[_, H :: HNil]): H = o.value
 
@@ -185,4 +185,5 @@ object OneOf {
     new Macros[c.type](c).matchImpl(q"${c.prefix.tree}.unsafeValue")(f)(eEv.tpe.dealias, tlEv.tpe.dealias)
   }
   //  implicit def anyToOneOf[E, TL <: TypeList](e: E)(implicit contained: Contained[TL, E]) = new OneOf[E, TL](e)
+  def unapply[E, TL <: HList](o: OneOf[E, TL]): Option[E] = Some(o.unsafeValue)
 }
