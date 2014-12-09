@@ -193,7 +193,7 @@ object Http {
             case Failure(ex) =>
               log.error(ex, "Unexpected exception in code handling request")
               req.respond(InternalServerError ~> ResponseString(ex.toString))
-          }(flow.workerActorsExecutionContext)
+          }(flow.rawWorkerActorsExecutionContext)
         } catch {case ex: Throwable => log.error(ex, "Could not process message"); throw ex}
       }
     }

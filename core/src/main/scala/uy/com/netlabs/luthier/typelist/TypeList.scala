@@ -66,11 +66,11 @@ object TypeList {
           }
         case other =>
           /*other match {
-            case TypeRef(p, s, a) => println(s"TypeRef($p, $s, $a) -  symbolFullName: ${s.fullName} : ${s.typeSignature.getClass}")
-              println(s"Member: " + p.memberInfo(s))
-            case _ =>
-          }
-          println(s"Other? $other - ${other.getClass}"); */List(other.toString)
+           case TypeRef(p, s, a) => println(s"TypeRef($p, $s, $a) -  symbolFullName: ${s.fullName} : ${s.typeSignature.getClass}")
+           println(s"Member: " + p.memberInfo(s))
+           case _ =>
+           }
+           println(s"Other? $other - ${other.getClass}"); */List(other.toString)
       }
     }
     disect(tl.tpe.asInstanceOf[Type])
@@ -113,7 +113,41 @@ object Contained extends TypeSelectorImplicits[Contained]
 class OneOf[+E, TL <: TypeList](val value: E)(implicit contained: Contained[TL, E]) {
   override def toString = "OneOf(" + value + ")"
   def valueAs[T](implicit contained: Contained[TL, T]) = value.asInstanceOf[T]
+  def dispatch(f: PartialFunction[E, Any]) = macro OneOf.dispatchMacro[E, TL]
+
 }
 object OneOf {
+  import scala.reflect.macros.Context
+  def dispatchMacro[E, TL <: TypeList](c: Context { type PrefixType = OneOf[E, TL]})(
+    f: c.Expr[PartialFunction[E, Any]])(implicit eEv: c.WeakTypeTag[E], tlEv: c.WeakTypeTag[TL]): c.Expr[Any] = {
+    import c.universe._
+    val typeList = tlEv.tpe.baseType(c.typeOf[_ :: _].typeSymbol)
+    //get the match AST corresponding to the partial function
+    val casesAst = f.tree.collect {
+      case DefDef(mods, name, tparams, vparamss, tpt, Match(selector, cases)) if name.toString == "applyOrElse" => cases.init //discard last case because thats the partial function synthetic default case
+    }.flatten
+
+    val typesInListAsStr = TypeList.describe(tlEv)
+    //validate that every pattern is contained in the type list and accumulate the case result type
+    val TypeRef(pre, sym, _) = typeOf[Contained[TypeNil, Any]]
+    val casesMappedTypes = casesAst map { caseAst =>
+//      println(s"Testing $caseAst, pat type: ${caseAst.pat.tpe}, body type: ${caseAst.body.tpe}")
+      if (!(caseAst.pat.tpe =:= eEv.tpe) && c.inferImplicitValue(TypeRef(pre, sym, List(typeList, caseAst.pat.tpe))).isEmpty) {
+        c.abort(caseAst.pos, s"The pattern of a type ${caseAst.pat.tpe} is not defined in the type list with types ${typesInListAsStr.mkString(", ")}.")
+      }
+      caseAst.body.tpe map {
+        case t if t <:< caseAst.pat.tpe => eEv.tpe
+        case other => other
+      }
+    }
+    val patternMatchRes = lub(casesMappedTypes)
+//    println(s"Lubbing $casesMappedTypes == $patternMatchRes")
+    val selector = reify {c.prefix.splice.value}.tree
+    val resMatch = c.Expr[Any](Match(selector, casesAst))
+    def res[LUB](implicit ev: c.WeakTypeTag[LUB]) = reify {(resMatch.splice).asInstanceOf[LUB]}
+    val r = res(c.WeakTypeTag(patternMatchRes))
+//    println(r)
+    r
+  }
 //  implicit def anyToOneOf[E, TL <: TypeList](e: E)(implicit contained: Contained[TL, E]) = new OneOf[E, TL](e)
 }

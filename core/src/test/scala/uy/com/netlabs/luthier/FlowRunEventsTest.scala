@@ -42,7 +42,6 @@ class FlowRunEventsTest extends BaseFlowsTest {
         val res = Promise[String]()
         val run = inFlow { (flow, msg) =>
           import flow._
-          import FlowRun._
           implicit val fr = msg.flowRun
           blocking { Thread.sleep(10000) }.map {_ => 
             res.tryFailure(new Exception("You shouldn't have waited for me"))

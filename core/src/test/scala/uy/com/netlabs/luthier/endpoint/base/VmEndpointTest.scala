@@ -73,7 +73,6 @@ class VmEndpointTest extends BaseFlowsTest {
         inFlow { (f, msg) =>
           import f._
           implicit val fr = msg.flowRun
-          import FlowRun._
           val dest = Vm.ref[String, String]("user/VM/the-test-actor")
           val q = dest.ask(msg.map(_ => "world"))
           q.onSuccess {case resp => p.trySuccess(resp.payload)}

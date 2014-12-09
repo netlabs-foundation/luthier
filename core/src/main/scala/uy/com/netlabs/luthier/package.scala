@@ -30,62 +30,12 @@
  */
 package uy.com.netlabs.luthier
 
-import scala.language._
-import scala.collection.mutable._
+import language.implicitConversions
+import scala.concurrent.Future
 
-/**
- * Value implicitly available during a run.
- * Useful to store run temporal information as well as a message factory.
- */
-trait FlowRun[+FlowType <: Flow] extends MessageFactory {
+object `package` {
+  implicit def workerActorsExecutionContextFromFlowRun(implicit fr: FlowRun.Any): scala.concurrent.ExecutionContext =
+    fr.flow.workerActorsExecutionContext(fr.rootMessage.asInstanceOf[RootMessage[fr.flow.type]])
 
-  /**
-   * Message that started the run, i.e.: the message declared in logic
-   */
-  val rootMessage: RootMessage[FlowType]
-  /**
-   * The flow to which this run belongs
-   */
-  val flow: FlowType
-  /**
-   * A run context to put anything you like.
-   */
-  val context: Map[Any, Any] = scala.collection.concurrent.TrieMap.empty
-
-  private[this] var afterFlowResponseReactions = Set.empty[() => Unit]
-  /**
-   * Registers a thunk to be executed after the the response of the flow is obtained.
-   * That is, if the flow is oneway, when the last line of code is executed, if the
-   * flow is request response, when the response is obtained (if the response is
-   * wrapped in a future, then it awaits for the future to complete).
-   */
-  def afterFlowResponse(code: => Unit) {
-    afterFlowResponseReactions += (() => code)
-  }
-  private[luthier] def flowResponseCompleted() {
-    for (r <- afterFlowResponseReactions) r()
-  }
-
-  private[this] var lastProducedMessage0: Message[_] = _
-  private[this] var lastReceivedMessage0: Message[_] = rootMessage
-  def lastProducedMessage: Message[_] = lastProducedMessage0
-  def lastReceivedMessage: Message[_] = lastReceivedMessage0
-  def messageSent[P](m: Message[P]) = {
-    lastProducedMessage0 = m
-    m
-  }
-  def createReceivedMessage[P](payload: P) = {
-    val res = lastProducedMessage.map(_ => payload)
-    lastProducedMessage0 = res //FIXME: not sure this makes much sense...
-    res
-  }
-
-  def apply[P](payload: P) = {
-    val res = lastReceivedMessage0.map(_ => payload)
-    lastProducedMessage0 = res
-    res
-  }
-}
-object FlowRun {
-  type Any = FlowRun[_ <: Flow]
+  implicit def pimpFutureCompanion(comp: Future.type) = util.FutureCompExt
 }

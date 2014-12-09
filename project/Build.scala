@@ -3,7 +3,7 @@ import sbt._, Keys._
 
 object CocoonBuild extends Build {
 
-  val _scalaVersion = "2.10.2"
+  val _scalaVersion = "2.10.3"
 
   val defSettings = Seq(
     version := "2.0.0-SNAPSHOT",
@@ -34,7 +34,7 @@ object CocoonBuild extends Build {
     ),
     initialCommands in console += "import uy.com.netlabs.luthier._",
     publishTo := Some(Resolver.file("file",  new File(Path.userHome.absolutePath+"/.m2/repository")))
-  ) ++ Dist.settings
+  ) ++ Dist.settings ++ org.netbeans.sbtplugin.NbPlugin.nbsettings
 
   lazy val root = Project(id = "Luthier", base = file(".")).aggregate(
     core,

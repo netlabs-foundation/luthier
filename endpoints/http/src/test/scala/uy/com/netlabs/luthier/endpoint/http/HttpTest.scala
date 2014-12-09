@@ -69,6 +69,7 @@ class HttpTest extends BaseFlowsTest {
 
         val res = inFlow { (flow, m) =>
           import flow._
+          implicit val fr = m.flowRun
           val req = url("http://www.google.com/").setFollowRedirects(true) -> new OkFunctionHandler(as.jsoup.Document)
           Await.result(Http[org.jsoup.nodes.Document]().ask(m.map(_ => req)) map { m =>
               println("Cookies: ")

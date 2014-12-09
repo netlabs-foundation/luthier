@@ -86,14 +86,14 @@ import typelist._
  */
 trait Flow extends FlowPatterns with Disposable {
   type InboundEndpointTpe <: InboundEndpoint
-  
+
   def name: String
   val appContext: AppContext
   val rootEndpoint: InboundEndpointTpe
   val log: LoggingAdapter
   var logLifecycle = true
   @volatile private[this] var instantiatedEndpoints = Map.empty[EndpointFactory[_], Endpoint]
-  
+
   def start() {
     if (logic == null) throw new IllegalStateException(s"Logic has not been defined yet for flow $name.")
     rootEndpoint.start()
@@ -114,12 +114,12 @@ trait Flow extends FlowPatterns with Disposable {
     d.onDispose(_ => dispose())
     this
   }
-  
-  
+
+
 //  implicit def genericInvalidMessage[V <: Message[_], TL <: TypeList](value: V): Future[Message[OneOf[_, TL]]] = macro Flow.genericInvalidMessageImpl[V, TL]
 //  implicit def genericInvalidFutureMessage[V <: Future[Message[_]], TL <: TypeList](value: V): Future[Message[OneOf[_, TL]]] = macro Flow.genericInvalidFutureMessageImpl[V, TL]
 //  implicit def genericInvalidResponse[V, TL <: TypeList](value: V): Future[Message[OneOf[_, TL]]] = macro Flow.genericInvalidResponseImpl[V, TL]
-  
+
   type Logic <: RootMessage[this.type] => LogicResult
   type LogicResult
   private[this] var logic: Logic = _
@@ -127,7 +127,7 @@ trait Flow extends FlowPatterns with Disposable {
     logic = l
   }
   def logic[R](l: RootMessage[this.type] => R) = macro Flow.logicMacroImpl[R, this.type]
-  
+
   private class FlowRootMessage(val peer: Message[InboundEndpointTpe#Payload]) extends RootMessage[this.type] with MessageProxy[InboundEndpointTpe#Payload] {
     val enclosingFlow: Flow.this.type = Flow.this
     val self = this
@@ -135,40 +135,26 @@ trait Flow extends FlowPatterns with Disposable {
       lazy val rootMessage = self
       val flow = enclosingFlow
     }
-    private val pendingFutures = new java.util.concurrent.atomic.AtomicInteger(0) //starts at one, representing the basic flowRun
-    def incrementPendingFutures() {
-      val i = pendingFutures.incrementAndGet()
-      log.info("Incremented pending futures to " + i)
-    }
-    def decrementPendingFutures() {
-      val curr = pendingFutures.decrementAndGet()
-      log.info("Decremented pending futures to " + curr)
-      if (curr == 0) //if reached 0 notify the flowRun that the all the flow is completed
-        flowRun.wholeFlowRunCompleted()
-    }
   }
-  
+
   def runFlow(payload: InboundEndpointTpe#Payload): Future[LogicResult] = runFlow(Message(payload))
   def runFlow(rootMessage: Message[InboundEndpointTpe#Payload]): Future[LogicResult] = {
     val enclosingFlow: this.type = this
     doWork {
       val msg = new FlowRootMessage(rootMessage)
-      msg.incrementPendingFutures()
       val res = logic(msg)
       res match {
         case res: Future[_] => //result from a Responsible
-          res.onComplete{ _ => 
+          res.onComplete{ _ =>
             msg.flowRun.flowResponseCompleted()
-            msg.decrementPendingFutures()
           }(workerActorsExecutionContext(msg))
-        case _ => 
+        case _ =>
           msg.flowRun.flowResponseCompleted()
-          msg.decrementPendingFutures()
       }
       res
     }
   }
-  
+
   implicit val self: this.type = this
   implicit def messageInLogicImplicit: RootMessage[this.type] = macro Flow.findNearestMessageMacro[this.type]
   implicit def flowRun(implicit rootMessage: RootMessage[this.type]) = rootMessage.flowRun
@@ -182,12 +168,12 @@ trait Flow extends FlowPatterns with Disposable {
         res
     }
   }
-  
+
   /**
    * Number of workers to allocate in the flow's worker pool.
    */
   var workers: Int = 5
-  
+
   protected def workerActorsReceive: akka.actor.Actor.Receive = {
     case w: Flow.Work[_] =>
       val oldContext = scala.concurrent.BlockContext.current
@@ -203,7 +189,7 @@ trait Flow extends FlowPatterns with Disposable {
       }
   }
   protected def workerActorsName = name.replace(' ', '-') + "-actors"
-  
+
   lazy val workerActors = appContext.actorSystem.actorOf(Props(new Actor {
         def receive = workerActorsReceive
       }).withRouter(RoundRobinRouter(nrOfInstances = workers)), workerActorsName)
@@ -229,27 +215,38 @@ trait Flow extends FlowPatterns with Disposable {
     appContext.actorSystem.scheduler.schedule(initialDelay, frequency)(f)(blockingExecutorContext)
   }
   /**
-   * Implicit ExecutionContext so future composition inside a flow
-   * declaration delegates work to the actors
+   * ExecutionContext that delegates work to the worker actors. Note that probably you will
+   * want the {{workerActorsExecutionContext}} instead since this execution context does not register
+   * the continuations in the flowRun.
+   * @see workerActorsExecutionContext
    */
-  implicit def workerActorsExecutionContext(implicit rm: RootMessage[this.type]): ExecutionContext = new ExecutionContext {
+  val rawWorkerActorsExecutionContext =  new ExecutionContext {
+    def execute(runnable: Runnable) { doWork(runnable.run) }
+    def reportFailure(t: Throwable) = appContext.actorSystem.log.error(t, "")
+  }
+  /**
+   * ExecutionContext for concatenation based on flowRuns. This is the execution context selected
+   * inside the logic method if none is specified (and if you are using a flow run you should always
+   * pick this one).
+   */
+  def workerActorsExecutionContext(implicit rm: RootMessage[this.type]): ExecutionContext = new ExecutionContext {
     val frm = rm.asInstanceOf[FlowRootMessage]
-    frm.incrementPendingFutures()
+    @volatile private var used = false
     def execute(runnable: Runnable) {
+      if (used) throw new IllegalStateException("A materialized worker execution context can only be used once. Instead of reutilizing it, materialize a new one")
       doWork {
-        try runnable.run
-        finally frm.decrementPendingFutures()
+        runnable.run
       }
     }
     def reportFailure(t: Throwable) = appContext.actorSystem.log.error(t, "")
   }
-   
+
   /**
    * Number of workers to allocate in the blocking workers pool.
    * Note that this threadpool is only instantiated if used by a call of blocking.
    */
   var blockingWorkers: Int = 10
-   
+
   @volatile private[this] var blockingExecutorInstantiated = false
   private lazy val blockingExecutor = {
     blockingExecutorInstantiated = true
@@ -264,7 +261,7 @@ trait Flow extends FlowPatterns with Disposable {
    * Private executor meant for IO
    */
   private lazy val blockingExecutorContext = ExecutionContext.fromExecutor(blockingExecutor)
-   
+
   /**
    * Primitive to execute blocking code asynchronously without blocking
    * the flow's worker.

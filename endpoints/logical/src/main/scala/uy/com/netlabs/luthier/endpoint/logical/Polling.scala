@@ -45,7 +45,7 @@ object Polling {
       dest.start()
       scheduledAction = flow.schedule(initialDelay, every) {
         flow.log.debug(s"Flow ${flow.name} polling")
-        implicit val ec = flow.workerActorsExecutionContext
+        implicit val ec = flow.rawWorkerActorsExecutionContext
         dest.askImpl(newReceviedMessage(message))(ev.asInstanceOf[TypeSupportedByTransport[dest.SupportedTypes, P]]) onComplete {
           case Success(response)  => messageArrived(response.asInstanceOf[Message[Payload]])
           case Failure(err) => flow.log.error(err, s"Poller ${flow.name} failed")
@@ -65,7 +65,7 @@ object Polling {
     var scheduledAction: akka.actor.Cancellable = _
     def start() {
       dest.start()
-      implicit val ec = flow.workerActorsExecutionContext
+      implicit val ec = flow.rawWorkerActorsExecutionContext
       scheduledAction = appContext.actorSystem.scheduler.schedule(initialDelay, every) {
         flow.log.debug(s"Flow ${flow.name} polling")
         dest.pull()(newReceviedMessage(())) onComplete {
