@@ -49,20 +49,33 @@ trait EndpointFactory[+E <: Endpoint] extends Equals {
 
 /* ****** Inbound endpoints ****** */
 
+/**
+ * Shared definition to all inbound endpoints.
+ */
 trait InboundEndpoint extends Endpoint {
+  /**
+   * Expected body in received messages
+   */
   type Payload <: Any
+  
+  /**
+   * Abstract definition of a Throttler. Endpoints which don't support inbound throttling will assign this to unit.
+   */
   type Throttler
 
   def throttler: Throttler = null.asInstanceOf[Throttler]
 
-  def newReceviedMessage[P](payload: P) = Message(payload)
+  /**
+   * This method is intended for InbountEndpoints to instantiate messages with received payloads.
+   */
+  protected def newReceviedMessage[P](payload: P) = Message(payload)
 }
 
 object InboundEndpoint {
   type AsOneWay[S <: Source] = Source { type Payload = S#Payload }
   type AsRequestResponse[R <: Responsible] = Responsible {
     type Payload = R#Payload
-    type SupportedResponseTypes = R#SupportedResponseTypes
+    type SupportedResponseType = R#SupportedResponseType
   }
   implicit class SelectOneWay[S <: Source](val s: S) {
     def asSource = s.asInstanceOf[AsOneWay[S]]
@@ -72,29 +85,38 @@ object InboundEndpoint {
   }
 }
 
+ /**
+  * Inbound endpoint that represents one way flows.
+  */
 trait Source extends InboundEndpoint {
   private[this] var onEventHandler0: Message[Payload] => Future[Unit] = _
   protected def onEventHandler: Message[Payload] => Future[Unit] = onEventHandler0
   def onEvent(thunk: Message[Payload] => Future[Unit]) { onEventHandler0 = thunk }
 }
 
+ /**
+  * Inbound endpoint that represents request response flows, where when a message arrives, a response is expected.
+  */
 trait Responsible extends InboundEndpoint {
-  type SupportedResponseTypes <: HList
-  private[this] var onRequestHandler0: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]] = _
-  protected def onRequestHandler: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]] = onRequestHandler0
-  def onRequest(thunk: Message[Payload] => Future[Message[OneOf[_, SupportedResponseTypes]]]) { onRequestHandler0 = thunk }
+  type SupportedResponseType
+  private[this] var onRequestHandler0: Message[Payload] => Future[Message[SupportedResponseType]] = _
+  protected def onRequestHandler: Message[Payload] => Future[Message[SupportedResponseType]] = onRequestHandler0
+  def onRequest(thunk: Message[Payload] => Future[Message[SupportedResponseType]]) { onRequestHandler0 = thunk }
 }
 
 /* ****** Outgoing endpoints ****** */
 
+ /**
+  * Type class used to check wether a type is supported by an endpoint.
+  */
 @scala.annotation.implicitNotFound("This transport does not support messages with payload ${A}. Supported types are ${TL}")
 trait TypeSupportedByTransport[TL <: HList, A]
 
 object TypeSupportedByTransport extends TypeSelectorImplicits[TypeSupportedByTransport]
 
 trait OutboundEndpoint extends Endpoint {
-  type SupportedTypes <: HList
-  type SupportedType[Payload] = TypeSupportedByTransport[SupportedTypes, Payload]
+  type SupportedType
+  type TypeIsSupported[Payload]
 }
 object OutboundEndpoint {
 }
@@ -103,15 +125,18 @@ trait Pushable extends OutboundEndpoint {
   /**
    * Macro definition for pushImpl that provides nicer error reporting, but in case it succeeds, its equivalent to just call pushImpl
    */
-  def push[Payload: SupportedType](msg: Message[Payload]): Future[Unit]
+  def push[Payload: TypeIsSupported](msg: Message[Payload]): Future[Unit]
 }
 
+ /**
+  * This endpoint represents an endpoint to which you can send a message and expect a response in exchange.
+  */
 trait Askable extends OutboundEndpoint {
   type Response <: Any
   /**
-   * Actual implementation for the ask method of the Askable endpoint.
+   * Asks the given message await at most timeOut for the response.
    */
-  def ask[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration = 10.seconds): Future[Message[Response]]
+  def ask[Payload: TypeIsSupported](msg: Message[Payload], timeOut: FiniteDuration = 10.seconds): Future[Message[Response]]
 }
 object Askable {
   //  @scala.annotation.implicitNotFound("There is no definition that states that ${Req} is replied with ${Resp}")
@@ -127,6 +152,9 @@ object Askable {
 
 /* ******* Other Endpoints ****** */
 
+ /**
+  * Base type for endpoints that are able to pull messages on demand
+  */
 trait Pullable extends Endpoint {
   type Payload <: Any
   def pull()(implicit mf: MessageFactory): Future[Message[Payload]]
