@@ -162,6 +162,7 @@ trait Contained[-TL <: HList, E] //declared TL as contravariant, to deal with ja
 object Contained extends TypeSelectorImplicits[Contained]
 
 class OneOf[+E, TL <: HList](_value: E)(implicit contained: Contained[TL, E]) {
+  type TypeList = TL
   val unsafeValue = _value
   def value[Out](implicit ev: OneOf.TypeListHasSizeOne[TL, Out]): Out = unsafeValue.asInstanceOf[Out]
 

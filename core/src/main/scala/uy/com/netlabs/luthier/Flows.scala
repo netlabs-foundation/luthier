@@ -64,10 +64,10 @@ trait Flows {
         endpoint.onEvent(flow.runFlow(_))
       }
     }
-    implicit def RequestResponse[In <: Responsible] = new ExchangePattern[In, Future[Message[OneOf[_, In#SupportedResponseTypes]]]] {
+    implicit def RequestResponse[In <: Responsible] = new ExchangePattern[In, Future[_ <: Message[In#SupportedResponseType]]] {
       private[Flows] def setup(endpoint, flow) {
-        endpoint.onRequest{m =>
-          val res = flow.runFlow(m).mapTo[Future[Message[OneOf[_, endpoint.SupportedResponseTypes]]]] //the result of running the flow is the one this is being mappedTo, but is encapsulated in the florRun future, hence, flatten it
+        endpoint.onRequest { m =>
+          val res = flow.runFlow(m).asInstanceOf[Future[Future[Message[endpoint.SupportedResponseType]]]] //the result of running the flow is the payload being mappedTo, but is encapsulated in the florRun future, hence, flatten it
           res.flatMap(identity)(flow.rawWorkerActorsExecutionContext)
         }
       }

@@ -117,10 +117,10 @@ class VM private[VM] (val appContext: AppContext) {
 
   def source[ExpectedType: ClassTag](actorPath: String) = SourceEndpointFactory[ExpectedType](actorPath)
 
-  class VMResponsibleEndpoint[ReqType: ClassTag, ResponseType <: HList] private[VM] (
+  class VMResponsibleEndpoint[ReqType: ClassTag, ResponseType] private[VM] (
     val flow: Flow, val actorPath: String) extends Responsible with VmInboundEndpointBase {
     type Payload = ReqType
-    type SupportedResponseTypes = ResponseType
+    type SupportedResponseType = ResponseType
     val expectedTypeClass = classTag[ReqType].runtimeClass
     def newReceiverActor = new Actor {
       def receive = {
@@ -138,41 +138,41 @@ class VM private[VM] (val appContext: AppContext) {
       implicit val ec = appContext.actorSystem.dispatcher
       val f = onRequestHandler(m)
       f.onComplete {
-        case Success(msg) => requestor.tell(msg.payload.unsafeValue, self)
+        case Success(msg) => requestor.tell(msg.payload, self)
         case Failure(err) => requestor.tell(err, self)
       }
       f onFailure { case ex => log.error(ex, "Error on flow " + flow) }
     }
   }
-  case class ResponsibleEndpointFactory[ReqType: ClassTag, ResponseType <: HList] private[VM] (actorPath: String) extends EndpointFactory[VMResponsibleEndpoint[ReqType, ResponseType]] {
+  case class ResponsibleEndpointFactory[ReqType: ClassTag, ResponseType] private[VM] (actorPath: String) extends EndpointFactory[VMResponsibleEndpoint[ReqType, ResponseType]] {
     override def apply(f) = new VMResponsibleEndpoint[ReqType, ResponseType](f, actorPath)
   }
 
-  def responsible[ReqType: ClassTag, ResponseType <: HList](actorPath: String) = ResponsibleEndpointFactory[ReqType, ResponseType](actorPath)
+  def responsible[ReqType: ClassTag, ResponseType](actorPath: String) = ResponsibleEndpointFactory[ReqType, ResponseType](actorPath)
 
   //////////////////////////////////////////////////////////////////////
   // Outbound endpoints
   //////////////////////////////////////////////////////////////////////
 
-  class VmOutboundEndpoint[OutSupportedTypes <: HList, ExpectedResponse] private[VM] (
+  class VmOutboundEndpoint[OutSupportedTypes, ExpectedResponse] private[VM] (
     val flow: Flow, val actorPath: String) extends Pushable with Askable {
-    override type SupportedTypes = OutSupportedTypes
+    override type SupportedType = OutSupportedTypes
     override type Response = ExpectedResponse
     protected def destActor = appContext.actorSystem.actorSelection(actorPath)
     override def start() {}
     override def dispose() {}
-    override def push[Payload: SupportedType](msg: Message[Payload]): Future[Unit] = Future.successful(destActor.tell(msg.payload, null))
-    override def ask[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
+    override def push[Payload: TypeIsSupported](msg: Message[Payload]): Future[Unit] = Future.successful(destActor.tell(msg.payload, null))
+    override def ask[Payload: TypeIsSupported](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
       akka.pattern.ask(destActor).?(msg.payload)(timeOut).map(r => msg.map(_ => r.asInstanceOf[Response]))(appContext.actorSystem.dispatcher)
     }
   }
-  case class VmOutboundEndpointFactory[OutSupportedTypes <: HList, ExpectedResponse] private[VM] (
+  case class VmOutboundEndpointFactory[OutSupportedTypes, ExpectedResponse] private[VM] (
     actorPath: String) extends EndpointFactory[VmOutboundEndpoint[OutSupportedTypes, ExpectedResponse]] {
     override def apply(f) = new VmOutboundEndpoint[OutSupportedTypes, ExpectedResponse](f, actorPath)
   }
 
-  def sink[Out](actorPath: String) = VmOutboundEndpointFactory[Out :: HNil, Any](actorPath)
-  def ref[Out, ExpectedResponse](actorPath: String) = VmOutboundEndpointFactory[Out :: HNil, ExpectedResponse](actorPath)
+  def sink[Out](actorPath: String) = VmOutboundEndpointFactory[Out, Any](actorPath)
+  def ref[Out, ExpectedResponse](actorPath: String) = VmOutboundEndpointFactory[Out, ExpectedResponse](actorPath)
 }
 object VM {
   def forAppContext(ac: AppContext) = new VM(ac)

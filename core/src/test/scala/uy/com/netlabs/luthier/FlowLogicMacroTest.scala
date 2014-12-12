@@ -43,13 +43,14 @@ class FlowLogicMacroTest extends Flows {
   val appContext = AppContext.build("test")
 
   val Vm = VM.forAppContext(appContext)
-  new Flow("test")(Vm.responsible[Int, String :: <::<[Throwable] :: HNil]("test")) {
+  new Flow("test")(Vm.responsible[Int, OneOf[_, String :: <::<[Throwable] :: HNil]]("test")) {
     logic { req =>
-      implicitly[rootEndpoint.SupportedResponseTypes =:= InboundEndpointTpe#SupportedResponseTypes]
-      implicitly[rootEndpoint.SupportedResponseTypes =:= (String :: <::<[Throwable] :: HNil)]
-      implicitly[InboundEndpointTpe#SupportedResponseTypes =:= (String :: <::<[Throwable] :: HNil)]
-      implicitly[Supported[String, InboundEndpointTpe#SupportedResponseTypes]]
-      val v = OneOf[String, this.type]("")
+      rootEndpoint
+      implicitly[rootEndpoint.SupportedResponseType =:= InboundEndpointTpe#SupportedResponseType]
+      implicitly[rootEndpoint.SupportedResponseType =:= OneOf[_, String :: <::<[Throwable] :: HNil]]
+      implicitly[InboundEndpointTpe#SupportedResponseType =:= OneOf[_, String :: <::<[Throwable] :: HNil]]
+      implicitly[Supported[String, InboundEndpointTpe#SupportedResponseType#TypeList]]
+      val v = OneOf("")
       (0: Any) match {
         case 0 => Future.successful(OneOf("")).recover { case e => OneOf(e) }.map(v => req.map(_ => v))
         case 1 => req.map(_ => "Hi")

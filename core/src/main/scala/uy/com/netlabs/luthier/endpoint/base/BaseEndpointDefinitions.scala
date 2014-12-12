@@ -90,7 +90,7 @@ trait IoExecutionContext {
  */
 trait BaseResponsible extends Responsible with IoExecutionContext {
 
-  protected def requestArrived(m: Message[Payload], messageSender: Try[Message[OneOf[_, SupportedResponseTypes]]] => Unit) {
+  protected def requestArrived(m: Message[Payload], messageSender: Try[Message[SupportedResponseType]] => Unit) {
     val f = onRequestHandler(m)
     f.onComplete(messageSender)(ioProfile.executionContext) //use ioExecutionContext to sendMessages
     f onFailure { case ex => appContext.actorSystem.log.error(ex, "Error on flow " + flow) }
@@ -118,9 +118,9 @@ trait BasePullable extends Pullable with IoExecutionContext {
  *
  */
 trait BasePushable extends Pushable with IoExecutionContext {
-  override def push[Payload: SupportedType](msg: Message[Payload]): Future[Unit] = {
+  override def push[Payload: TypeIsSupported](msg: Message[Payload]): Future[Unit] = {
     Future { pushMessage(msg) }
   }
 
-  protected def pushMessage[Payload: SupportedType](msg: Message[Payload])
+  protected def pushMessage[Payload: TypeIsSupported](msg: Message[Payload])
 }

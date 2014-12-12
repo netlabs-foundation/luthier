@@ -30,8 +30,7 @@
  */
 package uy.com.netlabs.luthier
 
-import scala.language.implicitConversions
-import language.{ experimental, existentials }, experimental._
+import language.{ experimental, existentials, higherKinds, implicitConversions }, experimental._
 import akka.actor.{ Actor, Props, Cancellable }
 import akka.routing.RoundRobinPool
 import akka.event.LoggingAdapter
@@ -121,13 +120,15 @@ trait Flow extends FlowPatterns with Disposable with ErrorReportingImplicits {
 
   implicit def value2OneOf[R, TL <: HList](r: R)(implicit ev: Contained[TL, R]): OneOf[R, TL] = new OneOf[R, TL](r)
   
-  implicit def message2LogicResult[R, TL <: HList](m: Message[R])(implicit ev: Contained[TL, R]): Future[Message[OneOf[R, TL]]] =
+  implicit def message2OneOfLogicResult[R, TL <: HList](m: Message[R])(implicit ev: Contained[TL, R]): Future[Message[OneOf[R, TL]]] =
     Future.successful(m.map(r => new OneOf[R, TL](r)))
+  
+  implicit def message2LogicResult[R](m: Message[R]): Future[Message[R]] = Future successful m
 
   implicit def message2OneOf[R, TL <: HList](m: Message[R])(implicit ev: Contained[TL, R]): Message[OneOf[R, TL]] =
     m.map(r => new OneOf[R, TL](r))
 
-  implicit def futureMessage2LogicResult[R, TL <: HList](f: Future[Message[R]])(implicit ev: Contained[TL, R]): Future[Message[OneOf[R, TL]]] =
+  implicit def futureMessage2OneOfLogicResult[R, TL <: HList](f: Future[Message[R]])(implicit ev: Contained[TL, R]): Future[Message[OneOf[R, TL]]] =
     f.map(_.map(r => new OneOf[R, TL](r)))(rawWorkerActorsExecutionContext)
 
   type Logic <: RootMessage[this.type] => LogicResult
@@ -137,11 +138,16 @@ trait Flow extends FlowPatterns with Disposable with ErrorReportingImplicits {
     logic = l
   }
   //  def logic[R](l: RootMessage[this.type] => R): Unit = macro Flow.logicMacroImpl[R, this.type]
+  
   /**
    * Validates that the passed value of type T is one of the possible response types as defined by the Responsible root endpoint and
    * wraps in a properly typed OneOf instance.
    */
-  def OneOf[T, FT <: Flow { type InboundEndpointTpe <: Responsible }](t: T)(implicit fr: FlowRun[FT], ev: Contained[FT#InboundEndpointTpe#SupportedResponseTypes, T]) = {
+  def OneOf[T, FT[PossibleResponses <: HList] <: Flow { 
+      type InboundEndpointTpe <: Responsible { 
+        type SupportedResponseType <: OneOf[_, PossibleResponses] 
+      } 
+    }, PossibleResponses <: HList](t: T)(implicit fr: FlowRun[FT[PossibleResponses]], ev: Contained[PossibleResponses, T]) = {
     new OneOf(t)(ev)
   }
 

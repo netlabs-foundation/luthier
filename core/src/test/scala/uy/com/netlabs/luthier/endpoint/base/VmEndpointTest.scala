@@ -64,7 +64,7 @@ class VmEndpointTest extends BaseFlowsTest {
         val appContext = testApp
         val Vm = VM.forAppContext(appContext)
         val p = Promise[String]()
-        new Flow("responsible")(Vm.responsible[String, String :: HNil]("the-test-actor")) {
+        new Flow("responsible")(Vm.responsible[String, String]("the-test-actor")) {
           logic { msg =>
             if (true)
               msg.map(m => "Hello " + m)
