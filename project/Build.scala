@@ -3,7 +3,7 @@ import sbt._, Keys._
 
 object CocoonBuild extends Build {
 
-  val _scalaVersion = "2.11.2"
+  val _scalaVersion = "2.11.5"
 
   val defSettings = Seq(
     version := "2.1.0-SNAPSHOT",
@@ -20,7 +20,8 @@ object CocoonBuild extends Build {
       "org.scala-lang" % "scala-reflect" % _scalaVersion,
       "org.scala-lang" % "scala-compiler" % _scalaVersion,
       "org.scalatest" %% "scalatest" % "2.1.5" % "test",
-      "org.scala-lang.modules" %% "scala-xml" % "1.0.2"
+      "org.scala-lang.modules" %% "scala-xml" % "1.0.2",
+      "org.backuity" %% "ansi-interpolator" % "1.1" % "provided"
     ),
     //incOptions := incOptions.value.withNameHashing(true),
     scalacOptions ++= Seq(

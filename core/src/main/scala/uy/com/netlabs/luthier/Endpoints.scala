@@ -119,10 +119,33 @@ trait OutboundEndpoint extends Endpoint {
   type SupportedType
   type TypeIsSupported[Payload] = OutboundEndpoint.TypeIsSupported[Payload, SupportedType]
 }
-object OutboundEndpoint {
+object OutboundEndpoint extends LowPriorityTypeIsSupportedImplicits {
   sealed trait TypeIsSupported[Type, SupportedType]
   implicit def typeIsSupportedInHList[Type, H <: HList](implicit ev: TypeSupportedByTransport[H, Type]): TypeIsSupported[Type, H] = null
   implicit def simpleTypeIsSupported[Type, SupportedType](implicit ev: CanBe[Type, SupportedType]): TypeIsSupported[Type, SupportedType] = null
+}
+trait LowPriorityTypeIsSupportedImplicits {
+  implicit def typeIsSupportedError[Type, SupportedType]: OutboundEndpoint.TypeIsSupported[Type, SupportedType] = 
+    macro LowPriorityTypeIsSupportedImplicits.typeIsSupportedErrorMacro[Type, SupportedType]
+}
+object LowPriorityTypeIsSupportedImplicits {
+  import scala.reflect.macros.blackbox.Context
+  import org.backuity.ansi.AnsiFormatter.FormattedHelper
+  
+  def typeIsSupportedErrorMacro[TheType: c.WeakTypeTag, SupportedType: c.WeakTypeTag](c: Context): c.Tree = {
+    import c.universe._
+    val typeTpe = c.weakTypeOf[TheType].dealias
+    val supportedTypeTpe = c.weakTypeOf[SupportedType].dealias
+    if (supportedTypeTpe <:< typeOf[::[_, _]]) {
+      val selectorType = weakTypeOf[TypeSupportedByTransport[_, _]].typeConstructor
+      new Macros[c.type](c).noSelectorErrorImpl(Some(selectorType), typeTpe, supportedTypeTpe)
+    } else {
+      val descriptor = new TypeList.TypeListDescriptor(c.universe)
+      val description = descriptor.describeAsString(c.TypeTag(supportedTypeTpe).asInstanceOf[descriptor.universe.TypeTag[_]]).head
+      
+      c.abort(c.enclosingPosition, s"Could not prove that type $typeTpe can be a $description")
+    }
+  }
 }
 
 trait Pushable extends OutboundEndpoint {

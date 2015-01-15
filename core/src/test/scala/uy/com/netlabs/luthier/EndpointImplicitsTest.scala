@@ -31,7 +31,7 @@
 package uy.com.netlabs.luthier
 
 import org.scalatest.FunSuite
-import shapeless._
+import shapeless._, typelist._
 import testing.TestUtils._
 import scala.reflect.runtime.universe
 
@@ -60,5 +60,15 @@ class EndpointImplicitsTest extends FunSuite {
   test("Non supported type should be rejected by sink") {
     val err = materializeTypeError("pushable.push(null: Message[Int])") stripSuffix suffix
     assert(err == expectedError)
+  }
+  
+  val pushable2: Pushable { type SupportedType = <::<[AnyVal] } = null
+  if (false) { //use false so that the code is not actually executed, just typechecked
+    pushable2.push(null: Message[Long])
+    pushable2.push(null: Message[Int])
+  }
+  test("Non supported type should be rejected by sink 2") {
+    val err = materializeTypeError("pushable2.push(null: Message[String])") stripSuffix suffix
+    assert(err == "Could not prove that type String can be a <::<[AnyVal]")
   }
 }

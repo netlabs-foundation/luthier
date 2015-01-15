@@ -42,7 +42,7 @@ object TypeList {
     val ConsType = typeOf[::[_, _]]
     val NilType = typeOf[HNil]
 
-    def describe[TL <: HList](implicit tl: TypeTag[TL]): List[Type] = {
+    def describe[TL](implicit tl: TypeTag[TL]): List[Type] = {
       def describe(t: Type): List[Type] = {
         val t2 = t.dealias
         if (t2 == NilType) Nil
@@ -56,7 +56,7 @@ object TypeList {
       describe(tl.tpe)
     }
 
-    def describeAsString[TL <: HList](implicit tl: TypeTag[TL]): List[String] = describe[TL].map(_.toString.replace("uy.com.netlabs.luthier.typelist.", ""))
+    def describeAsString[TL](implicit tl: TypeTag[TL]): List[String] = describe[TL].map(_.toString.replace("uy.com.netlabs.luthier.typelist.", ""))
   }
 }
 

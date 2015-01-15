@@ -4,7 +4,7 @@ import language.higherKinds
 import scala.reflect.macros.blackbox.Context
 import shapeless.HList
 
-private[typelist] class Macros[C <: Context](val c: C) {
+private[luthier] class Macros[C <: Context](val c: C) {
   import c.universe._
 
   def matchImpl[T, TL <: HList](value: c.Tree)(partialFunction: c.Tree)(valueType: c.Type, hlistType: c.Type): c.Tree = {
