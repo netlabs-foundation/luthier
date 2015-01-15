@@ -40,8 +40,6 @@ import scala.util._
 import scala.concurrent._, duration._
 import language._
 
-import typelist._
-
 object Udp {
   /**
    * Simple Udp client.

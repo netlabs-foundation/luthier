@@ -90,7 +90,6 @@ class ChannelMultiplexer(val key: SelectionKey,
       }
       if (key.isWritable()) {
         var canWrite = true
-        sendPending
         debug("Start writing")
         while (canWrite && sendPending.nonEmpty) {
           val (h, t) = (sendPending.head, sendPending.tail)

@@ -41,8 +41,6 @@ import scala.util._
 import scala.concurrent._, duration._
 import language._
 
-import typelist._
-
 object Sctp extends StreamEndpointServerComponent {
 
   protected type ClientType = SctpClient
@@ -119,7 +117,6 @@ object Sctp extends StreamEndpointServerComponent {
         }
         if (key.isWritable()) {
           var canWrite = true
-          sendPending
           debug("Start writing")
           while (canWrite && sendPending.nonEmpty) {
             val ((stream, buffer), t) = (sendPending.head, sendPending.tail)
@@ -161,10 +158,10 @@ object Sctp extends StreamEndpointServerComponent {
                                         val streamId: Int,
                                         val reader: Consumer[S, P],
                                         val serializer: R => Array[Byte],
-                                       val onReadWaitAction: ReadWaitAction[S, P]) extends HandlerComponent[S, P, R, (Int, R) :: TypeNil] {
+                                       val onReadWaitAction: ReadWaitAction[S, P]) extends HandlerComponent[S, P, R, (Int, R)] {
     def registerReader(reader) = client.readers += streamId -> reader
     def processResponseFromRequestedMessage(m) = {
-      val (stream, r) = m.payload.value.asInstanceOf[(Int, R)]
+      val (stream, r) = m.payload
       client addPending stream -> ByteBuffer.wrap(serializer(r))
     }
   }

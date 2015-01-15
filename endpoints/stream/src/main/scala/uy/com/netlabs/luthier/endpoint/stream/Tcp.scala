@@ -40,8 +40,6 @@ import scala.util._
 import scala.concurrent._, duration._
 import language._
 
-import typelist._
-
 object Tcp extends StreamEndpointServerComponent {
 
   protected type ClientType = SocketClient
@@ -89,9 +87,9 @@ object Tcp extends StreamEndpointServerComponent {
   class Handler[S, P, R] private[Tcp] (val client: SocketClient,
                                        val reader: Consumer[S, P],
                                        val serializer: R => Array[Byte],
-                                       val onReadWaitAction: ReadWaitAction[S, P]) extends HandlerComponent[S, P, R, R :: TypeNil] {
+                                       val onReadWaitAction: ReadWaitAction[S, P]) extends HandlerComponent[S, P, R, R] {
     def registerReader(reader) = client.multiplexer.readers += reader
-    def processResponseFromRequestedMessage(m) = client.multiplexer addPending ByteBuffer.wrap(serializer(m.payload.value.asInstanceOf[R]))
+    def processResponseFromRequestedMessage(m) = client.multiplexer addPending ByteBuffer.wrap(serializer(m.payload))
 
   }
   def closeClient(client: Message[SocketClient]) {

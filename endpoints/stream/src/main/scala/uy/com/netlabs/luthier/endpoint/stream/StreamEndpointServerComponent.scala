@@ -122,16 +122,16 @@ protected trait StreamEndpointServerComponent {
     }
   }
 
-  protected trait HandlerComponent[S, P, R, SRT <: TypeList] extends Source with Responsible with EndpointFactory[HandlerComponent[S, P, R, SRT]] {
+  protected trait HandlerComponent[S, P, R, SRT] extends Source with Responsible with EndpointFactory[HandlerComponent[S, P, R, SRT]] {
     //abstracts
     val client: ClientType
     val reader: Consumer[S, P]
     val onReadWaitAction: ReadWaitAction[S, P]
     def registerReader(reader: ByteBuffer => Unit): Unit
-    def processResponseFromRequestedMessage(m: Message[OneOf[_, SupportedResponseTypes]])
+    def processResponseFromRequestedMessage(m: Message[SupportedResponseType])
 
     type Payload = P
-    type SupportedResponseTypes = SRT
+    type SupportedResponseType = SRT
     implicit var flow: uy.com.netlabs.luthier.Flow = _
     private var state: S = null.asInstanceOf[S]
     @volatile private var lastScheduledOnWaitAction: akka.actor.Cancellable = _
@@ -179,7 +179,7 @@ protected trait StreamEndpointServerComponent {
 
     def canEqual(that) = that == this
 
-    def RR: EndpointFactory[Responsible {type SupportedResponseTypes = SRT; type Payload = P}] = this
+    def RR: EndpointFactory[Responsible {type SupportedResponseType = SRT; type Payload = P}] = this
     def OW: EndpointFactory[Source {type Payload = P}] = this
   }
 }

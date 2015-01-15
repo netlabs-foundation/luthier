@@ -111,14 +111,14 @@ object IO {
   }
   trait OutputChannelEndpoint extends base.BasePushable {
     type OutPayload
-    type SupportedTypes = OutPayload :: TypeNil
+    type SupportedType = OutPayload
 
     val ioWorkers: Int
     val ioProfile = base.IoProfile.threadPool(ioWorkers, flow.name + "-outputstream-ep")
 
-    def send(message: Message[OutPayload])
-    protected def pushMessage[MT: SupportedType](msg): Unit = {
-      send(msg.as[OutPayload]) //bypass creation of a contained, since the SupportedType implicit gives us that guarantee already
+    def send(message: Message[SupportedType])
+    protected def pushMessage[MT: TypeIsSupported](msg): Unit = {
+      send(msg.as[SupportedType]) //bypass creation of a contained, since the SupportedType implicit gives us that guarantee already
     }
 
     def dispose {
@@ -128,17 +128,17 @@ object IO {
 
   trait IOChannelEndpoint extends InputChannelEndpoint with OutputChannelEndpoint with base.BaseResponsible with Askable {
     type Response = Payload
-    type SupportedResponseTypes = SupportedTypes
+    type SupportedResponseType = SupportedType
 
     override protected def shouldInitialize: Boolean = onEventHandler != null || onRequestHandler != null
     override protected def handleReadMessage(m: Message[Payload]) {
       if (onEventHandler != null) onEventHandler(m)
       else onRequestHandler(m) onComplete {
-        case Success(response) => send(response.map(_.value).as)
+        case Success(response) => send(response)
         case Failure(err) => log.error(err, s"Error processing request $m")
       }
     }
-    def ask[MT](msg: Message[MT], timeOut: FiniteDuration)(implicit ev: SupportedType[MT]): Future[Message[Response]] = Future {
+    def ask[MT](msg: Message[MT], timeOut: FiniteDuration)(implicit ev: TypeIsSupported[MT]): Future[Message[Response]] = Future {
       pushMessage(msg)(ev)
       msg map (_ => syncConsumer.consume(readBytes).get)
     }(ioExecutionContext)
