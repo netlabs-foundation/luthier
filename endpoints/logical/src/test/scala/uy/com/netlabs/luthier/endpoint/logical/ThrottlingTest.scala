@@ -46,7 +46,7 @@ class ThrottlingTest extends BaseFlowsTest {
   describe("Drop action in Throttler") {
     it("should drop messages in SourceEndpoints") {
       implicit val ec = testApp.actorSystem.dispatcher
-      val requestor = new FeedableEndpoint.Requestor[String, Unit :: TypeNil]()
+      val requestor = new FeedableEndpoint.Requestor[String, Unit]()
       @volatile var neverToggles = true
       new Flows {
         val appContext = testApp
@@ -66,7 +66,7 @@ class ThrottlingTest extends BaseFlowsTest {
     }
     it("should drop messages in ResposibleEndpoints") {
       implicit val ec = testApp.actorSystem.dispatcher
-      val requestor = new FeedableEndpoint.Requestor[String, String :: TypeNil]()
+      val requestor = new FeedableEndpoint.Requestor[String, String]()
       @volatile var neverToggles = true
       new Flows {
         val appContext = testApp
@@ -89,7 +89,7 @@ class ThrottlingTest extends BaseFlowsTest {
   describe("Backoff action in Throttler") {
     it("should backoff messages in SourceEndpoints") {
       implicit val ec = testApp.actorSystem.dispatcher
-      val requestor = new FeedableEndpoint.Requestor[String, Unit :: TypeNil]()
+      val requestor = new FeedableEndpoint.Requestor[String, Unit]()
       @volatile var neverToggles = true
       val startTime = System.currentTimeMillis
       new Flows {
@@ -113,7 +113,7 @@ class ThrottlingTest extends BaseFlowsTest {
     }
     it("should backoff messages in ResponsibleEndpoints") {
       implicit val ec = testApp.actorSystem.dispatcher
-      val requestor = new FeedableEndpoint.Requestor[String, String :: TypeNil]()
+      val requestor = new FeedableEndpoint.Requestor[String, String]()
       @volatile var neverToggles = true
       val startTime = System.currentTimeMillis
       new Flows {
@@ -140,7 +140,7 @@ class ThrottlingTest extends BaseFlowsTest {
   describe("Reply action in Throttler") {
     it("should reply with the passed message") {
       implicit val ec = testApp.actorSystem.dispatcher
-      val requestor = new FeedableEndpoint.Requestor[String, String :: TypeNil]()
+      val requestor = new FeedableEndpoint.Requestor[String, String]()
       @volatile var neverToggles = true
       new Flows {
         val appContext = testApp
@@ -155,7 +155,7 @@ class ThrottlingTest extends BaseFlowsTest {
       val res = requestor.request("a")
       val answer = Await.result(res, 100.millis)
       assert(neverToggles === true, "Toggled?")
-      assert(answer.valueAs[String] === "my message is not the one you sent", "Reply?")
+      assert(answer === "my message is not the one you sent", "Reply?")
     }
   }
   describe("Enqueue action in Throttler") {
@@ -167,7 +167,7 @@ class ThrottlingTest extends BaseFlowsTest {
         def start() {}
         def disposeImpl() {}
       }
-      val requestor = new FeedableEndpoint.Requestor[String, String :: TypeNil]()
+      val requestor = new FeedableEndpoint.Requestor[String, String]()
       @volatile var neverToggles = true
       val e1 = ThrottlingAction.Enqueue(1, ThrottlingAction.Drop)
       val e2 = ThrottlingAction.Enqueue(1, e1)
