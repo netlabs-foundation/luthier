@@ -38,8 +38,6 @@ import uy.com.netlabs.luthier.reflect.util.MethodRef
 import typelist._
 import scala.concurrent._, duration._
 import scala.util._
-import java.util.concurrent.Executors
-import org.apache.cxf.endpoint.Server
 
 object Ws {
 
@@ -48,7 +46,7 @@ object Ws {
                                              val methodRef: MethodRef[I, PL, R],
                                              val maxResponseTimeout: FiniteDuration,
                                              val ioWorkers: Int) extends base.BaseResponsible {
-    type SupportedResponseTypes = R :: TypeNil
+    type SupportedResponseType = R
     type Payload = PL
 
     implicit val flow = f
@@ -79,9 +77,9 @@ object Ws {
         case arr if arr.length == 10 => (arr(0), arr(1), arr(2), arr(3), arr(4), arr(5), arr(6), arr(7), arr(8), arr(9))
       }
       val m = newReceviedMessage(payload.asInstanceOf[PL])
-      val resultPromise = Promise[Message[OneOf[_, SupportedResponseTypes]]]()
+      val resultPromise = Promise[Message[SupportedResponseType]]()
       requestArrived(m, resultPromise.complete)
-      Await.result(resultPromise.future, maxResponseTimeout).payload.value //re-throw exception in the try on purpose
+      Await.result(resultPromise.future, maxResponseTimeout).payload //re-throw exception in the try on purpose
     }
   }
 
@@ -90,8 +88,5 @@ object Ws {
   }
   def apply[I, PL, R](s: Sei[I],
                       maxResponseTimeout: FiniteDuration = 30.seconds,
-                      ioWorkers: Int = 4)(f: I => MethodRef[I, PL, R]): EndpointFactory[Responsible { //weird type declaration used instead of just WsResponsible[I, PL, R] because of bug in scalac
-    type SupportedResponseTypes = WsResponsible[I, PL, R]#SupportedResponseTypes
-    type Payload = WsResponsible[I, PL, R]#Payload
-  }] = EF(s, maxResponseTimeout, ioWorkers)(f)
+                      ioWorkers: Int = 4)(f: I => MethodRef[I, PL, R]): EndpointFactory[Responsible.Generic[WsResponsible[I, PL, R]]] = EF(s, maxResponseTimeout, ioWorkers)(f)
 }

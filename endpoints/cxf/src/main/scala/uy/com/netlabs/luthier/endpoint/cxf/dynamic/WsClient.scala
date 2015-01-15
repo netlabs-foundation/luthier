@@ -35,7 +35,7 @@ package cxf.dynamic
 import language.dynamics
 import scala.concurrent.duration._
 import scala.reflect.ClassTag
-import typelist._
+import shapeless._, typelist._
 import org.apache.cxf.jaxws.endpoint.dynamic.JaxWsDynamicClientFactory
 
 class DynamicInstance private[dynamic] (val peer: Any) extends Dynamic {
@@ -92,10 +92,10 @@ case class WsClient(val url: String) {
 object WsInvoker {
   class DynamicWsClient[Result] private[WsInvoker] (val flow: Flow, client: WsClient, operation: String,
                                                     shutDownClientOnEndpointDispose: Boolean, resultClassTag: ClassTag[Result]) extends Askable {
-    type SupportedTypes = Seq[_] :: Product :: TypeNil
+    type SupportedType = <::<[Seq[_]] :: <::<[Product] :: HNil
     type Response = Result
     val resultRuntimeClass = resultClassTag.runtimeClass.asInstanceOf[Class[Result]]
-    def ask[Payload: SupportedType](msg, timeout) = {
+    def ask[Payload: TypeIsSupported](msg, timeout) = {
       flow.blocking {
         val res = msg.payload match {
           case traversable: Seq[Any] => client.dynamicClient.invoke(operation, traversable.asInstanceOf[Seq[AnyRef]].toArray: _*)
