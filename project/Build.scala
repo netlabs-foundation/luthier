@@ -29,8 +29,8 @@ object CocoonBuild extends Build {
       //"-explaintypes",
       "-unchecked",
       "-deprecation",
-      "-Yinfer-argument-types",
-      "-Ybackend:GenBCode"
+      "-Yinfer-argument-types"
+      //"-Ybackend:GenBCode"
       //"-Ydelambdafy:method"
       //"-Xlog-implicits"
     ),
