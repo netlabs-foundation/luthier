@@ -36,6 +36,7 @@ package logical
 import typelist._
 import shapeless._
 import scala.concurrent._, duration._
+import uy.com.netlabs.luthier.OutboundEndpoint.TypeIsSupported
 
 /**
  * A Throttler is an entity which has state and can tell you whether you should
@@ -80,7 +81,7 @@ object ThrottlingAction {
   /**
    * Signals that the operation should result in the given response.
    */
-  case class Reply[T, R <: Responsible](resp: T)(implicit ev: Contained[R#SupportedResponseTypes, T]) extends ThrottlingAction[R]
+  case class Reply[T, R <: Responsible](resp: T)(implicit ev: TypeIsSupported[T, R#SupportedResponseType]) extends ThrottlingAction[R]
   /**
    * Signals that the operation should be backed off using the given backoff function.
    */
@@ -121,7 +122,7 @@ object Throttling {
               Future.failed(new Exception("Message dropped"))
             case Reply(resp) =>
               log.info(s"Replying with $resp due to throttling.")
-              Future.successful(msg.map (_ => new OneOf[Any, HNil](resp)(null)).asInstanceOf[Res])
+              Future.successful(msg.map (_ => resp).asInstanceOf[Res])
             case Backoff(id, f, rejectAction) => backoff(id, f, msg, rejectAction, args)
             case e@Enqueue(_, rejectAction) =>
               val res = Promise[Res]
@@ -210,12 +211,12 @@ object Throttling {
     def handler(args) = onRequestHandler
     underlying.onRequest(handle(_: Message[Payload], throttlingAction, ()))
 
-    protected type Res = Message[OneOf[_, underlying.SupportedResponseTypes]]
+    protected type Res = Message[underlying.SupportedResponseType]
     type Throttler = logical.Throttler
     type Underlying = R
     protected type HandlerArgs = Unit
     type Payload = underlying.Payload
-    type SupportedResponseTypes = underlying.SupportedResponseTypes
+    type SupportedResponseType = underlying.SupportedResponseType
   }
 
   case class SourceEF[S <: Source](source: EndpointFactory[S], throttler: Throttler,
@@ -250,10 +251,10 @@ object Throttling {
     type Underlying = S
     protected type HandlerArgs = Unit
     protected type Payload = Any
-    type SupportedTypes = underlying.SupportedTypes
+    type SupportedType = underlying.SupportedType
 
     def handler(args) = underlying.push(_)(null)
-    override def push[Payload: SupportedType](msg: Message[Payload]): Future[Unit] = handle(msg, throttlingAction, ())
+    override def push[Payload: TypeIsSupported](msg: Message[Payload]): Future[Unit] = handle(msg, throttlingAction, ())
   }
   class AskableThrottlingEndpoint[A <: Askable](val flow: Flow, val underlying: A,
                                                 override val throttler: Throttler,
@@ -264,11 +265,11 @@ object Throttling {
     type Underlying = A
     protected type HandlerArgs = FiniteDuration
     protected type Payload = Any
-    type SupportedTypes = underlying.SupportedTypes
+    type SupportedType = underlying.SupportedType
     type Response = underlying.Response
 
     def handler(timeOut) = underlying.ask(_, timeOut)(null)
-    override def ask[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] =
+    override def ask[Payload: TypeIsSupported](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] =
       handle(msg, throttlingAction, timeOut)
   }
   case class PushableEF[S <: Pushable](sink: EndpointFactory[S], throttler: Throttler,
