@@ -33,7 +33,6 @@ package endpoint
 package amqp
 
 import com.rabbitmq.client._
-import uy.com.netlabs.luthier.typelist._
 import uy.com.netlabs.luthier.endpoint.base._
 import collection.JavaConverters._
 import scala.concurrent.{Channel => _, _}, duration._
@@ -73,7 +72,7 @@ trait AmqpEndpoint extends Endpoint {
 class AmqpInEndpoint(val flow: Flow, val manager: Amqp, val bindingKeys: Seq[String], val queue: Queue,
                      val exchange: Exchange, ioThreads: Int) extends AmqpEndpoint with BaseSource with BaseResponsible {
   type Payload = Array[Byte]
-  type SupportedResponseTypes = Array[Byte] :: TypeNil
+  type SupportedResponseType = Array[Byte]
   val ioProfile = IoProfile.threadPool(ioThreads, flow.name + "-amqp-ep")
   private lazy val registerInManger: Unit = {
     manager.instantiatedInboundEndpoints :+= this
@@ -86,13 +85,13 @@ class AmqpInEndpoint(val flow: Flow, val manager: Amqp, val bindingKeys: Seq[Str
         manager.channel.queueBind(queue.name, exchange.name, key)
     }
     val consumer = new DefaultConsumer(manager.channel) {
-      def reply(origProps: AMQP.BasicProperties, to: Destination) = (res: Try[Message[OneOf[_, SupportedResponseTypes]]]) => {
+      def reply(origProps: AMQP.BasicProperties, to: Destination) = (res: Try[Message[SupportedResponseType]]) => {
         res match {
-          case Success(msg@Message(oneOf)) =>
+          case Success(msg@Message(bytes)) =>
             to match {
               case d: AmqpDestination if d != null =>
                 println("Sending message to " + d.queue)
-                manager.channel.basicPublish("", d.queue, mergeMessageWithProps(msg, origProps), oneOf.valueAs[Array[Byte]])
+                manager.channel.basicPublish("", d.queue, mergeMessageWithProps(msg, origProps), bytes)
               case other => log.error("Failed to reply to client because replyTo destination is invalid. Destination is:" + other)
             }
           case Failure(ex) =>
@@ -128,7 +127,7 @@ extends AmqpEndpoint with BasePullable with BasePushable /*with Askable*/ {
   val ioProfile = IoProfile.threadPool(ioThreads, flow.name + "-amqp-ep")
   type Payload = Option[Array[Byte]]
   type Response = Array[Byte]
-  type SupportedTypes = Array[Byte] :: TypeNil
+  type SupportedType = Array[Byte]
 
   private class OneMessageConsumer(channel: Channel) extends DefaultConsumer(channel) {
     override def handleDelivery(consumerTag, envelope, properties, body) {
@@ -149,7 +148,7 @@ extends AmqpEndpoint with BasePullable with BasePushable /*with Askable*/ {
       res
     } else mf(None)
   }
-  protected def pushMessage[Payload: SupportedType](msg: Message[Payload]) {
+  protected def pushMessage[Payload: TypeIsSupported](msg: Message[Payload]) {
     val props = mergeMessageWithProps(msg, messageProperties)
     for (key <- bindingKeys)
       manager.channel.basicPublish(exchange.name, key, props, msg.payload.asInstanceOf[Array[Byte]])
