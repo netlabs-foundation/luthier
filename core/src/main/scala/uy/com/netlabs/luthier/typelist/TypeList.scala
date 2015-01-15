@@ -114,7 +114,6 @@ object >::> {
 trait Supported[T, H <: HList]
 object Supported extends LowPrioSupportedImplicits {
   implicit def headIsSupported[T, H, HL <: HList](implicit canBe: CanBe[T, H]): Supported[T, H :: HL] = null
-  implicit def tailIsSupported[T, H, HL <: HList](implicit ev: Supported[T, HL]): Supported[T, H :: HL] = null
 
   class SupportedOps[T](val t: T) extends AnyVal {
     def math_[H <: HList](pf: PartialFunction[T, Any])(implicit ev: Supported[T, H]): Any = macro supportedDispatchBasedOnValue[T, H]
@@ -128,11 +127,12 @@ object Supported extends LowPrioSupportedImplicits {
     new Macros[c.type](c).noSelectorErrorImpl(None, tEv.tpe, hlEv.tpe)
   }
 }
-private[typelist] trait LowPrioSupportedImplicits {
-  implicit def notSupported[T, HL <: HList]: Supported[T, HL] = macro Supported.notSupportedImpl[T, HL]
-
+private[typelist] trait LowPrioSupportedImplicits extends LowPrioSupportedImplicits2 {
+  implicit def tailIsSupported[T, H, HL <: HList](implicit ev: Supported[T, HL]): Supported[T, H :: HL] = null
 }
-
+private[typelist] trait LowPrioSupportedImplicits2 {
+  implicit def notSupported[T, HL <: HList]: Supported[T, HL] = macro Supported.notSupportedImpl[T, HL]
+}
 sealed trait ErrorSelectorImplicits[Selector[TL <: HList, A]] { self: TypeSelectorImplicits[Selector] =>
 
   // aux is a hack to force the type inferencer to bind the HList before the macro, otherwise given its covariant it will pass in the most general shapeless.HList
