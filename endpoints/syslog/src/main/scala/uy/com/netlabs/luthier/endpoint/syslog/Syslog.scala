@@ -32,7 +32,7 @@ package uy.com.netlabs.luthier
 package endpoint
 package syslog
 
-import typelist._
+import shapeless._
 import org.productivity.java.syslog4j._
 
 object Syslog {
@@ -48,13 +48,13 @@ object Syslog {
                        val host: String,
                        val port: Int,
                        val ioWorkers: Int) extends base.BasePushable {
-    type SupportedTypes = (Int, String) :: String :: SyslogMessageIF :: (Int, SyslogMessageIF) :: TypeNil
+    type SupportedType = (Int, String) :: String :: SyslogMessageIF :: (Int, SyslogMessageIF) :: HNil
 
     var syslogInstance: SyslogIF = _
     lazy val ioProfile = base.IoProfile.threadPool(ioWorkers, flow.name + "-syslog-ep")
     val appName = flow.appContext.name
 
-    def pushMessage[Payload: SupportedType](m) = {
+    def pushMessage[Payload: TypeIsSupported](m) = {
       m.payload match {
         case msg: String                        => syslogInstance.info(s"$appName: $msg")
         case (level: Int, msg: String)          => syslogInstance.log(level, s"$appName: $msg")
