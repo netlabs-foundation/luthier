@@ -34,10 +34,10 @@ package endpoint.jdbc
 import javax.sql.DataSource
 import java.sql.{ Connection, PreparedStatement, ResultSet }
 import scala.reflect._
-import scala.concurrent.{ ExecutionContext, Future, duration }, duration._
+import scala.concurrent.{ Future, duration }, duration._
 import scala.collection.GenTraversableOnce
 import scala.util.Try
-import typelist._
+import shapeless._, typelist._
 
 /**
  * A pull endpoint that calls a prepared statement, be warned that for better throughput
@@ -79,7 +79,7 @@ class JdbcAskable[R](val flow: Flow,
                      val dataSource: DataSource,
                      ioThreads: Int) extends Askable {
   type Response = IndexedSeq[R]
-  type SupportedTypes = IndexedSeq[_ <: Any] :: Product :: TypeNil
+  type SupportedType = <::<[IndexedSeq[_ <: Any]] :: <::<[Product] :: HNil
 
   @volatile private[this] var connection: Connection = _
   private[this] val preparedStatement = new ThreadLocal[PreparedStatement]()
@@ -95,7 +95,7 @@ class JdbcAskable[R](val flow: Flow,
   private[this] val ioProfile = endpoint.base.IoProfile.threadPool(ioThreads, flow.name)
 
   //TODO: Honor the timeout
-  def ask[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
+  def ask[Payload: TypeIsSupported](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
     Future {
       val args = {
         msg.payload match {
