@@ -33,8 +33,8 @@ package endpoint.sharedjms
 
 import uy.com.netlabs.luthier.endpoint
 
-import typelist._
 import language._
+import typelist._, shapeless._
 import akka.actor.Cancellable
 import javax.jms.{ MessageListener, Message => jmsMessage, TemporaryQueue }
 import scala.util.Try
@@ -43,47 +43,50 @@ import scala.concurrent._, duration._
 
 object SharedJms {
   /* Supported types on writing */
-  type SupportedTypes = String :: Array[Byte] :: java.io.Serializable :: TypeNil
-  type SupportedType[Payload] = TypeSupportedByTransport[SupportedTypes, Payload]
+  type SupportedTypes = String :: Array[Byte] :: <::<[java.io.Serializable] :: HNil
+  type OneOfSupportedType = OneOf[_, SupportedTypes]
+  type TypeIsSupported[Payload] = OutboundEndpoint.TypeIsSupported[Payload, SupportedTypes]
 
   private[SharedJms] trait RequiredJmsFunctions {
     def startEndpoint()
     def stopEndpoint(reg: endpoint.jms.TemporaryQueueRegistration)
-    def registerTemporaryQueue(l: MessageListener, quc: TemporaryQueue=>Unit, f: Flow): (endpoint.jms.TemporaryQueueRegistration, TemporaryQueue)
-    def push[Payload: SupportedType](msg: Message[Payload]): Future[Unit]
-    def jmsMessageToEsbMessage(mf: Any => Message[_], m: jmsMessage): Message[Any]
+    def registerTemporaryQueue(l: MessageListener, quc: TemporaryQueue => Unit, f: Flow): (endpoint.jms.TemporaryQueueRegistration, TemporaryQueue)
+    def push[Payload: TypeIsSupported](msg: Message[Payload]): Future[Unit]
+    def jmsMessageToEsbMessage(mf: OneOfSupportedType => Message[OneOfSupportedType], m: jmsMessage): Message[OneOfSupportedType]
   }
 
   private[SharedJms] case class EF(val requiredJmsFunctions: Flow => RequiredJmsFunctions) extends EndpointFactory[SharedJmsEndpoint] {
     def apply(f: Flow) = new SharedJmsEndpoint(f, requiredJmsFunctions(f))
   }
   def apply(epf: EndpointFactory[endpoint.jms.JmsQueueEndpoint])(implicit i1:DummyImplicit) = EF { case f: Flow =>
-    val ep: endpoint.jms.JmsQueueEndpoint = epf(f)
-    new RequiredJmsFunctions() {
-      def startEndpoint() = ep.start()
-      def stopEndpoint(reg: endpoint.jms.TemporaryQueueRegistration) { ep.jmsOperations.unregisterTemporaryQueue(reg); ep.dispose() }
-      def registerTemporaryQueue(l: MessageListener, quc: TemporaryQueue=>Unit, f: Flow): (endpoint.jms.TemporaryQueueRegistration, TemporaryQueue) =
-        ep.jmsOperations.registerTemporaryQueue(l, quc, f)
-      def push[Payload: SupportedType](msg: Message[Payload]): Future[Unit] = ep.push(msg)
-      def jmsMessageToEsbMessage(mf: Any => Message[_], m: jmsMessage): Message[Any] = ep.jmsOperations.jmsMessageToEsbMessage(mf, m)
-    }
+      val ep: endpoint.jms.JmsQueueEndpoint = epf(f)
+      new RequiredJmsFunctions() {
+        def startEndpoint() = ep.start()
+        def stopEndpoint(reg: endpoint.jms.TemporaryQueueRegistration) { ep.jmsOperations.unregisterTemporaryQueue(reg); ep.dispose() }
+        def registerTemporaryQueue(l: MessageListener, quc: TemporaryQueue=>Unit, f: Flow): (endpoint.jms.TemporaryQueueRegistration, TemporaryQueue) =
+          ep.jmsOperations.registerTemporaryQueue(l, quc, f)
+        def push[Payload: TypeIsSupported](msg: Message[Payload]): Future[Unit] = ep.push(msg)
+        def jmsMessageToEsbMessage(mf: OneOfSupportedType => Message[OneOfSupportedType], m: jmsMessage): Message[OneOfSupportedType] = 
+          ep.jmsOperations.jmsMessageToEsbMessage(mf, m)
+      }
   }
   def apply(epf: EndpointFactory[endpoint.jms.JmsTopicEndpoint]) = EF { case f: Flow =>
-    val ep: endpoint.jms.JmsTopicEndpoint = epf(f)
-    new RequiredJmsFunctions() {
-      def startEndpoint() = ep.start()
-      def stopEndpoint(reg: endpoint.jms.TemporaryQueueRegistration) { ep.jmsOperations.unregisterTemporaryQueue(reg); ep.dispose() }
-      def registerTemporaryQueue(l: MessageListener, quc: TemporaryQueue=>Unit, f: Flow): (endpoint.jms.TemporaryQueueRegistration, TemporaryQueue) =
-        ep.jmsOperations.registerTemporaryQueue(l, quc, f)
-      def push[Payload: SupportedType](msg: Message[Payload]): Future[Unit] = ep.push(msg)
-      def jmsMessageToEsbMessage(mf: Any => Message[_], m: jmsMessage): Message[Any] = ep.jmsOperations.jmsMessageToEsbMessage(mf, m)
-    }
+      val ep: endpoint.jms.JmsTopicEndpoint = epf(f)
+      new RequiredJmsFunctions() {
+        def startEndpoint() = ep.start()
+        def stopEndpoint(reg: endpoint.jms.TemporaryQueueRegistration) { ep.jmsOperations.unregisterTemporaryQueue(reg); ep.dispose() }
+        def registerTemporaryQueue(l: MessageListener, quc: TemporaryQueue=>Unit, f: Flow): (endpoint.jms.TemporaryQueueRegistration, TemporaryQueue) =
+          ep.jmsOperations.registerTemporaryQueue(l, quc, f)
+        def push[Payload: TypeIsSupported](msg: Message[Payload]): Future[Unit] = ep.push(msg)
+        def jmsMessageToEsbMessage(mf: OneOfSupportedType => Message[OneOfSupportedType], m: jmsMessage): Message[OneOfSupportedType] = 
+          ep.jmsOperations.jmsMessageToEsbMessage(mf, m)
+      }
   }
 
   class SharedJmsEndpoint(val flow: Flow,
                           val requiredJmsFunctions: RequiredJmsFunctions) extends Askable {
-    type SupportedTypes = SharedJms.SupportedTypes
-    type Response = Any
+    type SupportedType = SharedJms.SupportedTypes
+    type Response = OneOfSupportedType
 
     val correlationIdPrefix = f"${java.lang.System.currentTimeMillis}%x"
     val atomicLong = new java.util.concurrent.atomic.AtomicLong
@@ -95,19 +98,20 @@ object SharedJms {
     val messageListener = new MessageListener {
       override def onMessage(m: jmsMessage) {
         val correlationId: String = try {m.getJMSCorrelationID} catch { case ex: Exception =>
-          log.error(ex, "Reading correlationId (response messages must come with utf-8 correlationId)")
-          return
+            log.error(ex, "Reading correlationId (response messages must come with utf-8 correlationId)")
+            return
         }
         val (id, (promise, origMsg, timeoutTimer)) = try {
           val id: Long = java.lang.Long.parseLong(correlationId split "-" last, 16)
           (id, activeTransactions(id))
         } catch { case e: Exception =>
-          log.warning(s"Received message with unknown/invalid/timed-out correlationId=${correlationId}")
-          return
+            log.warning(s"Received message with unknown/invalid/timed-out correlationId=${correlationId}")
+            return
         }
         promise tryComplete Try {
           timeoutTimer.cancel()
           activeTransactions -= id
+//          requiredJmsFunctions.
           requiredJmsFunctions.jmsMessageToEsbMessage(p => origMsg.map(_ => p), m)
         }
       }
@@ -120,9 +124,9 @@ object SharedJms {
           if (refcnt == 0) {
             requiredJmsFunctions.startEndpoint()
             val (reg, tq) = requiredJmsFunctions.registerTemporaryQueue(messageListener, {
-              q => temporaryQueue = q
-              log.info("temporary queue = " + temporaryQueue)
-            }, flow)
+                q => temporaryQueue = q
+                log.info("temporary queue = " + temporaryQueue)
+              }, flow)
             temporaryQueueRegistration = reg
             temporaryQueue = tq
             log.info("temporary queue = " + temporaryQueue)
@@ -130,8 +134,8 @@ object SharedJms {
           referenceCount.incrementAndGet
         }
       } catch { case t: Throwable =>
-        log.error(t, s"Failed starting SharedJms endpoint")
-        throw t
+          log.error(t, s"Failed starting SharedJms endpoint")
+          throw t
       }
     }
 
@@ -143,7 +147,7 @@ object SharedJms {
       }
     }
 
-    override def ask[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
+    override def ask[Payload: TypeIsSupported](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
       val promise = Promise[Message[Response]]()
       val id = atomicLong.incrementAndGet
       msg.correlationId = f"${correlationIdPrefix}%s-$id%x"
@@ -161,10 +165,10 @@ object SharedJms {
       val resp: Future[Unit] = requiredJmsFunctions.push(msg)(null)
 
       resp.onFailure({ case t =>
-        timeoutTimer.cancel
-        activeTransactions -= id
-        promise.tryFailure(t)
-      })(appContext.actorSystem.dispatcher)
+            timeoutTimer.cancel
+            activeTransactions -= id
+            promise.tryFailure(t)
+        })(appContext.actorSystem.dispatcher)
 
       promise.future
     }
