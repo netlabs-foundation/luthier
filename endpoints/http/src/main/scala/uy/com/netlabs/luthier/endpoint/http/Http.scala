@@ -37,7 +37,7 @@ import scala.concurrent._, duration._
 import scala.collection.mutable.Map
 import scala.collection.JavaConversions._
 
-import typelist._
+import shapeless._, typelist._
 
 import com.ning.http.client.{
   AsyncHttpClient,
@@ -65,7 +65,7 @@ object Http {
     val flow = f
     type Payload = R
     type Response = R
-    type SupportedTypes = (RequestBuilder, FunctionHandler[R]) :: (Request, FunctionHandler[R]) :: TypeNil
+    type SupportedType = <::<[(RequestBuilder, FunctionHandler[R])] :: <::<[(Request, FunctionHandler[R])] :: HNil
 
     val threadPoolSize = ioThreads
 
@@ -133,11 +133,11 @@ object Http {
       }(ioProfile.executionContext)
       promise.future
     }
-    def ask[Payload: SupportedType](msg, timeOut): Future[Message[Response]] = {
+    def ask[Payload: TypeIsSupported](msg, timeOut): Future[Message[Response]] = {
       val promise = Promise[Message[Response]]()
       val req = msg.payload match {
-        case (r: RequestBuilder, f: FunctionHandler[Response]) => (r, f)
-        case (r: Request, f: FunctionHandler[Response]) => (new RequestBuilder(r), f)
+        case (r: RequestBuilder, f: FunctionHandler[Response]@unchecked) => (r, f)
+        case (r: Request, f: FunctionHandler[Response]@unchecked) => (new RequestBuilder(r), f)
       }
       val cookies = msg.header.outbound.getOrElse("Cookies", Seq.empty).asInstanceOf[Seq[Cookie]]
       cookies foreach req._1.addOrReplaceCookie
@@ -158,16 +158,16 @@ object Http {
 
   type HttpPullableEF[R] = EndpointFactory[Pullable { type Payload = R }]
   type HttpAskableEF[R] = EndpointFactory[Askable {
-    type Response = R
-    type SupportedTypes = HttpDispatchEndpoint[R]#SupportedTypes
-  }]
+      type Response = R
+      type SupportedType = HttpDispatchEndpoint[R]#SupportedType
+    }]
 
   //implicit class RequestBuilderAndHandler[R](val r: (RequestBuilder, FunctionHandler[R])) extends ReqType[R]
 
   def pulling[Req, HandlerType](req: Req, ioThreads: Int = 1,
                                 httpClientConfig: AsyncHttpClientConfig = new AsyncHttpClientConfig.Builder().build())(
-                                  implicit supported: ReqType[Req, HandlerType]): HttpPullableEF[HandlerType] =
-    EF(Some(supported(req)), ioThreads, httpClientConfig)
+    implicit supported: ReqType[Req, HandlerType]): HttpPullableEF[HandlerType] =
+      EF(Some(supported(req)), ioThreads, httpClientConfig)
 
   def apply[R](ioThreads: Int = 1, httpClientConfig: AsyncHttpClientConfig = new AsyncHttpClientConfig.Builder().build()): HttpAskableEF[R] =
     EF(None, ioThreads, httpClientConfig)
@@ -221,17 +221,17 @@ object Http {
 
   class HttpUnfilteredEndpoint private[Http] (f: Flow, repr: ServerRepr) extends Responsible {
     type Payload = HttpRequest[HttpServletRequest]
-    type SupportedResponseTypes = String :: ResponseFunction[HttpServletResponse] :: TypeNil
+    type SupportedResponseType = OneOf[_, String :: ResponseFunction[HttpServletResponse] :: HNil]
 
     object Handler extends Plan {
       def intent = {
         case req =>
           try {
             onRequestHandler(newReceviedMessage(req)).onComplete {
-              case Success(m) => m.payload.value match {
-                case s: String => req.respond(ResponseString(s))
-                case rf: ResponseFunction[HttpServletResponse @unchecked] => req.respond(rf)
-              }
+              case Success(m) => m.payload.match_ {
+                  case s: String => req.respond(ResponseString(s))
+                  case rf: ResponseFunction[HttpServletResponse @unchecked] => req.respond(rf)
+                }
               case Failure(ex) =>
                 log.error(ex, "Unexpected exception in code handling request")
                 req.respond(InternalServerError ~> ResponseString(ex.toString))
