@@ -32,16 +32,17 @@ package uy.com.netlabs.luthier
 package endpoint
 package jms
 
-import typelist._
+import language._
+import shapeless._, typelist._
 import akka.event.LoggingAdapter
 import javax.jms.{ ConnectionFactory, Connection, Queue, MessageListener,
                   ExceptionListener, Session, Message => jmsMessage,
                   TextMessage, ObjectMessage, BytesMessage, IllegalStateException,
-                  DeliveryMode, TemporaryQueue}
+                  TemporaryQueue}
 import scala.concurrent.{ ExecutionContext, Future, Promise }
 import scala.concurrent.duration._
-import scala.util.{ Try, Success, Failure }
-import language._
+import scala.util.Try
+import uy.com.netlabs.luthier.OutboundEndpoint.TypeIsSupported
 
 class Jms(connectionFactory: ConnectionFactory) {
 
@@ -165,12 +166,14 @@ protected[jms] trait JmsOperations {
   def createQueue(q: String): javax.jms.Queue = threadLocalSession.get.createQueue(q)
   def createTopic(t: String): javax.jms.Topic = threadLocalSession.get.createTopic(t)
 
+  type PossibleTypes = String :: Array[Byte] :: <::<[java.io.Serializable] :: HNil
+  
   /**
    * Synchronously sends a message using a JMS producer.
    * If it is unable to send the message, it will throw an exception.
    */
   def sendMessage[Payload](msg: Message[Payload], destination: javax.jms.Destination, deliveryMode: Int)
-  (implicit typeSupportedEv: TypeSupportedByTransport[String :: Array[Byte] :: java.io.Serializable :: TypeNil, Payload]) {
+  (implicit typeSupportedEv: TypeIsSupported[Payload, PossibleTypes]): Unit = {
     implicit val session = threadLocalSession.get()
     handlingSessionClosed {
       val producer = session.createProducer(destination)
@@ -185,7 +188,7 @@ protected[jms] trait JmsOperations {
    * If it is unable to send the message, it will throw an exception.
    */
   def sendMessage[Payload](msg: Payload, destination: javax.jms.Destination, deliveryMode: Int)
-  (implicit containedEv: Contained[String :: Array[Byte] :: java.io.Serializable :: TypeNil, Payload]) {
+  (implicit containedEv: TypeIsSupported[Payload, PossibleTypes]): Unit = {
     implicit val session = threadLocalSession.get()
     handlingSessionClosed {
       val producer = session.createProducer(destination)
@@ -201,10 +204,10 @@ protected[jms] trait JmsOperations {
    * on an temporary queue.
    */
   def ask[Payload](msg: Message[Payload], timeOut: FiniteDuration, destination: javax.jms.Destination, deliveryMode: Int)
-  (implicit typeSupportedEv: TypeSupportedByTransport[String :: Array[Byte] :: java.io.Serializable :: TypeNil, Payload],
-   executionContext: ExecutionContext): Future[Message[Any]] = {
+  (implicit typeSupportedEv: TypeIsSupported[Payload, PossibleTypes],
+   executionContext: ExecutionContext): Future[Message[OneOf[_, PossibleTypes]]] = {
     implicit val session = threadLocalSession.get()
-    val jmsResponse = Promise[Message[Any]]()
+    val jmsResponse = Promise[Message[OneOf[_, PossibleTypes]]]()
     @volatile var tempQueue : javax.jms.TemporaryQueue = null
     @volatile var consumer : javax.jms.MessageConsumer = null
     val timeoutTimer = appContext.actorSystem.scheduler.scheduleOnce(timeOut) {
@@ -239,11 +242,11 @@ protected[jms] trait JmsOperations {
         }
       }
     }.onFailure { case t =>
-      if (consumer != null)
+        if (consumer != null)
           try consumer.close() catch {case ex: Exception => log.error(ex, "Could not dispose consumer")}
-      if (tempQueue != null)
+        if (tempQueue != null)
           try tempQueue.delete() catch {case ex: Exception => log.error(ex, "Could not delete temporary queue " + tempQueue)}
-      jmsResponse.tryFailure(t)
+        jmsResponse.tryFailure(t)
     }
     jmsResponse.future
   }
@@ -269,15 +272,15 @@ protected[jms] trait JmsOperations {
     val consumer = try {
       session.createConsumer(temporaryQueue)
     } catch { case t: Throwable =>
-      Try(temporaryQueue.delete())
-      throw t
+        Try(temporaryQueue.delete())
+        throw t
     }
     try {
       consumer.setMessageListener(l)
     } catch { case t: Throwable =>
-      Try(consumer.close())
-      Try(temporaryQueue.delete)
-      throw t
+        Try(consumer.close())
+        Try(temporaryQueue.delete)
+        throw t
     }
     val reg = new TemporaryQueueRegistration(l, queueUpdaterCallback, f, temporaryQueue)
     registeredTemporaryListeners += reg
@@ -349,12 +352,15 @@ protected[jms] trait JmsOperations {
     res
   }
 
-  def jmsMessageToEsbMessage(mf: Any => Message[_], m: jmsMessage): Message[Any] = {
-    val payload = m match {
-      case tm: TextMessage   => tm.getText
-      case om: ObjectMessage => om.getObject
-      case bm: BytesMessage  => bm.readBytes(new Array[Byte](bm.getBodyLength.toInt))
-      case _                 => m
+  def jmsMessageToEsbMessage(mf: OneOf[_, PossibleTypes] => Message[OneOf[_, PossibleTypes]], m: jmsMessage): Message[OneOf[_, PossibleTypes]] = {
+    val payload: OneOf[_, PossibleTypes] = m match {
+      case tm: TextMessage   => new OneOf(tm.getText)
+      case om: ObjectMessage => new OneOf(om.getObject)
+      case bm: BytesMessage  => 
+        val bytes = new Array[Byte](bm.getBodyLength.toInt)
+        bm.readBytes(bytes)
+        new OneOf(bytes)
+      case _                 => throw new IllegalArgumentException("Unsupported message type " + m)
     }
     import collection.JavaConversions._
     import collection.mutable.Map

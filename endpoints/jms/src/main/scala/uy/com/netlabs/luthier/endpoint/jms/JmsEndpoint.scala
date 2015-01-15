@@ -31,11 +31,9 @@
 package uy.com.netlabs.luthier
 package endpoint.jms
 
-import typelist._
-import javax.jms.{ ConnectionFactory, Connection, Queue, MessageListener,
-                  ExceptionListener, Session, Message => jmsMessage,
-                  TextMessage, ObjectMessage, BytesMessage, IllegalStateException }
-import scala.concurrent.{ ExecutionContext, Future, Promise }
+import shapeless._, typelist._
+import javax.jms.{ MessageListener, Message => jmsMessage }
+import scala.concurrent.{ Future }
 import scala.concurrent.duration._
 import scala.util.{ Try, Success, Failure }
 import language._
@@ -50,11 +48,11 @@ private[jms] trait BaseJmsEndpoint extends endpoint.base.BaseSource with endpoin
   val deliveryMode: Int
 
   /* Supported types on writing */
-  type SupportedTypes = String :: Array[Byte] :: java.io.Serializable :: TypeNil
-  type SupportedResponseTypes = SupportedTypes
+  type SupportedType = String :: Array[Byte] :: <::<[java.io.Serializable] :: HNil
+  type SupportedResponseType = OneOf[_, SupportedType]
   /* Receiving payload */
-  type Payload = Any
-  type Response = Any
+  type Payload = SupportedResponseType
+  type Response = SupportedResponseType
 
   val ioProfile = endpoint.base.IoProfile.threadPool(ioThreads, flow.name + "-jms-ep")
 
@@ -63,14 +61,14 @@ private[jms] trait BaseJmsEndpoint extends endpoint.base.BaseSource with endpoin
     if (onEventHandler != null) {
       jmsOperations.registerMessageListener(destination, new MessageListener {
           def onMessage(m: jmsMessage) {
-            val mappedValue = try jmsOperations.jmsMessageToEsbMessage(newReceviedMessage, m)
+            val mappedValue: Message[Payload] = try jmsOperations.jmsMessageToEsbMessage(newReceviedMessage, m)
             catch {
               case ex: Exception =>
                 if (autoHandleExceptions) {
                   log.error(ex, "Failed reading JMS Message")
                   return
                 }
-                newReceviedMessage(ex)
+                newReceviedMessage(new OneOf(ex))
             }
             Try(messageArrived(mappedValue)) match {
               case Failure(ex) => log.error(ex, "Failed deliverying event")
@@ -87,7 +85,7 @@ private[jms] trait BaseJmsEndpoint extends endpoint.base.BaseSource with endpoin
     ioProfile.dispose
   }
 
-  protected def pushMessage[Payload: SupportedType](msg: Message[Payload]) {
+  protected def pushMessage[Payload: TypeIsSupported](msg: Message[Payload]): Unit = {
     jmsOperations.sendMessage(msg, createDestination(), deliveryMode)
   }
 }
@@ -111,7 +109,7 @@ extends BaseJmsEndpoint
     if (onRequestHandler != null) {
       jmsOperations.registerMessageListener(destination, new MessageListener {
           def onMessage(m: jmsMessage) {
-            val esbMessage = try jmsOperations.jmsMessageToEsbMessage(newReceviedMessage, m)
+            val esbMessage: Message[Payload] = try jmsOperations.jmsMessageToEsbMessage(newReceviedMessage, m)
             catch {
               case ex: Exception =>
                 if (autoHandleExceptions) {
@@ -119,7 +117,7 @@ extends BaseJmsEndpoint
                   jmsOperations.sendMessage(ex, m.getJMSReplyTo, deliveryMode)
                   return
                 }
-                newReceviedMessage(ex)
+                newReceviedMessage(new OneOf(ex))
             }
             requestArrived(esbMessage, sendMessage(_, m.getJMSReplyTo))
           }
@@ -128,13 +126,13 @@ extends BaseJmsEndpoint
     }
   }
 
-  def ask[Payload: SupportedType](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
+  def ask[Payload: TypeIsSupported](msg: Message[Payload], timeOut: FiniteDuration): Future[Message[Response]] = {
     jmsOperations.ask(msg, timeOut, createDestination(), deliveryMode)
   }
 
-  protected def sendMessage(msg: Try[Message[OneOf[_, SupportedResponseTypes]]], dest: javax.jms.Destination) {
+  protected def sendMessage(msg: Try[Message[SupportedResponseType]], dest: javax.jms.Destination) {
     try msg match {
-      case Success(m) => jmsOperations.sendMessage(m.map(_.value), dest, deliveryMode)(null) //force the evidence..
+      case Success(m) => jmsOperations.sendMessage(m.map(_.unsafeValue), dest, deliveryMode)(null) //force the evidence..
       case Failure(ex) => jmsOperations.sendMessage(ex, dest, deliveryMode)
     }
     catch {
