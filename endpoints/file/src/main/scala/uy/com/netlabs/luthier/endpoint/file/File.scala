@@ -32,10 +32,8 @@
 package uy.com.netlabs.luthier
 package endpoint.file
 
-import typelist._
-import scala.concurrent.Future
+import shapeless._
 import java.nio.file._
-import scala.concurrent.ExecutionContext
 
 object File {
   private case class EF(path: Path, charset: String, ioThreads: Int) extends EndpointFactory[FileEndpoint] {
@@ -46,13 +44,13 @@ object File {
 }
 class FileEndpoint(f: Flow, path: Path, charset: String, ioThreads: Int) extends endpoint.base.BasePushable with endpoint.base.BasePullable {
   type Payload = Array[Byte]
-  type SupportedTypes = Iterable[Byte] :: Array[Byte] :: String :: java.io.Serializable :: TypeNil
+  type SupportedType = Iterable[Byte] :: Array[Byte] :: String :: java.io.Serializable :: HNil
 
   implicit val flow = f
 
   val ioProfile = endpoint.base.IoProfile.threadPool(ioThreads, flow.name + "-file-ep")
 
-  protected def pushMessage[Payload: SupportedType](msg: Message[Payload]) {
+  protected def pushMessage[Payload: TypeIsSupported](msg: Message[Payload]) {
     msg.payload match {
       case it: Iterable[Byte @unchecked] => Files.write(path, it.toArray, StandardOpenOption.CREATE)
       case arr: Array[Byte] => Files.write(path, arr, StandardOpenOption.CREATE)
