@@ -1,7 +1,3 @@
-addSbtPlugin("com.typesafe.sbteclipse" % "sbteclipse-plugin" % "2.5.0")
-
-//resolvers += Resolver.url("artifactory", url("http://scalasbt.artifactoryonline.com/scalasbt/sbt-plugin-releases"))(Resolver.ivyStylePatterns)
+addSbtPlugin("com.timushev.sbt" % "sbt-updates" % "0.1.9")
 
 addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "0.9.2")
-
-addSbtPlugin("org.netbeans" % "nbsbt2" % "1.0")

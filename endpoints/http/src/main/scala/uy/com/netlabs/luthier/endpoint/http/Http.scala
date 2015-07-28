@@ -43,11 +43,11 @@ import com.ning.http.client.{
   AsyncHttpClient,
   AsyncHttpClientConfig,
   AsyncCompletionHandler,
-  Cookie,
   RequestBuilder,
   Request,
-  Response
-}
+  Response,
+  cookie
+}, cookie.Cookie
 import dispatch.{ Future => _, _ }
 import unfiltered.filter.async.Plan
 import unfiltered.request._

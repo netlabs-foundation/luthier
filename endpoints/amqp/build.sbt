@@ -1,3 +1,3 @@
 libraryDependencies ++= Seq(
-  "com.rabbitmq" % "amqp-client" % "3.0.4"
+  "com.rabbitmq" % "amqp-client" % "3.5.4"
 )

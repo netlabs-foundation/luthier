@@ -32,7 +32,7 @@
 package uy.com.netlabs.luthier
 package endpoint.file
 
-import shapeless._
+import shapeless.{ ::, HNil }
 import java.nio.file._
 
 object File {

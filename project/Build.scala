@@ -3,7 +3,7 @@ import sbt._, Keys._
 
 object CocoonBuild extends Build {
 
-  val _scalaVersion = "2.11.5"
+  val _scalaVersion = "2.11.7"
 
   val defSettings = Seq(
     version := "2.1.0-SNAPSHOT",
@@ -19,8 +19,8 @@ object CocoonBuild extends Build {
     libraryDependencies ++= Seq(
       "org.scala-lang" % "scala-reflect" % _scalaVersion,
       "org.scala-lang" % "scala-compiler" % _scalaVersion,
-      "org.scalatest" %% "scalatest" % "2.1.5" % "test",
-      "org.scala-lang.modules" %% "scala-xml" % "1.0.2",
+      "org.scalatest" %% "scalatest" % "2.2.5" % "test",
+      "org.scala-lang.modules" %% "scala-java8-compat" % "0.5.0",
       "org.backuity" %% "ansi-interpolator" % "1.1" % "provided"
     ),
     //incOptions := incOptions.value.withNameHashing(true),
@@ -29,9 +29,10 @@ object CocoonBuild extends Build {
       //"-explaintypes",
       "-unchecked",
       "-deprecation",
-      "-Yinfer-argument-types"
-      //"-Ybackend:GenBCode"
-      //"-Ydelambdafy:method"
+      "-Yinfer-argument-types",
+      "-Ybackend:GenBCode",
+      "-Ydelambdafy:method",
+      "-target:jvm-1.8"
       //"-Xlog-implicits"
     ),
     scalacOptions in Compile in doc ++= Seq(
@@ -40,8 +41,7 @@ object CocoonBuild extends Build {
     ),
     initialCommands in console += "import uy.com.netlabs.luthier._",
     publishTo := Some(Resolver.file("file",  new File(Path.userHome.absolutePath+"/.m2/repository")))
-  ) ++ Dist.settings ++ org.netbeans.sbtplugin.NbPlugin.nbsettings
-
+  ) ++ Dist.settings
   lazy val root = Project(id = "Luthier", base = file(".")).aggregate(
     core,
     logicalEndpoints,
